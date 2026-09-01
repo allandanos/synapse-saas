@@ -1,0 +1,871 @@
+Prompt:
+
+Can you build me my own open source SaaS framework, with different pricing plans e.g. freemium subscription and multi-tenant.
+
+ChatGPT Response:
+
+Yes. In fact, I’d build this as a reusable open-source SaaS operating system rather than a single SaaS product.
+
+Given your existing stack and the earlier idea of building your own agentic framework, I’d make the core framework something that 98Labs can reuse for SynapseDev.AI, lending, WMS, HR, marketplaces, booking systems, and future SaaS products.
+
+The framework I would build
+
+Call it something like Synapse SaaS Framework.
+
+The goal:
+
+Clone the framework → define your domain → configure plans/features → deploy → you have a production-ready multi-tenant SaaS.
+
+Core capabilities
+
+Capability	Built into framework
+Multi-tenancy	✅
+Organizations / Workspaces	✅
+Users & memberships	✅
+RBAC	✅
+Fine-grained authorization	✅ OpenFGA
+Authentication	✅ Keycloak
+Subscription plans	✅
+Freemium	✅
+Usage-based limits	✅
+Feature flags	✅
+Trial periods	✅
+Billing	✅
+Invoices	✅
+Entitlements	✅
+API keys	✅
+Webhooks	✅
+Audit logs	✅
+Notifications	✅
+Background jobs	✅
+File storage	✅
+PostgreSQL	✅
+Redis	✅
+Observability	✅ OpenTelemetry
+Admin console	✅
+Developer portal	✅
+API documentation	✅
+Docker	✅
+Kubernetes	✅
+Terraform	✅
+Cloud Run	✅
+Agent/MCP integration	✅
+Open-source core	✅
+
+⸻
+
+1. The most important architectural decision
+
+I wouldn’t make every SaaS a separate microservice system.
+
+Instead:
+
+                    ┌───────────────────────┐
+                    │    SaaS Application   │
+                    │                       │
+                    │  Your Business Logic  │
+                    └───────────┬───────────┘
+                                │
+                         SaaS Framework
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        │                       │                       │
+   Identity                 Billing                Platform
+        │                       │                       │
+   Keycloak              Subscriptions          Tenants
+   RBAC                   Plans                  Users
+   OpenFGA                Entitlements           Audit
+                          Usage                  Files
+        │                       │                       │
+        └───────────────────────┼───────────────────────┘
+                                │
+                    PostgreSQL / Redis / S3
+
+Your product code stays relatively clean.
+
+For example:
+
+apps/
+    lending/
+    wms/
+    booking/
+    hr/
+    marketplace/
+packages/
+    identity/
+    tenancy/
+    billing/
+    authorization/
+    notifications/
+    audit/
+    storage/
+    usage/
+
+⸻
+
+2. Multi-tenancy should be a first-class primitive
+
+Every business object should understand its tenant.
+
+For example:
+
+Platform
+   │
+   ├── Organization A
+   │       ├── Users
+   │       ├── Subscription
+   │       ├── Projects
+   │       └── Data
+   │
+   ├── Organization B
+   │       ├── Users
+   │       ├── Subscription
+   │       ├── Projects
+   │       └── Data
+   │
+   └── Organization C
+           ├── Users
+           ├── Subscription
+           ├── Projects
+           └── Data
+
+The application shouldn’t repeatedly implement:
+
+WHERE tenant_id = ?
+
+Instead the framework handles tenant context.
+
+For example:
+
+const projects = await db.project.findMany();
+
+The framework automatically applies:
+
+currentTenantId
+
+and prevents:
+
+Tenant A → Tenant B data access
+
+This becomes one of the framework’s most important security boundaries.
+
+⸻
+
+3. Pricing should be configuration, not application code
+
+This is where I’d make the framework substantially better than many “starter SaaS” frameworks.
+
+Define plans like:
+
+plans:
+  FREE:
+    price: 0
+    interval: month
+    limits:
+      users: 3
+      projects: 2
+      storage_gb: 1
+      api_requests: 10000
+    features:
+      - basic_dashboard
+      - api_access
+  STARTER:
+    price: 499
+    currency: PHP
+    interval: month
+    limits:
+      users: 10
+      projects: 20
+      storage_gb: 10
+      api_requests: 100000
+    features:
+      - basic_dashboard
+      - api_access
+      - reports
+      - email_support
+  PRO:
+    price: 1999
+    currency: PHP
+    interval: month
+    limits:
+      users: 50
+      projects: unlimited
+      storage_gb: 100
+      api_requests: 1000000
+    features:
+      - advanced_reports
+      - api_access
+      - integrations
+      - automation
+      - priority_support
+  ENTERPRISE:
+    price: custom
+    limits:
+      users: unlimited
+      storage_gb: unlimited
+    features:
+      - sso
+      - audit_logs
+      - custom_integrations
+      - dedicated_support
+
+Then your application simply asks:
+
+if (entitlements.has("advanced_reports")) {
+    ...
+}
+
+or:
+
+if (usage.withinLimit("api_requests")) {
+    ...
+}
+
+⸻
+
+4. Separate Plans, Features and Entitlements
+
+This is a very important distinction.
+
+Don’t do:
+
+if plan == PRO
+
+Instead:
+
+Plan
+ ↓
+Features
+ ↓
+Entitlements
+ ↓
+Permissions
+
+For example:
+
+PRO
+ │
+ ├── advanced_reports
+ ├── api_access
+ ├── automation
+ └── integrations
+
+A customer can then receive an entitlement independently of the plan.
+
+Example:
+
+FREE customer
++
+temporary_trial("advanced_reports", 14 days)
+
+Now your SaaS can easily implement:
+
+* trials
+* promotional features
+* grandfathered customers
+* beta features
+* enterprise overrides
+* add-ons
+* reseller plans
+* custom contracts
+
+without changing application code.
+
+⸻
+
+5. Usage metering
+
+This should be another core module.
+
+For example:
+
+api_requests
+documents_processed
+emails_sent
+storage_bytes
+ai_tokens
+ai_requests
+transactions
+users
+projects
+
+Every usage event becomes:
+
+{
+  "tenantId": "tenant_123",
+  "metric": "ai_tokens",
+  "quantity": 12450,
+  "timestamp": "..."
+}
+
+Then you can implement:
+
+FREE
+10,000 AI tokens
+STARTER
+100,000 AI tokens
+PRO
+1,000,000 AI tokens
+
+Or:
+
+₱0.20 / 1,000 tokens
+
+This is especially useful for SynapseDev.AI.
+
+⸻
+
+6. Billing abstraction
+
+Don’t hard-code Stripe.
+
+Create:
+
+BillingProvider
+       │
+       ├── Stripe
+       ├── Xendit
+       ├── PayMongo
+       ├── Paddle
+       └── Manual / Enterprise
+
+Interface:
+
+interface BillingProvider {
+    createCustomer(...);
+    createSubscription(...);
+    cancelSubscription(...);
+    changePlan(...);
+    getInvoice(...);
+    processWebhook(...);
+}
+
+Then your SaaS framework isn’t locked to one payment provider.
+
+For a Philippine SaaS, I’d specifically design the abstraction so local providers can be plugged in.
+
+⸻
+
+7. Recommended technology stack
+
+I’d use the architecture we discussed previously for your agentic platform:
+
+Backend
+
+Python + FastAPI + asyncio
+
+Why?
+
+* excellent API ecosystem
+* async
+* AI ecosystem
+* MCP ecosystem
+* agent integration
+* easy SDK development
+* fast development for a small team
+
+Frontend
+
+Next.js + TypeScript
+
+Next.js
+React
+Tailwind
+shadcn/ui
+
+Database
+
+PostgreSQL
+
+with:
+
+PostgreSQL
+ ├── application data
+ ├── tenant data
+ ├── billing
+ ├── usage
+ ├── audit
+ └── pgvector
+
+Identity
+
+Keycloak
+
+Authorization
+
+OpenFGA
+
+This is particularly valuable because:
+
+User
+ → Organization
+ → Workspace
+ → Project
+ → Resource
+
+can become much more sophisticated than simple RBAC.
+
+Cache
+
+Redis
+
+Object storage
+
+S3-compatible:
+
+AWS S3
+Cloudflare R2
+MinIO
+Supabase Storage
+
+Events
+
+Start with:
+
+PostgreSQL Outbox
+
+and optionally:
+
+Kafka
+
+Don’t force Kafka on every deployment.
+
+⸻
+
+8. Architecture
+
+I’d structure it roughly like this:
+
+                    ┌─────────────────┐
+                    │    Next.js      │
+                    │   Web Console   │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │    API Gateway  │
+                    └────────┬────────┘
+                             │
+             ┌───────────────┼────────────────┐
+             │               │                │
+             ▼               ▼                ▼
+       ┌──────────┐    ┌───────────┐    ┌────────────┐
+       │ Identity │    │ SaaS Core │    │ Your App   │
+       └──────────┘    └───────────┘    └────────────┘
+             │               │                │
+             │               │                │
+        Keycloak          PostgreSQL       PostgreSQL
+        OpenFGA           Redis            Domain
+                             │
+                             ▼
+                       ┌───────────┐
+                       │  Events   │
+                       │  Outbox   │
+                       └─────┬─────┘
+                             │
+                   ┌─────────┼─────────┐
+                   ▼         ▼         ▼
+                Billing   Email      Jobs
+
+⸻
+
+9. Repository structure
+
+I’d create a monorepo:
+
+synapse-saas/
+│
+├── apps/
+│   ├── api/
+│   ├── web/
+│   ├── worker/
+│   └── admin/
+│
+├── packages/
+│   ├── core/
+│   ├── identity/
+│   ├── tenancy/
+│   ├── authorization/
+│   ├── billing/
+│   ├── subscriptions/
+│   ├── entitlements/
+│   ├── usage/
+│   ├── audit/
+│   ├── notifications/
+│   ├── storage/
+│   ├── webhooks/
+│   ├── feature-flags/
+│   └── agents/
+│
+├── sdk/
+│   ├── typescript/
+│   └── python/
+│
+├── infrastructure/
+│   ├── docker/
+│   ├── kubernetes/
+│   ├── terraform/
+│   └── cloudrun/
+│
+├── database/
+│   ├── migrations/
+│   └── seeds/
+│
+├── examples/
+│   ├── hello-saas/
+│   ├── multi-tenant/
+│   ├── subscription/
+│   └── ai-saas/
+│
+├── docs/
+│
+├── docker-compose.yml
+├── LICENSE
+├── README.md
+└── CONTRIBUTING.md
+
+⸻
+
+10. Developer experience should be the killer feature
+
+The framework shouldn’t require developers to understand all this architecture.
+
+I want the experience to be:
+
+npx create-synapse-app my-saas
+
+Then:
+
+? Application name:
+  My SaaS
+? Database:
+  PostgreSQL
+? Authentication:
+  Keycloak
+? Billing:
+  Stripe
+? Multi-tenancy:
+  Organization
+? Plans:
+  Free / Starter / Pro
+? AI:
+  No
+
+Then:
+
+cd my-saas
+docker compose up
+
+And they get:
+
+http://localhost:3000
+
+with:
+
+Login
+Signup
+Organization
+Dashboard
+Users
+Roles
+Subscription
+Billing
+Usage
+API Keys
+Audit Logs
+Settings
+
+already working.
+
+⸻
+
+11. Your application becomes incredibly small
+
+For example, suppose you build a WMS SaaS.
+
+Instead of building:
+
+authentication
+users
+organizations
+subscription
+billing
+plans
+RBAC
+audit
+API keys
+notifications
+storage
+usage
+
+you only build:
+
+Warehouse
+ ├── Warehouse
+ ├── Bin
+ ├── Product
+ ├── Inventory
+ ├── Receiving
+ ├── Picking
+ └── Shipping
+
+Your code might look like:
+
+@router.get("/warehouses")
+async def get_warehouses(
+    tenant: Tenant = Depends(current_tenant)
+):
+    return await warehouse_service.list(
+        tenant_id=tenant.id
+    )
+
+Everything else is framework infrastructure.
+
+⸻
+
+12. Then combine this with your Agentic Framework
+
+This is where I think your earlier Synapse Agentic Runtime idea becomes particularly interesting.
+
+I’d make:
+
+             SYNAPSE PLATFORM
+                    │
+        ┌───────────┴────────────┐
+        │                        │
+  SYNAPSE SaaS             SYNAPSE Agentic
+     Runtime                   Runtime
+        │                        │
+        │                        ├── Agents
+        │                        ├── MCP
+        │                        ├── A2A
+        │                        ├── Tools
+        │                        ├── Memory
+        │                        └── Workflows
+        │
+        ├── Tenancy
+        ├── Identity
+        ├── Billing
+        ├── Entitlements
+        ├── Usage
+        └── Authorization
+
+Now imagine an AI SaaS:
+
+Organization
+      │
+      ├── Users
+      │
+      ├── Subscription
+      │
+      └── AI Agents
+            │
+            ├── Agent
+            ├── Tools
+            ├── MCP Servers
+            ├── Knowledge
+            ├── Memory
+            └── Usage
+
+And billing automatically understands:
+
+AI requests
+tokens
+tool calls
+documents
+storage
+agent executions
+
+That gives you a very strong foundation for SynapseDev.AI.
+
+⸻
+
+13. Open-source business model
+
+I wouldn’t make the entire thing closed.
+
+I’d use:
+
+Open Source
+
+Core
+├── Multi-tenancy
+├── Identity integration
+├── RBAC
+├── OpenFGA integration
+├── Plans
+├── Entitlements
+├── Usage
+├── APIs
+├── Webhooks
+├── Audit
+├── Docker
+└── PostgreSQL
+
+Commercial / Hosted
+
+Synapse Cloud
+├── Managed hosting
+├── Managed Keycloak
+├── Managed PostgreSQL
+├── Managed Redis
+├── Billing
+├── Monitoring
+├── Backups
+├── SSO
+├── Advanced analytics
+├── Enterprise support
+└── SLA
+
+Potential pricing:
+
+Plan	Price	Target
+Community	Free	Developers
+Cloud Free	₱0	Small projects
+Starter	₱499/mo	Small SaaS
+Pro	₱1,999/mo	Growing SaaS
+Business	₱9,999/mo	Companies
+Enterprise	Custom	Large organizations
+
+The important part is that the framework itself remains genuinely useful without paying you.
+
+That is what creates adoption.
+
+⸻
+
+14. The MVP I’d build first
+
+Don’t try to build everything simultaneously.
+
+Phase 1 — SaaS Kernel
+
+✓ Tenant
+✓ Organization
+✓ User
+✓ Membership
+✓ Role
+✓ Permissions
+✓ Keycloak
+✓ PostgreSQL
+✓ API
+✓ Next.js console
+✓ Audit log
+
+Phase 2 — Monetization
+
+✓ Plans
+✓ Features
+✓ Entitlements
+✓ Subscription
+✓ Trial
+✓ Usage
+✓ Metering
+✓ Billing abstraction
+✓ Webhooks
+
+Phase 3 — Platform
+
+✓ API keys
+✓ Notifications
+✓ Files
+✓ Background jobs
+✓ Feature flags
+✓ Admin console
+✓ Developer portal
+✓ SDK
+
+Phase 4 — Agentic
+
+✓ Agent registry
+✓ MCP
+✓ A2A
+✓ Agent execution
+✓ Agent memory
+✓ Tool permissions
+✓ AI usage metering
+
+Phase 5 — Production
+
+✓ OpenTelemetry
+✓ Prometheus
+✓ Kubernetes
+✓ Terraform
+✓ Cloud Run
+✓ HA PostgreSQL
+✓ Redis
+✓ backups
+✓ disaster recovery
+
+⸻
+
+15. What I’d actually build for you
+
+Rather than giving you another generic “SaaS boilerplate”, I would make this a real 98Labs internal platform that can eventually become an open-source project.
+
+I’d target this developer experience:
+
+git clone synapse-saas
+./synapse create my-lending-app
+
+producing:
+
+my-lending-app/
+├── app/
+│   ├── customers/
+│   ├── loans/
+│   ├── payments/
+│   └── ...
+│
+├── framework/
+│   ├── tenancy
+│   ├── identity
+│   ├── billing
+│   ├── authorization
+│   └── usage
+│
+└── infrastructure/
+
+Then:
+
+synapse dev
+
+gives you the complete local platform.
+
+And:
+
+synapse deploy
+
+can eventually deploy to:
+
+Cloud Run
+       or
+Kubernetes
+       or
+your own servers
+
+⸻
+
+My recommended project name
+
+I’d actually keep Synapse as the umbrella:
+
+Synapse Platform
+
+Synapse Platform
+│
+├── Synapse SaaS
+│   └── Multi-tenant SaaS framework
+│
+├── Synapse Agent
+│   └── Agentic runtime
+│
+├── Synapse Cloud
+│   └── Hosted SaaS platform
+│
+└── Synapse SDK
+    ├── TypeScript
+    └── Python
+
+This could become a much bigger asset for 98Labs than another individual SaaS product: you build the platform once, then use it to launch many SaaS products.
+
+And yes — ￼ I can take this from architecture into an actual starter repository, including the PostgreSQL schema, FastAPI backend, Next.js admin UI, Keycloak/OpenFGA integration, tenant isolation, plans/entitlements/usage, Docker Compose, migrations, SDK, and a sample SaaS.

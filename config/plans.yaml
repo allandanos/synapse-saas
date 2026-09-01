@@ -1,0 +1,78 @@
+# Synapse SaaS Framework — plan catalog (pricing-as-config source of truth)
+#
+# price_cents: integer minor units (₱49900 = ₱499.00). Omit for custom/POA plans.
+# limits: null / omitted value = unlimited. Keys must exist in `metrics` below.
+# features: keys must exist in `features` registry below.
+version: 1
+
+defaults:
+  currency: PHP
+  interval: month
+
+features:
+  - {key: basic_dashboard,   name: Basic dashboard,     category: reporting}
+  - {key: api_access,        name: API access,          category: platform}
+  - {key: reports,           name: Reports,             category: reporting}
+  - {key: advanced_reports,  name: Advanced reports,    category: reporting}
+  - {key: integrations,      name: Integrations,        category: platform}
+  - {key: automation,        name: Automation,          category: platform}
+  - {key: email_support,     name: Email support,       category: support}
+  - {key: priority_support,  name: Priority support,    category: support}
+  - {key: sso,               name: SSO (SAML/OIDC),     category: platform}
+  - {key: audit_export,      name: Audit log export,    category: compliance}
+  - {key: custom_integrations, name: Custom integrations, category: platform}
+  - {key: dedicated_support, name: Dedicated support,   category: support}
+
+metrics:
+  - {key: users,         name: Seat count,     kind: gauge}
+  - {key: projects,      name: Projects,       kind: gauge}
+  - {key: api_requests,  name: API requests,   kind: counter}
+  - {key: storage_bytes, name: Storage,        kind: counter, unit: bytes}
+  - {key: ai_tokens,     name: AI tokens,      kind: counter}
+
+plans:
+  - key: free
+    name: Free
+    description: Everything you need to explore the platform
+    price_cents: 0
+    features: [basic_dashboard, api_access]
+    limits:
+      users: 3
+      projects: 2
+      api_requests: 10000
+      storage_bytes: 1073741824
+
+  - key: starter
+    name: Starter
+    description: For small teams shipping their first SaaS
+    price_cents: 49900
+    trial_days: 14
+    features: [basic_dashboard, api_access, reports, email_support]
+    limits:
+      users: 10
+      projects: 20
+      api_requests: 100000
+      storage_bytes: 10737418240
+
+  - key: pro
+    name: Pro
+    description: For growing SaaS products that need horsepower
+    price_cents: 199900
+    trial_days: 14
+    features: [basic_dashboard, api_access, advanced_reports, integrations, automation, priority_support]
+    limits:
+      users: 50
+      projects: null
+      api_requests: 1000000
+      storage_bytes: 107374182400
+
+  - key: enterprise
+    name: Enterprise
+    description: Custom contracts, dedicated support, SSO
+    price: custom
+    is_public: false
+    is_custom: true
+    features: [sso, audit_export, custom_integrations, dedicated_support]
+    limits:
+      users: null
+      storage_bytes: null

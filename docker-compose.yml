@@ -1,0 +1,126 @@
+name: synapse-saas
+
+x-api-base: &api-base
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+  environment: &api-env
+    SYNAPSE_ENV: development
+    SYNAPSE_SECRET_KEY: ${SYNAPSE_SECRET_KEY:-dev-only-secret-key-change-me}
+    SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@postgres:5432/synapse
+    SYNAPSE_REDIS_URL: redis://redis:6379/0
+    SYNAPSE_BILLING_PROVIDER: ${SYNAPSE_BILLING_PROVIDER:-manual}
+    SYNAPSE_BILLING_CURRENCY: ${SYNAPSE_BILLING_CURRENCY:-PHP}
+    SYNAPSE_IDENTITY_PROVIDER: ${SYNAPSE_IDENTITY_PROVIDER:-local}
+    SYNAPSE_WEB_ORIGIN: ${SYNAPSE_WEB_ORIGIN:-http://localhost:3000}
+    SYNAPSE_STRIPE_SECRET_KEY: ${SYNAPSE_STRIPE_SECRET_KEY:-}
+    SYNAPSE_STRIPE_WEBHOOK_SECRET: ${SYNAPSE_STRIPE_WEBHOOK_SECRET:-}
+    SYNAPSE_XENDIT_SECRET_KEY: ${SYNAPSE_XENDIT_SECRET_KEY:-}
+    SYNAPSE_XENDIT_WEBHOOK_TOKEN: ${SYNAPSE_XENDIT_WEBHOOK_TOKEN:-}
+    SYNAPSE_PAYMONGO_SECRET_KEY: ${SYNAPSE_PAYMONGO_SECRET_KEY:-}
+    SYNAPSE_PAYMONGO_WEBHOOK_SECRET: ${SYNAPSE_PAYMONGO_WEBHOOK_SECRET:-}
+    SYNAPSE_MANUAL_WEBHOOK_TOKEN: ${SYNAPSE_MANUAL_WEBHOOK_TOKEN:-dev-manual-token}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: synapse
+      POSTGRES_DB: synapse
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapse -d synapse"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *api-base
+    environment:
+      <<: *api-env
+      SYNAPSE_AUTO_SYNC_PLANS: "true"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["synapse-cli migrate && synapse-cli seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *api-base
+    command: ["synapse-api"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    <<: *api-base
+    command: ["synapse-worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    profiles: [extras]
+    ports:
+      - "8025:8025"
+
+  minio:
+    image: minio/minio:latest
+    profiles: [extras]
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:

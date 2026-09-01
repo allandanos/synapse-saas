@@ -1,0 +1,157 @@
+[project]
+name = "synapse-saas"
+version = "0.1.0"
+description = "Synapse SaaS Framework — an open-source multi-tenant SaaS framework with plans, entitlements, usage metering, and pluggable billing."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "98Labs", email = "dev@98labs.io" }]
+requires-python = ">=3.12"
+keywords = ["saas", "multi-tenant", "framework", "billing", "subscriptions", "entitlements"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Framework :: FastAPI",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "sqlalchemy[asyncio]>=2.0.36",
+  "asyncpg>=0.30",
+  "alembic>=1.14",
+  "pydantic>=2.11",
+  "pydantic-settings>=2.7",
+  "redis>=5.2",
+  "httpx>=0.28",
+  "arq>=0.26",
+  "argon2-cffi>=23.1",
+  "pyjwt>=2.10",
+  "pyyaml>=6.0",
+  "structlog>=24.4",
+  "cryptography>=44.0",
+  "tenacity>=9.0",
+  "click>=8.1",
+  "email-validator>=2.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/98labs/synapse-saas"
+Repository = "https://github.com/98labs/synapse-saas"
+Documentation = "https://github.com/98labs/synapse-saas/tree/main/docs"
+
+[project.scripts]
+synapse-api = "synapse_saas.apps_entrypoints:run_api"
+synapse-worker = "synapse_saas.apps_entrypoints:run_worker"
+synapse-cli = "synapse_saas.cli:cli"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.25",
+  "pytest-cov>=6.0",
+  "ruff>=0.9",
+  "mypy>=1.14",
+  "asgi-lifespan>=2.1",
+  "respx>=0.22",
+  "import-linter>=2.1",
+  "fakeredis>=2.26",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/synapse_saas"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E", "F", "I", "N", "W", "UP", "B", "A", "C4", "PIE", "RET", "SIM",
+  "ASYNC", "S", "RUF", "PL", "TRY", "PERF", "FURB",
+]
+ignore = [
+  "S101",    # asserts in tests are the point
+  "S105",    # event-name constants and dev-default settings keys trip this
+  "TRY003",  # long messages in domain errors carry user-facing detail
+  "PLR0913", # services legitimately take many collab objects
+  "PLR0917", # service helpers with positional params match the codebase idiom
+  "RET504",  # named intermediate before return reads better in services
+  "PLC0415", # local imports keep module import graphs lean where needed
+  "UP046",   # pydantic Generic models can't use PEP695 syntax yet
+  "PLW0603", # module-level singleton engines/clients are the async idiom
+  "PLR2004", # HTTP 200/400 comparisons against literals are clear as written
+  "RUF012", # arq WorkerSettings wants plain list attributes by contract
+]
+exclude = ["database/migrations/*"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "PLR2004"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+warn_redundant_casts = true
+plugins = ["pydantic.mypy"]
+exclude = ["database/migrations/", "examples/"]
+
+[[tool.mypy.overrides]]
+module = ["arq.*", "fakeredis.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+  "pg: integration tests requiring PostgreSQL (deselect with -m 'not pg')",
+]
+addopts = "-m 'not pg' --cov=src/synapse_saas --cov-report=term-missing --no-cov-on-fail"
+filterwarnings = ["error::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["src/synapse_saas"]
+omit = ["*/migrations/*"]
+
+[tool.importlinter]
+root_packages = ["synapse_saas"]
+
+[[tool.importlinter.contracts]]
+name = "Modules may only import core outside themselves"
+type = "forbidden"
+source_modules = [
+  "synapse_saas.core",
+  "synapse_saas.identity",
+  "synapse_saas.tenancy",
+  "synapse_saas.authorization",
+  "synapse_saas.subscriptions",
+  "synapse_saas.entitlements",
+  "synapse_saas.usage",
+  "synapse_saas.billing",
+  "synapse_saas.webhooks",
+  "synapse_saas.audit",
+  "synapse_saas.notifications",
+  "synapse_saas.storage",
+  "synapse_saas.feature_flags",
+]
+forbidden_modules = [
+  "synapse_saas.api",
+  "synapse_saas.worker",
+]
+
+[[tool.importlinter.contracts]]
+name = "Billing providers may only import billing protocol and core"
+type = "forbidden"
+source_modules = [
+  "synapse_saas.billing.providers.stripe_provider",
+  "synapse_saas.billing.providers.manual_provider",
+  "synapse_saas.billing.providers.xendit_provider",
+  "synapse_saas.billing.providers.paymongo_provider",
+]
+forbidden_modules = ["synapse_saas.billing", "synapse_saas.api"]
