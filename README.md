@@ -1,6 +1,6 @@
 # Synapse SaaS Framework
 
-[![CI](https://github.com/98labs/synapse-saas/actions/workflows/ci.yml/badge.svg)](https://github.com/98labs/synapse-saas/actions/workflows/ci.yml)
+[![CI](https://github.com/allandanos/synapse-saas/actions/workflows/ci.yml/badge.svg)](https://github.com/allandanos/synapse-saas/actions/workflows/ci.yml)
 
 An open-source, multi-tenant SaaS framework: clone → define your domain → configure plans → deploy.
 
@@ -28,7 +28,7 @@ async def list_projects(
 ## Quickstart
 
 ```bash
-git clone https://github.com/98labs/synapse-saas.git my-saas
+git clone https://github.com/allandanos/synapse-saas.git my-saas
 cd my-saas
 cp .env.example .env          # defaults work for local dev
 docker compose up --build

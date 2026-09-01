@@ -8,7 +8,7 @@
 
 ## Reporting a vulnerability
 
-Email **dev@98labs.io** with details: affected component, reproduction steps, impact assessment.
+Email **allan.danos@gmail.com** with details: affected component, reproduction steps, impact assessment.
 Do not open public issues for vulnerabilities.
 
 We will acknowledge within 72 hours and keep you informed of remediation progress.

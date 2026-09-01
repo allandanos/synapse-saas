@@ -5,7 +5,7 @@ Thanks for your interest in contributing.
 ## Getting started
 
 ```bash
-git clone https://github.com/98labs/synapse-saas.git
+git clone https://github.com/allandanos/synapse-saas.git
 cd synapse-saas
 cp .env.example .env
 make install
@@ -35,7 +35,7 @@ make test-pg     # integration
 
 ## Reporting security issues
 
-Do **not** open a public issue. Email dev@98labs.io — see [SECURITY.md](SECURITY.md).
+Do **not** open a public issue. Email allan.danos@gmail.com — see [SECURITY.md](SECURITY.md).
 
 ## License
 

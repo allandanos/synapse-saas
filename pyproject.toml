@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Synapse SaaS Framework — an open-source multi-tenant SaaS framework with plans, entitlements, usage metering, and pluggable billing."
 readme = "README.md"
 license = { text = "Apache-2.0" }
-authors = [{ name = "98Labs", email = "dev@98labs.io" }]
+authors = [{ name = "Allan Danos" }]
 requires-python = ">=3.12"
 keywords = ["saas", "multi-tenant", "framework", "billing", "subscriptions", "entitlements"]
 classifiers = [
@@ -37,9 +37,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/98labs/synapse-saas"
-Repository = "https://github.com/98labs/synapse-saas"
-Documentation = "https://github.com/98labs/synapse-saas/tree/main/docs"
+Homepage = "https://github.com/allandanos/synapse-saas"
+Repository = "https://github.com/allandanos/synapse-saas"
+Documentation = "https://github.com/allandanos/synapse-saas/tree/main/docs"
 
 [project.scripts]
 synapse-api = "synapse_saas.apps_entrypoints:run_api"
