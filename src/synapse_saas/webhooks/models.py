@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -73,7 +74,7 @@ class WebhookDelivery(Base):
         ForeignKey("outbox_events.id", ondelete="SET NULL")
     )
     event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    payload: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     max_attempts: Mapped[int] = mapped_column(Integer, default=MAX_DELIVERY_ATTEMPTS, nullable=False)

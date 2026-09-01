@@ -63,7 +63,9 @@ class XenditBillingProvider(BillingProvider):
         self._api_base = api_base
         self._currency = currency
 
-    async def _request(self, method: str, path: str, json_body: dict | None = None) -> dict:
+    async def _request(
+        self, method: str, path: str, json_body: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         auth = base64.b64encode(f"{self._secret_key}:".encode()).decode()
         response = await self._http.request(
             method,
@@ -73,7 +75,8 @@ class XenditBillingProvider(BillingProvider):
         )
         if response.status_code >= 400:
             raise BillingProviderError(f"Xendit API error: {response.text}")
-        return response.json()
+        data: dict[str, Any] = response.json()
+        return data
 
     async def create_customer(self, req: CreateCustomerRequest) -> BillingCustomerRef:
         result = await self._request(

@@ -22,7 +22,7 @@ def get_redis() -> Redis | None:
     settings = get_settings()
     if not settings.redis_url:
         return None
-    _client = from_url(
+    client: Redis = from_url(  # type: ignore[no-untyped-call]
         settings.redis_url,
         encoding="utf-8",
         decode_responses=True,
@@ -30,6 +30,7 @@ def get_redis() -> Redis | None:
         socket_timeout=2,
         health_check_interval=30,
     )
+    _client = client
     return _client
 
 

@@ -7,6 +7,7 @@ subscriptions' `plan_snapshot` — YAML price changes must not rewrite history.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -82,7 +83,7 @@ async def sync_plans(session: AsyncSession, catalog: PlanCatalog) -> SyncResult:
         }
 
         if plan is None:
-            plan = Plan(key=plan_def.key, **values)  # type: ignore[arg-type]
+            plan = Plan(key=plan_def.key, **values)
             session.add(plan)
             result.plans_added += 1
             await session.flush()
@@ -110,7 +111,7 @@ async def sync_plans(session: AsyncSession, catalog: PlanCatalog) -> SyncResult:
     return result
 
 
-async def _sync_plan_features(session: AsyncSession, plan_id, feature_keys: list[str]) -> None:
+async def _sync_plan_features(session: AsyncSession, plan_id: uuid.UUID, feature_keys: list[str]) -> None:
     existing = {
         pf.feature_key: pf
         for pf in (await session.execute(select(PlanFeature).where(PlanFeature.plan_id == plan_id))).scalars()
@@ -124,7 +125,9 @@ async def _sync_plan_features(session: AsyncSession, plan_id, feature_keys: list
     await session.flush()
 
 
-async def _sync_plan_limits(session: AsyncSession, plan_id, limits: dict, catalog: PlanCatalog) -> None:
+async def _sync_plan_limits(
+    session: AsyncSession, plan_id: uuid.UUID, limits: dict[str, int | None], catalog: PlanCatalog
+) -> None:
     existing = {
         pl.metric: pl
         for pl in (await session.execute(select(PlanLimit).where(PlanLimit.plan_id == plan_id))).scalars()

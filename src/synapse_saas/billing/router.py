@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Request, status
 
 from synapse_saas.authorization.dependencies import require_permission
@@ -50,7 +52,7 @@ async def confirm_checkout(
     tenant: TenantDep,
     session: SessionDep,
     user: CurrentUser,
-) -> dict:
+) -> dict[str, Any]:
     """Manual-provider flow: confirm and activate immediately."""
     await require_permission("billing:manage", user, session, tenant)
     org = await OrganizationService(session).get_organization(tenant.organization_id)
@@ -84,7 +86,7 @@ async def list_invoices(tenant: TenantDep, session: SessionDep, user: CurrentUse
 
 
 @router.post("/webhooks/{provider}", status_code=status.HTTP_200_OK)
-async def billing_webhook(provider: str, request: Request, session: SessionDep) -> dict:
+async def billing_webhook(provider: str, request: Request, session: SessionDep) -> dict[str, Any]:
     """Provider → us. Raw body read exactly once before anything parses it."""
     if provider not in {"stripe", "xendit", "paymongo", "manual"}:
         from synapse_saas.core.errors import NotFoundError

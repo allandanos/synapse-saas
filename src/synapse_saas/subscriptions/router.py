@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, status
 
 from synapse_saas.authorization.dependencies import require_permission
@@ -43,7 +45,7 @@ async def list_plans(session: SessionDep, user: CurrentUser) -> list[PlanRead]:
 
 
 @router.get("/subscription")
-async def current_subscription(tenant: TenantDep, session: SessionDep, user: CurrentUser) -> dict:
+async def current_subscription(tenant: TenantDep, session: SessionDep, user: CurrentUser) -> dict[str, Any]:
     await require_permission("billing:read", user, session, tenant)
     subscriptions = SubscriptionService(session)
     subscription = await subscriptions.current_for_org(tenant.organization_id)

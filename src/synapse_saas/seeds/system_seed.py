@@ -68,7 +68,7 @@ async def seed_system(session: AsyncSession) -> dict[str, int]:
         elif "permissions" not in role.__dict__:
             await session.refresh(role, attribute_names=["permissions"])
 
-        wanted_keys = set(definition["permissions"])  # type: ignore[arg-type]
+        wanted_keys = {str(k) for k in definition["permissions"]}  # type: ignore[attr-defined]
         existing_role_perm_keys = {p.key for p in role.permissions}
 
         for key in wanted_keys - existing_role_perm_keys:

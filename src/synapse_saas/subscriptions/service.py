@@ -281,7 +281,7 @@ class SubscriptionService:
         return subscription
 
     def _emit(
-        self, event_type: str, subscription: Subscription, plan: Plan, *, extra: dict | None = None
+        self, event_type: str, subscription: Subscription, plan: Plan, *, extra: dict[str, Any] | None = None
     ) -> None:
         payload: dict[str, Any] = {
             "subscription_id": str(subscription.id),
@@ -307,7 +307,7 @@ class SubscriptionService:
         *,
         target_type: str,
         target_id: uuid.UUID,
-        diff: dict | None,
+        diff: dict[str, Any] | None,
     ) -> None:
         from synapse_saas.audit.service import AuditService
 

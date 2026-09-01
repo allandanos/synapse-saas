@@ -119,7 +119,7 @@ async def _push_provider_catalog(provider_name: str, apply: bool) -> None:
             if BillingCapability.PLAN_SYNC not in provider.supports:
                 click.echo(f"{provider_name} does not support plan sync; skipping")
                 return
-            refs = await provider.upsert_product_and_price(
+            refs = await provider.upsert_product_and_price(  # type: ignore[attr-defined]
                 plan_key=plan_def.key,
                 plan_name=plan_def.name,
                 price_cents=plan_def.price_cents,

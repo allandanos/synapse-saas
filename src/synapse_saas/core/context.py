@@ -115,7 +115,8 @@ class TenantScope:
         return self
 
     def __exit__(self, *exc: object) -> None:
-        reset_tenant(self._token)
+        if self._token is not None:
+            reset_tenant(self._token)
 
     async def __aenter__(self) -> Self:
         return self.__enter__()

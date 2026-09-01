@@ -42,7 +42,9 @@ async def list_my_orgs(user: CurrentUser, session: SessionDep) -> OrganizationPa
 
     memberships = await MembershipRepository(session).for_user(user.id)
     orgs = [OrganizationRead.model_validate(m.organization) for m in memberships]
-    return OrganizationPage.build(orgs, total=len(orgs), limit=100, offset=0)
+    return OrganizationPage.build(  # type: ignore[return-value]
+        orgs, total=len(orgs), limit=100, offset=0
+    )
 
 
 @router.post("/orgs", response_model=OrganizationRead, status_code=status.HTTP_201_CREATED)
@@ -75,7 +77,7 @@ async def update_current_org(
     org = await service.update_organization(
         tenant.organization_id,
         name=body.name,
-        settings=body.settings,  # type: ignore[arg-type]
+        settings=body.settings,
     )
     return OrganizationRead.model_validate(org)
 
@@ -99,7 +101,7 @@ async def list_members(
     total = await service.members.count_active_members(
         tenant.organization_id
     ) + await service._count_pending_invites(tenant.organization_id)
-    return MembershipPage.build(
+    return MembershipPage.build(  # type: ignore[return-value]
         [_to_membership_read(m) for m in members], total=total, limit=limit, offset=offset
     )
 

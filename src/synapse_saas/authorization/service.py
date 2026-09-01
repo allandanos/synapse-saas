@@ -156,7 +156,8 @@ class AuthorizationService:
             raise RoleNotFoundError(f"Role {role_key!r} not found")
         self.session.add(MembershipRole(membership_id=membership.id, role_id=role.id))
         membership.permission_keys = sorted({*membership.permission_keys, *(p.key for p in role.permissions)})
-        await self.invalidate_org_perms(membership.organization_id)
+        if membership.user_id is not None:
+            await self.invalidate_user_perms(membership.user_id, membership.organization_id)
 
     # ── Internals ───────────────────────────────────────────────────────────────
 
@@ -235,4 +236,5 @@ class AuthorizationService:
             .all()
         )
         for user_id in memberships:
-            await self.invalidate_user_perms(user_id, organization_id)
+            if user_id is not None:
+                await self.invalidate_user_perms(user_id, organization_id)

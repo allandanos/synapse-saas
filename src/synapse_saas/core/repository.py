@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import builtins
 from collections.abc import Sequence
 from typing import Any, Generic, TypeVar
 from uuid import UUID
@@ -24,7 +25,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.dml import Delete
 
 from synapse_saas.core.context import current_tenant
-from synapse_saas.core.db import Base, TenantMixin
+from synapse_saas.core.db import Base
 from synapse_saas.core.errors import NotFoundError, TenantViolationError
 
 ModelT = TypeVar("ModelT", bound=Base)
@@ -64,9 +65,10 @@ class TenantRepository(Generic[ModelT]):
         if col is None:
             msg = f"{self.model.__name__} does not inherit TenantMixin"
             raise TypeError(msg)
-        return col
+        column: InstrumentedAttribute[UUID] = col
+        return column
 
-    def _scoped(self, stmt: Select | Delete, *, explicit_org: UUID | None = None) -> Any:
+    def _scoped(self, stmt: Select[Any] | Delete, *, explicit_org: UUID | None = None) -> Any:
         # An explicit org filter IS the scope (worker jobs, cross-org queries)
         if explicit_org is not None:
             return stmt.where(self._org_column() == explicit_org)
@@ -117,9 +119,11 @@ class TenantRepository(Generic[ModelT]):
 
     async def add(self, obj: ModelT) -> ModelT:
         """Stamp the tenant and add. Objects already stamped with another org raise."""
-        if not isinstance(obj, TenantMixin):
+        # Runtime guard for misuse (Repository[NonTenantModel]); attribute access
+        # is duck-typed so mypy cannot see the failure mode this protects against.
+        if not hasattr(obj, "organization_id"):
             msg = f"{type(obj).__name__} does not inherit TenantMixin"
-            raise TypeError(msg)
+            raise TypeError(msg)  # pragma: no cover
         incoming = getattr(obj, "organization_id", None)
         if incoming is not None and incoming != self.tenant_id:
             raise TenantViolationError(
@@ -130,8 +134,11 @@ class TenantRepository(Generic[ModelT]):
         self.session.add(obj)
         return obj
 
-    async def add_many(self, objs: list[ModelT]) -> list[ModelT]:
-        return [await self.add(obj) for obj in objs]
+    async def add_many(self, objs: builtins.list[ModelT]) -> builtins.list[ModelT]:
+        results: list[ModelT] = []
+        for obj in objs:
+            results.append(await self.add(obj))  # noqa: PERF401 — async, not a comprehension
+        return results
 
     async def delete(self, obj: ModelT) -> None:
         await self.session.delete(obj)
@@ -140,7 +147,8 @@ class TenantRepository(Generic[ModelT]):
         explicit = filters.pop("organization_id", None)
         stmt = self._apply_filters(self._scoped(delete(self.model), explicit_org=explicit), filters)
         result = await self.session.execute(stmt)
-        return int(result.rowcount or 0)
+        rowcount = getattr(result, "rowcount", 0)
+        return int(rowcount or 0)
 
     # ── Helpers ─────────────────────────────────────────────────────────────────
 

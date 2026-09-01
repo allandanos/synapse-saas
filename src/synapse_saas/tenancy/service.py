@@ -11,6 +11,7 @@ from __future__ import annotations
 import secrets
 from datetime import UTC, datetime
 from hashlib import sha256
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -118,10 +119,10 @@ class OrganizationService:
         return org
 
     async def update_organization(
-        self, org_id: UUID, *, name: str | None, settings: dict | None
+        self, org_id: UUID, *, name: str | None, settings: dict[str, Any] | None
     ) -> Organization:
         org = await self.get_organization(org_id)
-        diff: dict = {}
+        diff: dict[str, Any] = {}
         if name is not None and name != org.name:
             diff["name"] = {"from": org.name, "to": name}
             org.name = name
@@ -231,7 +232,7 @@ class OrganizationService:
         status: str | None = None,
     ) -> Membership:
         membership = await self._get_membership(membership_id)
-        diff: dict = {}
+        diff: dict[str, Any] = {}
 
         if role_keys is not None:
             await self._replace_roles(membership, role_keys)
@@ -401,7 +402,7 @@ class OrganizationService:
         organization_id: UUID | None,
         target_type: str | None = None,
         target_id: UUID | None = None,
-        diff: dict | None = None,
+        diff: dict[str, Any] | None = None,
     ) -> None:
         from synapse_saas.audit.service import AuditService
 

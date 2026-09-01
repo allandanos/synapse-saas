@@ -75,7 +75,8 @@ class StripeBillingProvider(BillingProvider):
         if response.status_code >= 400:
             detail = response.json().get("error", {}).get("message", response.text)
             raise BillingProviderError(f"Stripe API error: {detail}")
-        return response.json()
+        payload: dict[str, Any] = response.json()
+        return payload
 
     @staticmethod
     def _flatten(data: dict[str, Any], *, prefix: str = "") -> dict[str, str]:

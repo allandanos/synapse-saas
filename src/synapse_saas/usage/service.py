@@ -292,7 +292,7 @@ def _month_bucket(now: datetime) -> date:
     return now.date().replace(day=1)
 
 
-def _json(props: dict) -> str:
+def _json(props: dict[str, Any]) -> str:
     import json
 
     return json.dumps(props)

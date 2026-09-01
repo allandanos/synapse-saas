@@ -14,7 +14,7 @@ from __future__ import annotations
 import secrets
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -271,7 +271,7 @@ class IdentityService:
         for row in rows:
             row.revoked_at = now
 
-    def _audit(self, event_type: str, *, user_id: UUID | None, diff: dict | None = None) -> None:
+    def _audit(self, event_type: str, *, user_id: UUID | None, diff: dict[str, Any] | None = None) -> None:
         from synapse_saas.audit.service import AuditService
 
         AuditService(self.session).log(

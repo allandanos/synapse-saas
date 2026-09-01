@@ -134,7 +134,7 @@ async def switch_org(
     _set_refresh_cookie(response, tokens.refresh_token)
     from fastapi.responses import JSONResponse
 
-    return JSONResponse(
+    return JSONResponse(  # type: ignore[return-value]
         content={"access_token": tokens.access_token, "token_type": "bearer", "expires_in": tokens.expires_in}
     )
 

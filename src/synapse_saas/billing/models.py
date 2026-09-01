@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -40,7 +41,7 @@ class BillingCustomer(Base, TimestampMixin):
     email: Mapped[str | None] = mapped_column(String(320))
     name: Mapped[str | None] = mapped_column(String(200))
     tax_id: Mapped[str | None] = mapped_column(String(64))
-    billing_address: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    billing_address: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     currency: Mapped[str | None] = mapped_column(String(3))
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
 
@@ -42,7 +44,7 @@ class GrantRequest(BaseModel):
 @router.post("/entitlements/grants", status_code=status.HTTP_201_CREATED)
 async def grant_entitlement(
     body: GrantRequest, tenant: TenantDep, session: SessionDep, user: CurrentUser
-) -> dict:
+) -> dict[str, Any]:
     await require_permission("entitlement:manage", user, session, tenant)
     entitlement = await EntitlementService(session).grant(
         tenant.organization_id,

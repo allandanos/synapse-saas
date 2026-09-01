@@ -7,6 +7,7 @@ not cross process/task boundaries by design.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import text
 
@@ -19,7 +20,7 @@ OUTBOX_BATCH = 20
 DELIVERY_BATCH = 20
 
 
-async def dispatch_outbox(ctx: dict) -> int:
+async def dispatch_outbox(ctx: dict[str, Any]) -> int:
     """Drain the outbox: fan out to webhook endpoints, mark published.
 
     Uses FOR UPDATE SKIP LOCKED so multiple workers never double-send.
@@ -91,7 +92,7 @@ async def dispatch_outbox(ctx: dict) -> int:
         return dispatched
 
 
-async def deliver_webhooks(ctx: dict) -> int:
+async def deliver_webhooks(ctx: dict[str, Any]) -> int:
     """Attempt pending deliveries whose backoff has elapsed."""
     from synapse_saas.webhooks.service import WebhookService
 
@@ -126,7 +127,7 @@ async def deliver_webhooks(ctx: dict) -> int:
         return delivered
 
 
-async def rollup_usage(ctx: dict) -> int:
+async def rollup_usage(ctx: dict[str, Any]) -> int:
     """Hourly drift correction: rebuild current-period counters from events."""
     factory = get_session_factory()
     async with factory() as session:
@@ -151,7 +152,7 @@ async def rollup_usage(ctx: dict) -> int:
         return 1
 
 
-async def expire_entitlements(ctx: dict) -> int:
+async def expire_entitlements(ctx: dict[str, Any]) -> int:
     """Mark lapsed grants revoked so entitlements stop resolving them."""
     from synapse_saas.core import events
     from synapse_saas.entitlements.models import Entitlement
@@ -189,7 +190,7 @@ async def expire_entitlements(ctx: dict) -> int:
         return len(rows)
 
 
-async def advance_manual_billing(ctx: dict) -> int:
+async def advance_manual_billing(ctx: dict[str, Any]) -> int:
     """Roll periods + issue invoices for manual-provider subscriptions."""
     from synapse_saas.billing.models import Invoice
     from synapse_saas.core import events as ev
@@ -251,7 +252,7 @@ async def advance_manual_billing(ctx: dict) -> int:
         return len(rows)
 
 
-async def ensure_partitions(ctx: dict) -> int:
+async def ensure_partitions(ctx: dict[str, Any]) -> int:
     """Pre-create next month's usage_events partition."""
     factory = get_session_factory()
     async with factory() as session:
@@ -275,7 +276,7 @@ async def ensure_partitions(ctx: dict) -> int:
         return 1
 
 
-async def purge_expired(ctx: dict) -> int:
+async def purge_expired(ctx: dict[str, Any]) -> int:
     """Retention: old webhook deliveries (30d)."""
 
     factory = get_session_factory()
@@ -287,7 +288,14 @@ async def purge_expired(ctx: dict) -> int:
         return 1
 
 
-def _outbox_row(event_type, *, aggregate_type, aggregate_id, organization_id, payload):
+def _outbox_row(
+    event_type: str,
+    *,
+    aggregate_type: str,
+    aggregate_id: Any,
+    organization_id: Any,
+    payload: dict[str, Any],
+) -> Any:
     from synapse_saas.audit.models import OutboxEvent
     from synapse_saas.core.ids import uuid_v7
 
@@ -323,7 +331,7 @@ def _redis_settings() -> object:
 class WorkerSettings:
     """arq worker entrypoint. Crons keep the platform self-running."""
 
-    functions = [
+    functions: list[object] = [
         dispatch_outbox,
         deliver_webhooks,
         rollup_usage,
@@ -336,12 +344,12 @@ class WorkerSettings:
     cron_jobs: list[object] = []  # populated by build_cron_jobs() below
 
     @staticmethod
-    async def on_startup(ctx: dict) -> None:
+    async def on_startup(ctx: dict[str, Any]) -> None:
         configure_logging()
         logger.info("worker_started")
 
     @staticmethod
-    async def on_shutdown(ctx: dict) -> None:
+    async def on_shutdown(ctx: dict[str, Any]) -> None:
         from synapse_saas.billing.registry import close_http_client
         from synapse_saas.core.db import dispose_engine
 
@@ -350,12 +358,12 @@ class WorkerSettings:
         logger.info("worker_stopped")
 
 
-def build_cron_jobs() -> list:
+def build_cron_jobs() -> list[object]:
     from arq import cron
 
     return [
-        cron(dispatch_outbox, second=list(range(0, 60, 5))),  # every 5s
-        cron(deliver_webhooks, second=list(range(0, 60, 15))),  # every 15s
+        cron(dispatch_outbox, second=set(range(0, 60, 5))),  # every 5s
+        cron(deliver_webhooks, second=set(range(0, 60, 15))),  # every 15s
         cron(rollup_usage, minute=5, hour=None),  # hourly
         cron(expire_entitlements, minute=10, hour=None),  # hourly-ish
         cron(advance_manual_billing, minute=20, hour=None),  # hourly

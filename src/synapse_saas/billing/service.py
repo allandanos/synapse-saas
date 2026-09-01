@@ -17,6 +17,7 @@ from synapse_saas.billing.protocol import (
     BillingCapability,
     BillingProvider,
     ChangePlanRequest,
+    CheckoutResult,
     CreateCheckoutRequest,
     CreateCustomerRequest,
 )
@@ -27,7 +28,7 @@ from synapse_saas.core.errors import InvoiceNotFoundError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.core.outbox import append_outbox
 from synapse_saas.identity.models import User
-from synapse_saas.subscriptions.models import Plan
+from synapse_saas.subscriptions.models import Plan, Subscription
 from synapse_saas.subscriptions.service import SubscriptionService
 from synapse_saas.tenancy.models import Organization
 
@@ -85,7 +86,7 @@ class BillingService:
         success_url: str | None = None,
         cancel_url: str | None = None,
         contact_user: User | None = None,
-    ):
+    ) -> tuple[BillingCustomer, CheckoutResult]:
         """Create a checkout with the provider and return the result (URL or manual)."""
         customer = await self.ensure_customer(organization, contact_user=contact_user)
         result = await self.provider.create_checkout(
@@ -110,7 +111,7 @@ class BillingService:
         *,
         provider_subscription_id: str | None = None,
         contact_user: User | None = None,
-    ):
+    ) -> Subscription:
         """Activate the subscription after checkout (webhook or manual confirm)."""
         customer = await self.ensure_customer(organization, contact_user=contact_user)
         subscriptions = SubscriptionService(self.session)
@@ -175,7 +176,7 @@ class BillingService:
 
     async def change_plan_remote(
         self, organization: Organization, plan: Plan, *, provider_subscription_id: str
-    ):
+    ) -> Subscription:
         """Push a plan change through the provider, then update locally."""
         if BillingCapability.RECURRING_HOSTED not in self.provider.supports:
             # Manual/xendit/paymongo: apply locally, the scheduler owns renewals

@@ -7,7 +7,7 @@ keys) for downstream services and audit.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,7 +57,7 @@ async def require_permission(
     )
 
 
-def permission_dependency(permission: str):
+def permission_dependency(permission: str) -> Any:
     """FastAPI dependency factory: Depends(permission_dependency('member:invite'))."""
 
     async def _dependency(user: CurrentUser, tenant: TenantDep, session: AsyncSession) -> UserContext:
@@ -80,7 +80,7 @@ async def require_feature_dependency(
     return context.require_user()
 
 
-def require_feature(feature: str):
+def require_feature(feature: str) -> Any:
     async def _dependency(user: CurrentUser, tenant: TenantDep, session: AsyncSession) -> UserContext:
         return await require_feature_dependency(feature, user, tenant, session)
 

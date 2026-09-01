@@ -6,7 +6,7 @@ an org needs SSO — the service layer never knows which is active.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 import httpx
@@ -27,7 +27,7 @@ class IdentityProvider(Protocol):
         """Return the user id on success, None on bad credentials."""
         ...
 
-    async def exchange_oidc_code(self, code: str, *, redirect_uri: str) -> tuple[str, dict]:
+    async def exchange_oidc_code(self, code: str, *, redirect_uri: str) -> tuple[str, dict[str, Any]]:
         """Exchange an authorization code for (id_token, claims)."""
         ...
 
@@ -37,7 +37,7 @@ class LocalIdentityProvider:
 
     name = "local"
 
-    def __init__(self, verifier=None) -> None:
+    def __init__(self, verifier: object = None) -> None:
         # verifier injected for tests; default = argon2 verify against DB hash
         self._verifier = verifier
 
@@ -58,7 +58,7 @@ class LocalIdentityProvider:
                 return None
             return user.id
 
-    async def exchange_oidc_code(self, code: str, *, redirect_uri: str) -> tuple[str, dict]:
+    async def exchange_oidc_code(self, code: str, *, redirect_uri: str) -> tuple[str, dict[str, Any]]:
         raise AuthenticationError("OIDC is not available with the local identity provider")
 
 
@@ -133,7 +133,7 @@ class KeycloakOIDCProvider:
             )
             return user.id if user and user.is_active else None
 
-    async def exchange_oidc_code(self, code: str, *, redirect_uri: str) -> tuple[str, dict]:
+    async def exchange_oidc_code(self, code: str, *, redirect_uri: str) -> tuple[str, dict[str, Any]]:
         """Authorization-code flow callback → (id_token, verified_claims)."""
         import jwt as pyjwt
 
@@ -166,8 +166,11 @@ class KeycloakOIDCProvider:
         return id_token, claims
 
     @staticmethod
-    def _signing_key_for(id_token: str, jwks: dict) -> str:
-        """Pick the JWKS key whose kid matches the token header."""
+    def _signing_key_for(id_token: str, jwks: dict[str, Any]) -> Any:
+        """Pick the JWKS key whose kid matches the token header.
+
+        Returns the key object pyjwt accepts (a cryptography public key), not a string.
+        """
         import jwt as pyjwt
         from jwt import PyJWK
 
