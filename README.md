@@ -1,5 +1,7 @@
 # Synapse SaaS Framework
 
+[![CI](https://github.com/98labs/synapse-saas/actions/workflows/ci.yml/badge.svg)](https://github.com/98labs/synapse-saas/actions/workflows/ci.yml)
+
 An open-source, multi-tenant SaaS framework: clone → define your domain → configure plans → deploy.
 
 You get tenancy, identity, RBAC, audit, plans, entitlements, subscriptions, trials, usage metering,
@@ -48,6 +50,7 @@ usage meters) works locally out of the box.
 | Capability | Status |
 |---|---|
 | Multi-tenancy (orgs, tenant-scoped repositories, optional RLS) | ✅ Phase 1 |
+| Auth rate limiting (per-IP + per-identity, Redis-backed) | ✅ |
 | Identity (JWT + refresh rotation; Keycloak OIDC adapter) | ✅ Phase 1 |
 | RBAC (system + custom roles, permission catalog) | ✅ Phase 1 |
 | Audit log | ✅ Phase 1 |
