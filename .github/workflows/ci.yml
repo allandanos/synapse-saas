@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_CACHE_DIR: /tmp/.uv-cache
+
+jobs:
+  # ── Static checks: fast, no services ────────────────────────────────────────
+  lint:
+    name: Lint & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --all-groups --frozen
+
+      - name: Ruff check
+        run: uv run ruff check src tests examples
+
+      - name: Ruff format
+        run: uv run ruff format --check src tests examples
+
+      - name: Import contracts
+        run: uv run lint-imports
+
+      - name: mypy (strict)
+        run: uv run mypy src
+
+  # ── Unit tests: no database required ────────────────────────────────────────
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --all-groups --frozen
+
+      - name: Run unit tests
+        run: uv run pytest -m 'not pg' --no-cov
+
+  # ── Integration + coverage: real Postgres/Redis service containers ─────────
+  integration:
+    name: Integration & coverage
+    runs-on: ubuntu-latest
+    needs: [lint, unit]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: synapse
+          POSTGRES_PASSWORD: synapse
+          POSTGRES_DB: synapse
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U synapse -d synapse"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@localhost:5433/synapse
+      SYNAPSE_REDIS_URL: ""
+      SYNAPSE_SECRET_KEY: ci-only-secret-key-32-bytes-minimum-ok!
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --all-groups --frozen
+
+      - name: Run full suite with coverage gate
+        run: uv run pytest -m "" --cov=src/synapse_saas --cov-fail-under=80
+
+  # ── Console build: catch TS/Next errors ────────────────────────────────────
+  web:
+    name: Console build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build

@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     # ── Retention ───────────────────────────────────────────────────────────────
     audit_retention_days: int = 365
 
+    # ── Rate limiting ───────────────────────────────────────────────────────────
+    # Auth endpoints: attempts per window per IP and per target identity.
+    auth_rate_limit_per_ip: int = 20
+    auth_rate_limit_per_identity: int = 5
+    auth_rate_window_seconds: int = 60
+
     @field_validator("tenant_isolation")
     @classmethod
     def _validate_isolation(cls, v: str) -> str:

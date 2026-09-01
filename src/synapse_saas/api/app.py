@@ -17,6 +17,7 @@ from synapse_saas.core.db import dispose_engine, get_session_factory
 from synapse_saas.core.errors import DomainError
 from synapse_saas.core.logging import configure_logging, get_logger
 from synapse_saas.core.redis import close_redis
+from synapse_saas.identity.rate_limit import AuthRateLimitMiddleware
 
 logger = get_logger(__name__)
 
@@ -66,8 +67,9 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Request-Id"],
+        expose_headers=["X-Request-Id", "Retry-After"],
     )
+    app.add_middleware(AuthRateLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
 
     @app.exception_handler(DomainError)

@@ -90,11 +90,15 @@ async def clean_db(migrated_db) -> AsyncIterator[None]:
         )
 
     # The in-process TTL-dict cache outlives truncation — clear it or stale
-    # permission/entitlement sets bleed across tests.
+    # permission/entitlement sets bleed across tests. Same for the rate limiter:
+    # every test shares one client IP, so its bucket would trip suite-wide.
     from synapse_saas.core import cache as cache_module
+    from synapse_saas.core import rate_limit as rl_module
 
     cache_module._ttl_backend = None
+    rl_module.reset_rate_limiter()
     yield
+    rl_module.reset_rate_limiter()
 
 
 @pytest_asyncio.fixture
