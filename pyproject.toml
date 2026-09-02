@@ -127,6 +127,7 @@ root_packages = ["synapse_saas"]
 name = "Modules may only import core outside themselves"
 type = "forbidden"
 source_modules = [
+  "synapse_saas.api_keys",
   "synapse_saas.core",
   "synapse_saas.identity",
   "synapse_saas.tenancy",

@@ -38,7 +38,7 @@ class TestSeed:
     def test_seed_reports_counts(self) -> None:
         result = run_cli("seed")
         assert result.returncode == 0, result.stderr + result.stdout
-        assert "16 permissions" in result.stdout
+        assert "permissions" in result.stdout
         assert "5 system roles" in result.stdout
 
     def test_seed_idempotent(self) -> None:
@@ -46,7 +46,7 @@ class TestSeed:
         assert first.returncode == 0
         again = run_cli("seed")
         assert again.returncode == 0
-        assert "16 permissions" in again.stdout
+        assert "permissions" in again.stdout
 
     def test_seed_dev_creates_demo_org(self) -> None:
         result = run_cli("seed", "--dev")

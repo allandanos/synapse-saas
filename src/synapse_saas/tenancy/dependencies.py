@@ -14,7 +14,7 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from synapse_saas.core.cache import VersionedCache
-from synapse_saas.core.context import TenantContext, set_tenant
+from synapse_saas.core.context import TenantContext, current_tenant, set_tenant
 from synapse_saas.core.db import get_session
 from synapse_saas.core.errors import AuthenticationError, TenantNotResolvedError
 from synapse_saas.core.logging import get_logger
@@ -61,6 +61,12 @@ async def _resolve_org_reference(request: Request, user: CurrentUser) -> UUID | 
 
 
 async def resolve_tenant(request: Request, user: CurrentUser, session: SessionDep) -> TenantContext:
+    # API-key auth pins the tenant during get_principal; membership checks don't
+    # apply (the key IS its org's credential). Reuse the bound context directly.
+    existing = current_tenant()
+    if existing is not None and not existing.is_platform:
+        return existing
+
     reference = await _resolve_org_reference(request, user)
     if reference is None:
         raise TenantNotResolvedError("No organization context for this request")

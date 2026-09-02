@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from synapse_saas.api_keys.router import router as api_keys_router
 from synapse_saas.audit.router import router as audit_router
 from synapse_saas.authorization.router import router as roles_router
 from synapse_saas.billing.router import router as billing_router
@@ -23,4 +24,5 @@ api_v1.include_router(entitlements_router)
 api_v1.include_router(usage_router)
 api_v1.include_router(billing_router)
 api_v1.include_router(webhooks_router)
+api_v1.include_router(api_keys_router)
 api_v1.include_router(audit_router)

@@ -31,12 +31,20 @@ class TenantContext:
 
 @dataclass(frozen=True, slots=True)
 class UserContext:
-    """The authenticated actor."""
+    """The authenticated actor.
+
+    When `api_key_id` is set, the actor is a programmatic key, not a user:
+    user_id is a nil UUID sentinel, `email` names the key, and permission_keys
+    are the key's scopes (empty ⇒ everything the creating user could exercise).
+    """
 
     user_id: UUID
     email: str
     is_platform_admin: bool = False
     permission_keys: frozenset[str] = field(default_factory=frozenset)
+    api_key_id: UUID | None = None
+    # When set (key auth), permissions come from the key's scopes — not RBAC
+    api_key_scopes: frozenset[str] | None = None
 
 
 _tenant: ContextVar[TenantContext | None] = ContextVar("synapse_tenant", default=None)

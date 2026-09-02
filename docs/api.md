@@ -73,6 +73,16 @@ Conventions:
 | GET | `/usage/check?metric=` | pre-flight |
 | GET | `/usage/summary` | per-metric meters for the console |
 
+## API keys
+
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST | `/api-keys` | `apikey:manage`; POST returns the plaintext once |
+| DELETE | `/api-keys/{id}` | revoke |
+
+`sk_…` bearers authenticate as the key's org on any endpoint — see
+[API keys](api-keys.md).
+
 ## Webhooks & audit
 
 | Method | Path | Permission |

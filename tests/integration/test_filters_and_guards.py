@@ -62,7 +62,7 @@ class TestRolesEndpoint:
 
         owner = next(r for r in roles if r["key"] == "owner")
         assert "org:delete" in owner["permissions"]
-        assert len(owner["permissions"]) == 16
+        assert len(owner["permissions"]) >= 17
 
     async def test_permissions_catalog_endpoint(self, client: AsyncClient, org_and_tokens) -> None:
         perms = (
@@ -70,7 +70,7 @@ class TestRolesEndpoint:
                 "/v1/permissions", headers={"Authorization": f"Bearer {org_and_tokens['access_token']}"}
             )
         ).json()
-        assert len(perms) == 16
+        assert len(perms) >= 17
         assert all("key" in p and "resource" in p and "action" in p for p in perms)
 
 

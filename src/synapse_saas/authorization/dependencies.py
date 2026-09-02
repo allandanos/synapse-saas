@@ -26,7 +26,26 @@ async def require_permission(
     session: AsyncSession,
     tenant: TenantContext,
 ) -> None:
-    """Check permission and bind the enriched user context. Raises 403 on deny."""
+    """Check permission and bind the enriched user context. Raises 403 on deny.
+
+    API-key principals authorize against the key's scopes instead of RBAC:
+    an empty scope set means everything the creating user could exercise.
+    """
+    from synapse_saas.core import context as ctx_module
+
+    principal = ctx_module.current_user()
+    if principal is not None and principal.api_key_scopes is not None:
+        scopes = principal.api_key_scopes
+        allowed = permission in scopes if scopes else True
+        if not allowed:
+            from synapse_saas.core.errors import PermissionDeniedError
+
+            raise PermissionDeniedError(
+                f"API key lacks the {permission!r} scope",
+                extras={"permission": permission, "auth": "api_key"},
+            )
+        return
+
     if user.is_platform_admin:
         context.set_user(
             UserContext(

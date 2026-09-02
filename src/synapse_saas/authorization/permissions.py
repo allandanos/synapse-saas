@@ -38,6 +38,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef("webhook:manage", "webhook", "manage", "Manage webhook endpoints and view deliveries"),
     # Entitlements
     PermissionDef("entitlement:manage", "entitlement", "manage", "Grant or revoke feature entitlements"),
+    PermissionDef("apikey:manage", "apikey", "manage", "Create, list, and revoke API keys"),
     # Project-scoped example (the pattern domain apps extend)
     PermissionDef("project:read", "project", "read", "View projects"),
     PermissionDef("project:manage", "project", "manage", "Create, update, and delete projects"),
@@ -57,7 +58,15 @@ SYSTEM_ROLE_MEMBER = "member"
 _OWNER = {p.key for p in PERMISSIONS}
 _ADMIN = _OWNER - {"org:delete"}
 _BILLING = {"org:read", "billing:read", "billing:manage", "usage:read"}
-_DEVELOPER = {"org:read", "member:read", "project:read", "project:manage", "webhook:manage", "usage:read"}
+_DEVELOPER = {
+    "org:read",
+    "member:read",
+    "project:read",
+    "project:manage",
+    "webhook:manage",
+    "usage:read",
+    "apikey:manage",
+}
 _MEMBER = {"org:read", "project:read"}
 
 SYSTEM_ROLES: dict[str, dict[str, object]] = {

@@ -231,6 +231,14 @@ class InvoiceNotFoundError(DomainError):
     title = "invoice_not_found"
 
 
+# ── API keys ──────────────────────────────────────────────────────────────────
+
+
+class ApiKeyNotFoundError(DomainError):
+    status = 404
+    title = "api_key_not_found"
+
+
 # ── Webhooks (outbound) ────────────────────────────────────────────────────────
 
 

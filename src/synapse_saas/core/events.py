@@ -51,6 +51,11 @@ INVOICE_FAILED = "invoice.failed"
 USAGE_SOFT_LIMIT_REACHED = "usage.soft_limit_reached"
 USAGE_HARD_LIMIT_REACHED = "usage.hard_limit_reached"
 
+# ── API keys ──────────────────────────────────────────────────────────────────
+API_KEY_CREATED = "api_key.created"
+API_KEY_REVOKED = "api_key.revoked"
+API_KEY_AUTHENTICATED = "api_key.authenticated"
+
 # ── Webhooks ───────────────────────────────────────────────────────────────────
 WEBHOOK_ENDPOINT_CREATED = "webhook.endpoint_created"
 WEBHOOK_ENDPOINT_UPDATED = "webhook.endpoint_updated"

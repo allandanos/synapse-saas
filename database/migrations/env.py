@@ -15,6 +15,7 @@ from synapse_saas.core.db import Base
 
 # Import every module with models so Base.metadata is complete
 from synapse_saas import (  # noqa: F401
+    api_keys,
     audit,
     authorization,
     billing,
@@ -25,6 +26,7 @@ from synapse_saas import (  # noqa: F401
     usage,
     webhooks,
 )
+from synapse_saas.api_keys import models as _api_keys_models  # noqa: F401
 from synapse_saas.audit import models as _audit_models  # noqa: F401
 from synapse_saas.authorization import models as _authz_models  # noqa: F401
 from synapse_saas.billing import models as _billing_models  # noqa: F401
