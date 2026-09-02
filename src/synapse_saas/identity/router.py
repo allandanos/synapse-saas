@@ -144,11 +144,22 @@ async def forgot_password(body: ForgotPasswordRequest, session: SessionDep) -> d
     service = IdentityService(session)
     reset = await service.request_password_reset(str(body.email))
     # Response is identical whether or not the email exists (no enumeration).
-    # In dev the token is logged; in production it would be emailed.
+    # The link rides the outbox: worker emails it when SMTP is configured,
+    # logs it otherwise. The token never enters the HTTP response.
     if reset is not None:
+        row, token = reset
         from synapse_saas.core.logging import get_logger
+        from synapse_saas.core.outbox import append_outbox
 
-        get_logger(__name__).info("password_reset_requested", user_id=str(reset.user_id))
+        get_logger(__name__).info("password_reset_requested", user_id=str(row.user_id))
+        append_outbox(
+            session,
+            event_type="user.password_reset_link",
+            aggregate_type="user",
+            aggregate_id=row.user_id,
+            organization_id=None,
+            payload={"email": str(body.email), "token": token},
+        )
     return {"ok": True}
 
 

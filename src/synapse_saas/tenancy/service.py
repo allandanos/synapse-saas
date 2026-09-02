@@ -156,6 +156,7 @@ class OrganizationService:
         invited_by_user_id: UUID,
         role_keys: list[str] | None = None,
         seat_limit: int | None = None,
+        org_name: str = "your organization",
     ) -> Membership:
         """Invite by email. Enforces the `users` gauge limit when provided."""
         active = await self.members.count_active_members(organization_id)
@@ -198,7 +199,9 @@ class OrganizationService:
             aggregate_type="membership",
             aggregate_id=membership.id,
             organization_id=organization_id,
-            payload={"email": invited_email, "token_hash": _hash(token)},
+            # invite_token is email-layer material: the worker's notifier consumes
+            # it; it is never persisted (the row keeps only the hash)
+            payload={"email": invited_email, "invite_token": token, "org_name": org_name},
         )
         return membership
 

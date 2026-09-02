@@ -85,6 +85,14 @@ async def dispatch_outbox(ctx: dict[str, Any]) -> int:
                         )
                     )
 
+            # Best-effort email for user-facing events; never blocks dispatch
+            try:
+                from synapse_saas.notifications.handlers import handle_event
+
+                await handle_event(event.event_type, dict(event.payload))
+            except Exception as exc:
+                logger.warning("email_handler_failed", error=str(exc), event_type=event.event_type)
+
             event.published_at = datetime.now(UTC)
             dispatched += 1
 

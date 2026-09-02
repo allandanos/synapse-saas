@@ -215,7 +215,12 @@ class IdentityService:
 
     # ── Password reset ──────────────────────────────────────────────────────────
 
-    async def request_password_reset(self, email: str) -> PasswordResetToken | None:
+    async def request_password_reset(self, email: str) -> tuple[PasswordResetToken, str] | None:
+        """Returns (row, plaintext_token) for the email layer — or None.
+
+        The plaintext crosses no persistence boundary; the row stores only the
+        hash. None for unknown emails keeps the HTTP response opaque.
+        """
         user = (await self.session.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if user is None:
             return None  # never reveal whether the email exists
@@ -227,7 +232,7 @@ class IdentityService:
         )
         self.session.add(row)
         self._audit(events.USER_PASSWORD_RESET_REQUESTED, user_id=user.id)
-        return row
+        return row, token
 
     async def reset_password(self, *, token: str, new_password: str) -> User:
         row = (
