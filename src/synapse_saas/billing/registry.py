@@ -11,6 +11,7 @@ import httpx
 
 from synapse_saas.billing.protocol import BillingProvider
 from synapse_saas.billing.providers.manual_provider import ManualBillingProvider
+from synapse_saas.billing.providers.paddle_provider import PaddleBillingProvider
 from synapse_saas.billing.providers.paymongo_provider import PayMongoBillingProvider
 from synapse_saas.billing.providers.stripe_provider import StripeBillingProvider
 from synapse_saas.billing.providers.xendit_provider import XenditBillingProvider
@@ -76,6 +77,17 @@ def build_provider(name: str | None = None) -> BillingProvider:
                 http,
                 secret_key=settings.paymongo_secret_key,
                 webhook_secret=settings.paymongo_webhook_secret,
+                currency=settings.billing_currency,
+            )
+        case "paddle":
+            if not settings.paddle_secret_key:
+                raise BillingProviderNotConfiguredError(
+                    "Paddle is selected but SYNAPSE_PADDLE_SECRET_KEY is not set"
+                )
+            return PaddleBillingProvider(
+                http,
+                secret_key=settings.paddle_secret_key,
+                webhook_secret=settings.paddle_webhook_secret,
                 currency=settings.billing_currency,
             )
         case _:

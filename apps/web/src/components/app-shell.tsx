@@ -12,6 +12,7 @@ import {
   KeyRound,
   ScrollText,
   Settings,
+  ShieldCheck,
   Users,
   Webhook,
 } from "lucide-react";
@@ -29,10 +30,14 @@ const NAV = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
+// Platform-admin only — appended at render time
+const ADMIN_NAV = { href: "/dashboard/admin", label: "Admin", icon: ShieldCheck };
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { me, activeOrgId, switchOrg, logout } = useAuth();
   const pathname = usePathname();
   const activeOrg = me?.orgs.find((o) => o.id === activeOrgId);
+  const nav = me?.is_platform_admin ? [...NAV, ADMIN_NAV] : NAV;
 
   return (
     <div className="flex min-h-screen bg-white">
@@ -73,7 +78,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
 
         <nav className="flex-1 space-y-0.5 p-3" aria-label="Main">
-          {NAV.map(({ href, label, icon: Icon }) => {
+          {nav.map(({ href, label, icon: Icon }) => {
             const active = pathname === href;
             return (
               <Link

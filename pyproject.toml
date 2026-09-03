@@ -161,5 +161,6 @@ source_modules = [
   "synapse_saas.billing.providers.manual_provider",
   "synapse_saas.billing.providers.xendit_provider",
   "synapse_saas.billing.providers.paymongo_provider",
+  "synapse_saas.billing.providers.paddle_provider",
 ]
 forbidden_modules = ["synapse_saas.billing", "synapse_saas.api"]

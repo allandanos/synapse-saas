@@ -88,7 +88,7 @@ async def list_invoices(tenant: TenantDep, session: SessionDep, user: CurrentUse
 @router.post("/webhooks/{provider}", status_code=status.HTTP_200_OK)
 async def billing_webhook(provider: str, request: Request, session: SessionDep) -> dict[str, Any]:
     """Provider → us. Raw body read exactly once before anything parses it."""
-    if provider not in {"stripe", "xendit", "paymongo", "manual"}:
+    if provider not in {"stripe", "xendit", "paymongo", "paddle", "manual"}:
         from synapse_saas.core.errors import NotFoundError
 
         raise NotFoundError("Unknown billing provider")

@@ -58,7 +58,7 @@ usage meters) works locally out of the box.
 | Entitlements (trials, add-ons, overrides, grandfathering) | ✅ Phase 2 |
 | Subscriptions + trials | ✅ Phase 2 |
 | Usage metering (counters + gauges, soft/hard limits) | ✅ Phase 2 |
-| Billing (Stripe, Xendit, PayMongo, Manual) | ✅ Phase 2 |
+| Billing (Stripe, Xendit, PayMongo, Paddle, Manual) | ✅ Phase 2 |
 | API keys (scoped, hashed, metered) | ✅ Phase 3 |
 | Email notifications (invites, password resets; SMTP via outbox) | ✅ Phase 3 |
 | File storage (S3/R2/MinIO + local fallback, org-scoped keys, quota) | ✅ Phase 3 |

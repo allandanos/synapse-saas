@@ -24,11 +24,15 @@ features:
   - {key: dedicated_support, name: Dedicated support,   category: support}
 
 metrics:
-  - {key: users,         name: Seat count,     kind: gauge}
-  - {key: projects,      name: Projects,       kind: gauge}
-  - {key: api_requests,  name: API requests,   kind: counter}
-  - {key: storage_bytes, name: Storage,        kind: counter, unit: bytes}
-  - {key: ai_tokens,     name: AI tokens,      kind: counter}
+  - {key: users,               name: Seat count,          kind: gauge}
+  - {key: projects,            name: Projects,            kind: gauge}
+  - {key: api_requests,        name: API requests,        kind: counter}
+  - {key: storage_bytes,       name: Storage,             kind: counter, unit: bytes}
+  - {key: ai_tokens,           name: AI tokens,           kind: counter}
+  - {key: ai_requests,         name: AI requests,         kind: counter}
+  - {key: emails_sent,         name: Emails sent,         kind: counter}
+  - {key: documents_processed, name: Documents processed, kind: counter}
+  - {key: transactions,        name: Transactions,        kind: counter}
 
 plans:
   - key: free

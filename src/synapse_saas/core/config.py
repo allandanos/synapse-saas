@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     paymongo_secret_key: str = ""
     paymongo_webhook_secret: str = ""
 
+    paddle_secret_key: str = ""
+    paddle_webhook_secret: str = ""
+
     # ── Entitlements / usage ────────────────────────────────────────────────────
     grace_on_past_due: bool = True
     default_plan_key: str = "free"
@@ -105,7 +108,7 @@ class Settings(BaseSettings):
     @field_validator("billing_provider")
     @classmethod
     def _validate_provider(cls, v: str) -> str:
-        allowed = {"manual", "stripe", "xendit", "paymongo"}
+        allowed = {"manual", "stripe", "xendit", "paymongo", "paddle"}
         if v not in allowed:
             msg = f"billing_provider must be one of {sorted(allowed)}, got {v!r}"
             raise ValueError(msg)

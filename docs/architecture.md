@@ -75,3 +75,19 @@ their own package; only `api`/`worker` compose everything.
 4. `require_permission` checks RBAC (cached ~30s, invalidated on role changes)
 5. The service runs; mutations append audit + outbox in-transaction
 6. `get_session` commits; the worker later drains the outbox
+
+
+## pgvector (Phase 4 prep)
+
+The Postgres diagram in the original design includes pgvector for agent
+knowledge/memory. The framework deliberately does not enable it yet — no
+current table uses vectors — but the migration to do so is one line when
+Phase 4 (Agentic) lands:
+
+```python
+# migration
+op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+```
+
+Managed Postgres offerings (Cloud SQL, RDS, Supabase) all support it; nothing
+in the current schema blocks it.
