@@ -65,6 +65,7 @@ usage meters) works locally out of the box.
 | Feature flags (org/user overrides, deterministic % rollout) | ✅ Phase 3 |
 | Developer portal (quickstart snippets, live probe, flag checker) | ✅ Phase 3 |
 | Prometheus metrics (HTTP, auth, business, worker series) | ✅ Phase 5 |
+| OpenTelemetry tracing (request spans, trace-correlated logs + problem docs) | ✅ Phase 5 |
 | Outbound webhooks (signed, retried) + transactional outbox | ✅ Phase 2 |
 | Background jobs (arq worker) | ✅ Phase 2 |
 | Notifications, storage, feature flags | 🔜 Phase 3 (interfaces only) |

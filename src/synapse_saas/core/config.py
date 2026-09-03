@@ -80,6 +80,9 @@ class Settings(BaseSettings):
 
     # ── Observability ────────────────────────────────────────────────────────────
     metrics_enabled: bool = True
+    # OTel: empty exporter ⇒ tracing compiled in but inert (no-op provider)
+    otel_exporter_endpoint: str = ""  # e.g. http://localhost:4317
+    otel_service_name: str = "synapse-saas"
 
     # ── Retention ───────────────────────────────────────────────────────────────
     audit_retention_days: int = 365

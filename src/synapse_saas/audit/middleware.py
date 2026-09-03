@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -25,10 +26,13 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         request_id = request.headers.get(REQUEST_ID_HEADER) or f"req_{uuid.uuid4().hex[:16]}"
         token = context.set_request_id(request_id)
         start = time.perf_counter()
+        span_cm = _request_span(request)
+        span_cm.__enter__()
         try:
             response = await call_next(request)
         finally:
             context.reset_request_id(token)
+            span_cm.__exit__(None, None, None)
 
         duration_ms = (time.perf_counter() - start) * 1000
         response.headers[REQUEST_ID_HEADER] = request_id
@@ -62,3 +66,32 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         if route is not None and getattr(route, "path", None):
             return str(route.path)
         return "unmatched"
+
+
+def _request_span(request: Request) -> _SpanGuard:
+    """Server span per request; inert until an exporter is configured."""
+    return _SpanGuard(request)
+
+
+class _SpanGuard:
+    """Starts a span on enter, ends it on exit. Tracing failures are absorbed —
+    the request path is identical whether or not spans are being recorded."""
+
+    def __init__(self, request: Request) -> None:
+        self._request = request
+        self._span: object | None = None
+
+    def __enter__(self) -> _SpanGuard:
+        with contextlib.suppress(Exception):
+            from synapse_saas.core.tracing import get_tracer
+
+            self._span = get_tracer("synapse.http").start_span(
+                f"{self._request.method} {self._request.url.path}"
+            )
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        with contextlib.suppress(Exception):
+            if self._span is not None:
+                self._span.end()  # type: ignore[attr-defined]
+        self._span = None

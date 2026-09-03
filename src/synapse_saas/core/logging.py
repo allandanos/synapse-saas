@@ -6,6 +6,7 @@ Logs are JSON in production (shippable to any collector); pretty console in deve
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 from typing import Any
@@ -47,8 +48,13 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
 
 
 def bind_request_context() -> None:
-    """Bind tenant/user/request-id into structlog contextvars for this request/task."""
+    """Bind tenant/user/request-id/trace-id into structlog contextvars."""
     values: dict[str, Any] = {}
+    with contextlib.suppress(Exception):  # tracing must never break logging
+        from synapse_saas.core.tracing import current_trace_id
+
+        if trace_id := current_trace_id():
+            values["trace_id"] = trace_id
     if request_id := context.current_request_id():
         values["request_id"] = request_id
     if tenant := context.current_tenant():

@@ -28,6 +28,9 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging()
+    from synapse_saas.core.tracing import configure_tracing
+
+    configure_tracing()
 
     if settings.auto_sync_plans:
         try:
@@ -80,7 +83,7 @@ def create_app() -> FastAPI:
             status_code=exc.status,
             content=exc.to_problem(
                 instance=str(request.url.path),
-                request_id=request.headers.get("X-Request-Id"),
+                request_id=request.headers.get("X-Request-Id") or _trace_id(),
             ),
         )
 
@@ -154,3 +157,9 @@ def create_app() -> FastAPI:
 
     app.include_router(api_v1)
     return app
+
+
+def _trace_id() -> str | None:
+    from synapse_saas.core.tracing import current_trace_id
+
+    return current_trace_id()
