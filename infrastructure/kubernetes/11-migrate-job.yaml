@@ -1,0 +1,36 @@
+# Migrations run as a pre-deploy Job: `kubectl apply -f 11-migrate-job.yaml`
+# (or wire into your CD as a pre-step). Idempotent — safe to re-run.
+# Rerun: `kubectl delete job synapse-migrate -n synapse && kubectl apply -f …`
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: synapse-migrate
+  namespace: synapse
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: synapse-migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+        - name: migrate
+          image: synapse-saas/api:latest # same image as the api
+          command: ["/bin/sh", "-c", "synapse-cli migrate && synapse-cli seed"]
+          envFrom:
+            - configMapRef:
+                name: synapse-config
+            - secretRef:
+                name: synapse-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

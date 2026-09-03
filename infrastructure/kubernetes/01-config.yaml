@@ -1,0 +1,15 @@
+# Non-secret settings for every workload. Secret values (DB URL, keys) come
+# from 02-secret.yaml — create it from .env, never commit real values.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synapse-config
+  namespace: synapse
+data:
+  SYNAPSE_ENV: "production"
+  SYNAPSE_WEB_ORIGIN: "https://console.example.com"
+  SYNAPSE_AUTO_SYNC_PLANS: "true"
+  SYNAPSE_BILLING_PROVIDER: "manual"
+  SYNAPSE_IDENTITY_PROVIDER: "local"
+  SYNAPSE_METRICS_ENABLED: "true"
+  SYNAPSE_DEFAULT_PLAN_KEY: "free"

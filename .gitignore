@@ -32,3 +32,6 @@ next-env.d.ts
 # Project
 *.sqlite3
 .storage/
+
+# Deployed secrets (k8s)
+infrastructure/kubernetes/02-secret.yaml

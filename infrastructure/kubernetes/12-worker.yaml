@@ -1,0 +1,59 @@
+# Worker: outbox dispatch, webhook delivery, rollups, crons.
+# Long-lived (arq blocks); scale on queue depth via the arq queue-length
+# metric once exported, or CPU as a starter.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synapse-worker
+  namespace: synapse
+  labels:
+    app: synapse-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: synapse-worker
+  template:
+    metadata:
+      labels:
+        app: synapse-worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+        - name: worker
+          image: synapse-saas/api:latest # same image; different entrypoint
+          command: ["synapse-worker"]
+          envFrom:
+            - configMapRef:
+                name: synapse-config
+            - secretRef:
+                name: synapse-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: synapse-worker
+  namespace: synapse
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: synapse-worker
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75

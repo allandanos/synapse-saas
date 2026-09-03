@@ -1,0 +1,36 @@
+# Ingress: console at the root, API at / (separate host). TLS via
+# cert-manager's cluster issuer — adjust `clusterName`/annotations to yours.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: synapse
+  namespace: synapse
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 12m # direct uploads cap at 10 MiB
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [console.example.com, api.example.com]
+      secretName: synapse-tls
+  rules:
+    - host: console.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: synapse-web
+                port:
+                  number: 80
+    - host: api.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: synapse-api
+                port:
+                  number: 80

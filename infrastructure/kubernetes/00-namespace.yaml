@@ -1,0 +1,7 @@
+# Shared namespace + image-pull placeholder. kustomize patches secretName.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: synapse
+  labels:
+    app.kubernetes.io/part-of: synapse-saas
