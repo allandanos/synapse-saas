@@ -39,6 +39,9 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     # Entitlements
     PermissionDef("entitlement:manage", "entitlement", "manage", "Grant or revoke feature entitlements"),
     PermissionDef("apikey:manage", "apikey", "manage", "Create, list, and revoke API keys"),
+    # Files
+    PermissionDef("file:read", "file", "read", "List and download organization files"),
+    PermissionDef("file:write", "file", "write", "Upload and delete organization files"),
     # Project-scoped example (the pattern domain apps extend)
     PermissionDef("project:read", "project", "read", "View projects"),
     PermissionDef("project:manage", "project", "manage", "Create, update, and delete projects"),

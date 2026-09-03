@@ -21,6 +21,7 @@ from synapse_saas import (  # noqa: F401
     billing,
     entitlements,
     identity,
+    storage,
     subscriptions,
     tenancy,
     usage,
@@ -32,6 +33,7 @@ from synapse_saas.authorization import models as _authz_models  # noqa: F401
 from synapse_saas.billing import models as _billing_models  # noqa: F401
 from synapse_saas.entitlements import models as _entl_models  # noqa: F401
 from synapse_saas.identity import models as _identity_models  # noqa: F401
+from synapse_saas.storage import models as _storage_models  # noqa: F401
 from synapse_saas.subscriptions import models as _sub_models  # noqa: F401
 from synapse_saas.tenancy import models as _tenancy_models  # noqa: F401
 from synapse_saas.usage import models as _usage_models  # noqa: F401

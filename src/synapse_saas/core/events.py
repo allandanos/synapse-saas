@@ -51,6 +51,10 @@ INVOICE_FAILED = "invoice.failed"
 USAGE_SOFT_LIMIT_REACHED = "usage.soft_limit_reached"
 USAGE_HARD_LIMIT_REACHED = "usage.hard_limit_reached"
 
+# ── Files ─────────────────────────────────────────────────────────────────────
+FILE_UPLOADED = "file.uploaded"
+FILE_DELETED = "file.deleted"
+
 # ── API keys ──────────────────────────────────────────────────────────────────
 API_KEY_CREATED = "api_key.created"
 API_KEY_REVOKED = "api_key.revoked"

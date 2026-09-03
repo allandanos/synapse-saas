@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     smtp_port: int = 1025
     smtp_from: str = "synapse@localhost"
 
+    # ── Storage (S3-compatible; unset ⇒ local disk under storage_root) ────────
+    s3_endpoint_url: str = ""  # e.g. http://localhost:9000 for MinIO; "" = AWS
+    s3_region: str = "us-east-1"
+    s3_bucket: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    storage_root: str = ".storage"  # local-disk fallback when no bucket is set
+    storage_presign_seconds: int = 3600
+
     # ── Retention ───────────────────────────────────────────────────────────────
     audit_retention_days: int = 365
 

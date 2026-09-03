@@ -73,6 +73,16 @@ Conventions:
 | GET | `/usage/check?metric=` | pre-flight |
 | GET | `/usage/summary` | per-metric meters for the console |
 
+## Files
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/files` | org listing (`file:read`) |
+| POST | `/files` | multipart ≤10 MiB (`file:write` + `api_access`); meters `storage_bytes` |
+| GET | `/files/{id}` | stream download |
+| POST | `/files/{id}/presign` | time-limited direct URL (S3 backends) |
+| DELETE | `/files/{id}` | soft-delete + object delete |
+
 ## API keys
 
 | Method | Path | Notes |

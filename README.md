@@ -61,6 +61,7 @@ usage meters) works locally out of the box.
 | Billing (Stripe, Xendit, PayMongo, Manual) | ✅ Phase 2 |
 | API keys (scoped, hashed, metered) | ✅ Phase 3 |
 | Email notifications (invites, password resets; SMTP via outbox) | ✅ Phase 3 |
+| File storage (S3/R2/MinIO + local fallback, org-scoped keys, quota) | ✅ Phase 3 |
 | Outbound webhooks (signed, retried) + transactional outbox | ✅ Phase 2 |
 | Background jobs (arq worker) | ✅ Phase 2 |
 | Notifications, storage, feature flags | 🔜 Phase 3 (interfaces only) |

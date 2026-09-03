@@ -36,6 +36,8 @@ async def effective_entitlements(
 class GrantRequest(BaseModel):
     feature_key: str = Field(min_length=1)
     source: str = Field(pattern=r"^(trial|addon|promo|beta|override|enterprise|grandfather)$")
+    # False ⇒ kill switch: a high-priority grant that REMOVES the feature
+    enabled: bool = True
     duration_days: int | None = Field(None, ge=1, le=3650)
     note: str | None = None
     limit_value: int | None = Field(None, ge=0)
@@ -50,6 +52,7 @@ async def grant_entitlement(
         tenant.organization_id,
         feature_key=body.feature_key,
         source=body.source,
+        enabled=body.enabled,
         duration_days=body.duration_days,
         note=body.note,
         limit_value=body.limit_value,

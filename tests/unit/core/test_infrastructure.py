@@ -13,10 +13,10 @@ class TestNoopNotifier:
 
 
 class TestStorageInterface:
-    async def test_protocol_importable(self) -> None:
-        from synapse_saas.storage import Storage
+    async def test_module_importable(self) -> None:
+        from synapse_saas.storage import get_storage
 
-        assert Storage is not None
+        assert callable(get_storage)
 
 
 class TestFeatureFlagInterface:

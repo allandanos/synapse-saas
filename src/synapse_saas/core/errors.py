@@ -231,6 +231,13 @@ class InvoiceNotFoundError(DomainError):
     title = "invoice_not_found"
 
 
+# ── Storage ───────────────────────────────────────────────────────────────────
+
+
+class StorageError(DomainError):
+    title = "storage_error"
+
+
 # ── API keys ──────────────────────────────────────────────────────────────────
 
 
