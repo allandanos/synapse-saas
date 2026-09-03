@@ -1,0 +1,8 @@
+{
+  "name": "multi-tenant-example",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "tsx multi-tenant.ts" },
+  "dependencies": { "@synapse-saas/client": "file:../../../sdk/typescript" },
+  "devDependencies": { "tsx": "^4.19.0", "typescript": "^5.6.0", "@types/node": "^22.0.0" }
+}

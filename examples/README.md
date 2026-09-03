@@ -1,35 +1,59 @@
 # Examples
 
-Runnable samples — one per SDK, each against a live compose stack.
+Every example type in every SDK language — 4 × 4. All run against a live
+compose stack; each demonstrates the same framework behaviors with the
+idioms of its language.
 
-| Example | SDK | Shows |
-|---|---|---|
-| [`hello-saas/`](hello_saas/) | framework itself | a complete domain app: Projects CRUD, tenant-scoped by inheritance, plan-limited |
-| [`multi-tenant/`](multi-tenant/) | Python | one user, two orgs, hard isolation; per-org usage/members/entitlements |
-| [`subscription/`](subscription/) | TypeScript | freemium lifecycle: quota wall (402 + hints) → trial grant → plan upgrade |
-| [`ai-saas/`](ai-saas/) | Go + Java | the SynapseDev.AI shape: metered inference calls, typed quota errors |
+| | Python | TypeScript | Go | Java |
+|---|---|---|---|---|
+| **hello-saas** | [`python/`](python/hello-saas/)¹ | [`typescript/`](typescript/hello-saas/) | [`go/`](go/hello-saas/) | [`java/`](java/hello-saas/) |
+| **multi-tenant** | [`python/`](python/multi-tenant/) | [`typescript/`](typescript/multi-tenant/) | [`go/`](go/multi-tenant/) | [`java/`](java/multi-tenant/) |
+| **subscription** | [`python/`](python/subscription/) | [`typescript/`](typescript/subscription/) | [`go/`](go/subscription/) | [`java/`](java/subscription/) |
+| **ai-saas** | [`python/`](python/ai-saas/) | [`typescript/`](typescript/ai-saas/) | [`go/`](go/ai-saas/) | [`java/`](java/ai-saas/) |
+
+¹ The Python hello-saas is the **server-side extension** variant — it defines
+a real `Project(TenantMixin)` ORM model + router inside the framework process.
+Every other cell is a **client-side** script driving the running API through
+its SDK: same behaviors, different vantage point.
+
+## The example types
+
+| Type | Shows |
+|---|---|
+| **hello-saas** | a complete domain app: tenant scoping, plan caps as typed 402s, per-project gauge metering |
+| **multi-tenant** | one user, two orgs: per-org usage/members/entitlements, cross-tenant 404s |
+| **subscription** | freemium lifecycle: quota wall (upgrade hints) → trial grant without a plan change → plan upgrade |
+| **ai-saas** | the SynapseDev.AI shape: metered inference calls (`ai_tokens`), typed quota errors to bill around, automatic `api_requests` metering on key auth |
 
 ## Common setup
 
 ```bash
-docker compose up -d          # the stack
-# register a user + org via the console (localhost:3000), then:
-export SYNAPSE_TOKEN=<access token>   # multi-tenant, subscription
-export SYNAPSE_KEY=sk_…               # ai-saas (create in console → API keys)
+docker compose up -d          # the stack (console at localhost:3000)
+# register a user + org in the console, then:
+export SYNAPSE_API=http://localhost:8000
+export SYNAPSE_TOKEN=<access token>   # hello-saas, multi-tenant, subscription
+export SYNAPSE_ORG=<org uuid>        # org-scoped examples
+export SYNAPSE_KEY=sk_…              # ai-saas (console → API keys)
 ```
 
 ## Running
 
 ```bash
-cd examples/multi-tenant   # Python
-uv run --project ../../sdk/python multi_tenant.py
+# Python (any example dir)
+uv run --project ../../../sdk/python <script>.py
 
-cd examples/subscription   # TypeScript
+# TypeScript (any example dir)
 pnpm install && pnpm start
 
-cd examples/ai-saas/go     # Go
+# Go (any example dir)
 go run .
 
-cd examples/ai-saas/java   # Java (install the SDK first: cd sdk/java && mvn install)
-mvn -q compile exec:java
+# Java (any example dir; SDK installed locally first: cd sdk/java && mvn install)
+mvn -q compile exec:java -Dexec.mainClass=dev.synapse.example.<Sample>
 ```
+
+## Verification status
+
+All 16 cells build/typecheck: Python (`ast`), TypeScript (`tsc --strict`,
+clean installs), Go (`go vet` + `go build`), Java (`mvn compile`). Each
+SDK's unit tests (30 total) live in `sdk/`.

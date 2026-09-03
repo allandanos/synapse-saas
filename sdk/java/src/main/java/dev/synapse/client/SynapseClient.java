@@ -153,6 +153,14 @@ public class SynapseClient {
         public Map<String, Object> effective() throws IOException, InterruptedException {
             return call("GET", "/v1/entitlements", null, null);
         }
+
+        /** Time-boxed feature grant (trial/promo/…) independent of the plan. */
+        public Map<String, Object> grant(String featureKey, String source, int durationDays)
+                throws IOException, InterruptedException {
+            return call("POST", "/v1/entitlements/grants",
+                Map.of("feature_key", featureKey, "source", source, "duration_days", durationDays),
+                null);
+        }
     }
 
     public final class ApiKeys {

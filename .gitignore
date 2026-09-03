@@ -40,3 +40,8 @@ infrastructure/kubernetes/02-secret.yaml
 sdk/typescript/dist/
 sdk/typescript/node_modules/
 sdk/java/target/
+
+# Example build artifacts
+examples/**/node_modules/
+examples/**/target/
+examples/**/dist/

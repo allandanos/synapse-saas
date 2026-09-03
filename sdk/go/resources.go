@@ -137,6 +137,21 @@ func (r *EntitlementsResource) Effective(ctx context.Context) (jsonMap, error) {
 	return out, firstErr(decode(raw, &out), err)
 }
 
+// Grant creates a time-boxed feature grant (trial/promo/override/…)
+// independent of the org's plan.
+func (r *EntitlementsResource) Grant(ctx context.Context, featureKey, source string, durationDays int) (jsonMap, error) {
+	var out jsonMap
+	raw, err := r.c.do(ctx, request{
+		method: "POST", path: "/v1/entitlements/grants",
+		body: map[string]any{
+			"feature_key":   featureKey,
+			"source":        source,
+			"duration_days": durationDays,
+		},
+	})
+	return out, firstErr(decode(raw, &out), err)
+}
+
 type APIKeysResource struct{ c *Client }
 
 // Create returns the plaintext key exactly once — persist it immediately.
