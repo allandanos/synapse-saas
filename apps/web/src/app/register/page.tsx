@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
-export default function RegisterPage() {
+function RegisterForm() {
   const { register } = useAuth();
+  const params = useSearchParams();
+  const inviteToken = params.get("invite") ?? "";
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,6 +22,13 @@ export default function RegisterPage() {
     setError(null);
     try {
       await register(email, password, displayName);
+      if (inviteToken) {
+        // Accept the org invitation with the newly-created session
+        await api("/v1/auth/accept-invite", {
+          method: "POST",
+          body: JSON.stringify({ token: inviteToken }),
+        }).catch(() => undefined); // invite failures shouldn't block signup
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -35,6 +46,12 @@ export default function RegisterPage() {
           <span className="font-semibold tracking-tight">Synapse</span>
         </div>
 
+        {inviteToken && (
+          <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            You&apos;ve been invited to an organization — register with the email
+            the invitation was sent to and you&apos;ll join it automatically.
+          </p>
+        )}
         <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
         <p className="mt-1 text-sm text-zinc-500">Start building on the framework.</p>
 
@@ -106,5 +123,14 @@ export default function RegisterPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterForm />
+    </Suspense>
   );
 }

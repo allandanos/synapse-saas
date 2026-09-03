@@ -153,3 +153,69 @@ class TestPasswordResetEmail:
             json={"email": "tokcheck@example.com", "password": "new-password-123"},
         )
         assert login.status_code == 200
+
+
+class TestAcceptInviteEndpoint:
+    async def test_register_with_invite_joins_org(self, client: AsyncClient, org_and_tokens) -> None:
+        """The emailed token + new registration ⇒ membership in the org."""
+        invite = await client.post(
+            "/v1/orgs/current/members/invite",
+            headers={
+                "Authorization": f"Bearer {org_and_tokens['access_token']}",
+                "X-Org-Id": org_and_tokens["org_id"],
+            },
+            json={"email": "joiner@example.com"},
+        )
+        assert invite.status_code == 201
+
+        # Pull the token from the outbox (what the worker emails)
+        from sqlalchemy import text
+
+        from synapse_saas.core.db import get_session_factory
+
+        async with get_session_factory()() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT payload FROM outbox_events "
+                        "WHERE event_type = 'member.invited' ORDER BY created_at DESC LIMIT 1"
+                    )
+                )
+            ).first()
+        token = row.payload["invite_token"]
+
+        reg = await client.post(
+            "/v1/auth/register",
+            json={
+                "email": "joiner@example.com",
+                "password": "password12345",
+                "display_name": "J",
+            },
+        )
+        assert reg.status_code == 201
+        joiner_token = reg.json()["tokens"]["access_token"]
+
+        accepted = await client.post(
+            "/v1/auth/accept-invite",
+            headers={"Authorization": f"Bearer {joiner_token}"},
+            json={"token": token},
+        )
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["status"] == "active"
+        assert accepted.json()["organization_id"] == org_and_tokens["org_id"]
+
+        # Token is single-use
+        replay = await client.post(
+            "/v1/auth/accept-invite",
+            headers={"Authorization": f"Bearer {joiner_token}"},
+            json={"token": token},
+        )
+        assert replay.status_code == 404
+
+    async def test_garbage_token_404(self, client: AsyncClient, org_and_tokens) -> None:
+        res = await client.post(
+            "/v1/auth/accept-invite",
+            headers={"Authorization": f"Bearer {org_and_tokens['access_token']}"},
+            json={"token": "n" * 40},
+        )
+        assert res.status_code == 404

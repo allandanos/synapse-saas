@@ -35,3 +35,8 @@ next-env.d.ts
 
 # Deployed secrets (k8s)
 infrastructure/kubernetes/02-secret.yaml
+
+# SDK build artifacts
+sdk/typescript/dist/
+sdk/typescript/node_modules/
+sdk/java/target/

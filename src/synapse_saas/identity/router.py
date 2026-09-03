@@ -9,6 +9,7 @@ from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.identity.schemas import (
     AuthResponse,
     ForgotPasswordRequest,
+    InviteAcceptRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
@@ -137,6 +138,18 @@ async def switch_org(
     return JSONResponse(  # type: ignore[return-value]
         content={"access_token": tokens.access_token, "token_type": "bearer", "expires_in": tokens.expires_in}
     )
+
+
+@router.post("/accept-invite", status_code=status.HTTP_200_OK)
+async def accept_invite(body: InviteAcceptRequest, user: CurrentUser, session: SessionDep) -> dict[str, str]:
+    """Accept an organization invitation with its emailed token (single-use)."""
+    from synapse_saas.tenancy.service import OrganizationService
+
+    membership = await OrganizationService(session).accept_invite_by_token(body.token, user)
+    return {
+        "organization_id": str(membership.organization_id),
+        "status": membership.status,
+    }
 
 
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)

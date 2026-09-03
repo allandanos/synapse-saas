@@ -37,6 +37,10 @@ class RefreshRequest(BaseModel):
     refresh_token: str | None = None  # also accepted via httpOnly cookie
 
 
+class InviteAcceptRequest(BaseModel):
+    token: str = Field(min_length=10)
+
+
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str

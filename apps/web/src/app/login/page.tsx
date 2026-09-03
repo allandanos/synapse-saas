@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 
-export default function LoginPage() {
+function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
+  const params = useSearchParams();
+  const resetDone = params.get("reset") === "done";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +39,11 @@ export default function LoginPage() {
           <span className="font-semibold tracking-tight">Synapse</span>
         </div>
 
+        {resetDone && (
+          <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            Password updated — sign in with your new password.
+          </p>
+        )}
         <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
         <p className="mt-1 text-sm text-zinc-500">Welcome back to your console.</p>
 
@@ -85,13 +92,27 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-sm text-zinc-500">
-          No account?{" "}
-          <Link href="/register" className="font-medium text-zinc-900 underline">
-            Create one
+        <div className="mt-6 flex items-center justify-between text-sm">
+          <span className="text-zinc-500">
+            No account?{" "}
+            <Link href="/register" className="font-medium text-zinc-900 underline">
+              Create one
+            </Link>
+          </span>
+          <Link href="/forgot-password" className="text-zinc-500 underline hover:text-zinc-900">
+            Forgot password?
           </Link>
-        </p>
+        </div>
       </div>
     </main>
+  );
+}
+
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }
