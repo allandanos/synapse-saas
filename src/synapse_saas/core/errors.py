@@ -231,6 +231,14 @@ class InvoiceNotFoundError(DomainError):
     title = "invoice_not_found"
 
 
+# ── Feature flags ─────────────────────────────────────────────────────────────
+
+
+class FeatureFlagNotFoundError(DomainError):
+    status = 404
+    title = "feature_flag_not_found"
+
+
 # ── Storage ───────────────────────────────────────────────────────────────────
 
 

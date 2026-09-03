@@ -83,6 +83,18 @@ Conventions:
 | POST | `/files/{id}/presign` | time-limited direct URL (S3 backends) |
 | DELETE | `/files/{id}` | soft-delete + object delete |
 
+## Feature flags
+
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST | `/feature-flags` | platform admin; list / create |
+| PATCH | `/feature-flags/{key}` | flip default / rollout |
+| GET/POST | `/feature-flags/{key}/overrides` | org/user overrides |
+| DELETE | `/feature-flags/overrides/{id}` | remove override |
+| GET | `/feature-flags/check/{key}` | resolve for caller (org-scoped) |
+
+See [Feature flags](feature-flags.md) — deployment toggles, distinct from entitlements.
+
 ## API keys
 
 | Method | Path | Notes |

@@ -1,12 +1,19 @@
-"""Feature flags seam (Phase 3). Interface only.
+"""Feature flags: deployment-level toggles, distinct from plan entitlements.
 
-Entitlements already cover plan-based gating; flags add org/user overrides
-independent of billing when Phase 3 lands."""
+Entitlements answer "what did this org pay for?" — flags answer "is this code
+path on yet?" (gradual rollouts, kill switches, opt-in betas independent of
+billing). Resolution: user override → org override → global default with
+deterministic percentage rollout.
+"""
 
-from __future__ import annotations
+from synapse_saas.feature_flags.models import FeatureFlag, FeatureFlagOverride
+from synapse_saas.feature_flags.service import FeatureFlagService, bucket_of, in_rollout
 
-from typing import Protocol
-
-
-class FeatureFlagService(Protocol):
-    async def is_enabled(self, *, key: str, organization_id: str | None = None) -> bool: ...
+__all__ = [
+    "FeatureFlag",
+    "FeatureFlagNotFoundError",
+    "FeatureFlagOverride",
+    "FeatureFlagService",
+    "bucket_of",
+    "in_rollout",
+]
