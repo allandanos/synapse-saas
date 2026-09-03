@@ -21,8 +21,11 @@ from synapse_saas.core import context
 from synapse_saas.core.context import UserContext
 from synapse_saas.core.db import get_session
 from synapse_saas.core.errors import AuthenticationError
+from synapse_saas.core.logging import get_logger
 from synapse_saas.core.security import decode_access_token
 from synapse_saas.identity.models import User
+
+logger = get_logger(__name__)
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
@@ -77,7 +80,9 @@ async def get_current_user(request: Request, session: SessionDep) -> User:
 
         key = await ApiKeyService(session).verify(token)
         if key is None:
+            _inc_key_auth("invalid")
             raise AuthenticationError("Invalid API key")
+        _inc_key_auth("ok")
         org = await session.get(Organization, key.organization_id)
         if org is None or org.deleted_at is not None or org.status != "active":
             raise AuthenticationError("Invalid API key")
@@ -151,3 +156,12 @@ async def get_principal(request: Request, session: SessionDep) -> Principal:
 
 
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
+
+
+def _inc_key_auth(outcome: str) -> None:
+    try:
+        from synapse_saas.core import metrics
+
+        metrics.API_KEY_AUTH.labels(outcome=outcome).inc()
+    except Exception as exc:  # metrics must never fail auth
+        logger.debug("metrics_inc_failed", metric="api_key_auth", error=str(exc))

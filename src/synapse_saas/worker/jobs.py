@@ -6,6 +6,8 @@ not cross process/task boundaries by design.
 
 from __future__ import annotations
 
+import contextlib
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -25,6 +27,28 @@ async def dispatch_outbox(ctx: dict[str, Any]) -> int:
 
     Uses FOR UPDATE SKIP LOCKED so multiple workers never double-send.
     """
+    import time as _time
+
+    _t0 = _time.perf_counter()
+    try:
+        result = await _dispatch_outbox_impl(ctx)
+    except Exception:
+        _record_job("dispatch_outbox", "error", _t0)
+        raise
+    else:
+        _record_job("dispatch_outbox", "ok", _t0)
+        return result
+
+
+def _record_job(job: str, outcome: str, t0: float) -> None:
+    with contextlib.suppress(Exception):  # metrics must never break a job
+        from synapse_saas.core import metrics
+
+        metrics.WORKER_JOBS.labels(job=job, outcome=outcome).inc()
+        metrics.WORKER_JOB_LATENCY.labels(job=job).observe(time.perf_counter() - t0)
+
+
+async def _dispatch_outbox_impl(ctx: dict[str, Any]) -> int:
     from synapse_saas.audit.models import OutboxEvent
     from synapse_saas.webhooks.models import WebhookDelivery
 
@@ -84,6 +108,12 @@ async def dispatch_outbox(ctx: dict[str, Any]) -> int:
                             payload=dict(event.payload),
                         )
                     )
+
+            # Business-event counter (bounded: event_type is a fixed vocabulary)
+            with contextlib.suppress(Exception):  # metrics must never block dispatch
+                from synapse_saas.core import metrics
+
+                metrics.BUSINESS_EVENTS.labels(event=event.event_type).inc()
 
             # Best-effort email for user-facing events; never blocks dispatch
             try:

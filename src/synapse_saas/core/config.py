@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     storage_root: str = ".storage"  # local-disk fallback when no bucket is set
     storage_presign_seconds: int = 3600
 
+    # ── Observability ────────────────────────────────────────────────────────────
+    metrics_enabled: bool = True
+
     # ── Retention ───────────────────────────────────────────────────────────────
     audit_retention_days: int = 365
 

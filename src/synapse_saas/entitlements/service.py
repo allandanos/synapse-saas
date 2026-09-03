@@ -57,6 +57,7 @@ class EntitlementService:
         if not effective.has(feature):
             available_in = await self.plans_with_feature(feature)
             plan_key = effective.plan_key
+            _inc_gated(feature)
             raise FeatureNotEntitledError(
                 f"Feature {feature!r} is not available on the current plan",
                 extras={
@@ -252,3 +253,12 @@ def _deserialize(raw: str) -> EffectiveEntitlements:
             for metric, lim in data["limits"].items()
         },
     )
+
+
+def _inc_gated(feature: str) -> None:
+    try:
+        from synapse_saas.core import metrics
+
+        metrics.FEATURE_GATED.labels(feature=feature).inc()
+    except Exception as exc:  # metrics must never fail the request
+        logger.debug("metrics_inc_failed", metric="feature_gated", error=str(exc))

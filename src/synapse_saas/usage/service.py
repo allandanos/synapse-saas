@@ -13,6 +13,7 @@ being detected.
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
@@ -126,6 +127,7 @@ class UsageService:
         total = await self._increment_counter(organization_id, metric, quantity, now)
 
         if limit_value is not None and total > limit_value:
+            _inc_limited(metric)
             raise UsageLimitExceededError(
                 f"{metric} limit exceeded ({limit_value}/period)",
                 extras={
@@ -296,3 +298,10 @@ def _json(props: dict[str, Any]) -> str:
     import json
 
     return json.dumps(props)
+
+
+def _inc_limited(metric: str) -> None:
+    with contextlib.suppress(Exception):  # metrics must never fail the operation
+        from synapse_saas.core import metrics
+
+        metrics.USAGE_LIMITED.labels(metric=metric).inc()

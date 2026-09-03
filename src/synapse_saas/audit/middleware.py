@@ -36,4 +36,29 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         bind_request_context()
+
+        try:
+            from synapse_saas.core import metrics
+            from synapse_saas.core.config import get_settings
+
+            if get_settings().metrics_enabled:
+                metrics.record_http(
+                    request.method,
+                    self._route_template(request),
+                    response.status_code,
+                    duration_ms / 1000,
+                )
+        except Exception:  # metrics must never fail a request
+            from synapse_saas.core.logging import get_logger
+
+            get_logger(__name__).debug("metrics_record_failed")
+
         return response
+
+    @staticmethod
+    def _route_template(request: Request) -> str:
+        """Path template when matched (bounded), else 'unmatched'."""
+        route = request.scope.get("route")
+        if route is not None and getattr(route, "path", None):
+            return str(route.path)
+        return "unmatched"

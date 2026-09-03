@@ -11,6 +11,7 @@ and the event audited.
 
 from __future__ import annotations
 
+import contextlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -69,6 +70,7 @@ class IdentityService:
         await self.session.flush()
 
         self._audit(events.USER_REGISTERED, user_id=user.id, diff={"email": email})
+        _inc_auth("register")
         return user
 
     async def login(self, *, email: str, password: str) -> User:
@@ -79,10 +81,12 @@ class IdentityService:
             raise InvalidCredentialsError("Invalid email or password")
         if not verify_password(password, user.password_hash):
             self._audit(events.USER_LOGIN_FAILED, user_id=user.id, diff={"email": email})
+            _inc_auth("login_failed")
             raise InvalidCredentialsError("Invalid email or password")
 
         user.last_login_at = datetime.now(UTC)
         self._audit(events.USER_LOGIN_SUCCEEDED, user_id=user.id)
+        _inc_auth("login_succeeded")
         return user
 
     async def get_user(self, user_id: UUID) -> User:
@@ -298,3 +302,11 @@ def _dummy_hash() -> str:
         "c3NybU5vdEFSZWFsUGFzc3dvcmQ"
         "$bQ9OBGPOtW4Kpl6Z73pQ4Lc2v1OiqeuCYiY0FbxBNCs"
     )
+
+
+def _inc_auth(event: str) -> None:
+    """Best-effort auth counter — never fails the request it describes."""
+    with contextlib.suppress(Exception):  # metrics must never fail the request
+        from synapse_saas.core import metrics
+
+        metrics.AUTH_EVENTS.labels(event=event).inc()

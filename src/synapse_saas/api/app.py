@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST
 from sqlalchemy import text
 
 from synapse_saas.api.v1 import api_v1
@@ -127,6 +129,18 @@ def create_app() -> FastAPI:
                 checks["redis"] = f"error: {exc}"
         overall = "ok" if all(v in {"ok", "not_configured"} for v in checks.values()) else "error"
         return {"status": overall, "checks": checks}
+
+    @app.get("/metrics", tags=["health"], include_in_schema=False)
+    async def prometheus_metrics() -> Response:
+        from prometheus_client import generate_latest
+
+        from synapse_saas.core import metrics
+
+        if not settings.metrics_enabled:
+            return Response(status_code=404)
+        with contextlib.suppress(Exception):  # pool snapshot is best-effort
+            metrics.record_pool()
+        return Response(content=generate_latest(metrics.REGISTRY), media_type=CONTENT_TYPE_LATEST)
 
     @app.get("/v1/meta", tags=["health"])
     async def meta() -> dict[str, str]:

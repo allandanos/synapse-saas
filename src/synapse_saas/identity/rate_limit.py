@@ -10,6 +10,7 @@ legitimate users with fat-fingered passwords are unlikely to hit 5/min.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from typing import Any
 
@@ -105,6 +106,10 @@ def _too_many(request: Request, exc: Exception) -> JSONResponse:
 
     retry_after = getattr(exc, "extras", {}).get("retry_after_seconds", 60)
     logger.warning("auth_rate_limited", path=request.url.path, ip=_client_ip(request))
+    with contextlib.suppress(Exception):  # metrics must never fail the 429 itself
+        from synapse_saas.core import metrics
+
+        metrics.AUTH_EVENTS.labels(event="rate_limited").inc()
     if isinstance(exc, DomainError):
         doc = exc.to_problem(instance=str(request.url.path))
     else:

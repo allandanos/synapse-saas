@@ -36,6 +36,7 @@ dependencies = [
   "email-validator>=2.2",
   "aioboto3>=15.5.0",
   "python-multipart>=0.0.32",
+  "prometheus-client>=0.26.0",
 ]
 
 [project.urls]

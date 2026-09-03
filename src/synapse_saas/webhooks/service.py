@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 from datetime import UTC, datetime, timedelta
@@ -158,9 +159,11 @@ class WebhookService:
             delivery.delivered_at = datetime.now(UTC)
             delivery.last_response_code = response.status_code
             delivery.response_excerpt = response.text[:500]
+            _inc_delivery("delivered")
             return True
 
         await self._mark_failure(delivery, response.status_code, response.text[:500])
+        _inc_delivery("failed")
         return False
 
     @staticmethod
@@ -178,7 +181,15 @@ class WebhookService:
         delivery.last_response_code = code
         delivery.last_error = error[:500]
         if delivery.attempts >= min(delivery.max_attempts, MAX_DELIVERY_ATTEMPTS):
+            _inc_delivery("exhausted")
             delivery.status = "exhausted"
         else:
             backoff = DELIVERY_BACKOFF_SECONDS[min(delivery.attempts - 1, len(DELIVERY_BACKOFF_SECONDS) - 1)]
             delivery.next_attempt_at = datetime.now(UTC) + timedelta(seconds=backoff)
+
+
+def _inc_delivery(outcome: str) -> None:
+    with contextlib.suppress(Exception):  # metrics must never fail the operation
+        from synapse_saas.core import metrics
+
+        metrics.WEBHOOK_DELIVERIES.labels(outcome=outcome).inc()

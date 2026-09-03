@@ -7,6 +7,7 @@ fail the outbox dispatch that carries it.
 
 from __future__ import annotations
 
+import contextlib
 import smtplib
 from email.message import EmailMessage
 
@@ -23,6 +24,7 @@ class SmtpNotifier:
         settings = get_settings()
         if not settings.smtp_host:
             logger.info("notification_suppressed_no_smtp", to=to, subject=subject)
+            _inc_email("suppressed")
             return
         try:
             message = EmailMessage()
@@ -48,3 +50,10 @@ async def _send_message(message: EmailMessage, host: str, port: int) -> None:
 
 def get_notifier() -> SmtpNotifier:
     return SmtpNotifier()
+
+
+def _inc_email(outcome: str) -> None:
+    with contextlib.suppress(Exception):  # metrics must never fail email dispatch
+        from synapse_saas.core import metrics
+
+        metrics.EMAILS.labels(outcome=outcome).inc()
