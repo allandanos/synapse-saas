@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Building2,
+  Code2,
   CreditCard,
   KeyRound,
   ScrollText,
@@ -21,6 +22,7 @@ const NAV = [
   { href: "/dashboard/members", label: "Members", icon: Users },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
   { href: "/dashboard/api-keys", label: "API keys", icon: KeyRound },
+  { href: "/dashboard/developer", label: "Developer", icon: Code2 },
   { href: "/dashboard/usage", label: "Usage", icon: BarChart3 },
   { href: "/dashboard/audit", label: "Audit log", icon: ScrollText },
   { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook },
