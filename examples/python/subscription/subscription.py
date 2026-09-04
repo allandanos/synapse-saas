@@ -1,7 +1,7 @@
 """subscription (Python) — freemium lifecycle: quota wall → trial grant → upgrade.
 
-    SYNAPSE_API (default http://localhost:8000)
-    SYNAPSE_TOKEN (access token for an org owner), SYNAPSE_ORG (org uuid)
+SYNAPSE_API (default http://localhost:8000)
+SYNAPSE_TOKEN (access token for an org owner), SYNAPSE_ORG (org uuid)
 """
 
 from __future__ import annotations
