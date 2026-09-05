@@ -1,0 +1,140 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "src/**"
+      - "database/**"
+      - "config/**"
+      - "docker-compose.yml"
+      - ".github/workflows/e2e.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Playwright (chromium, video)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: synapse
+          POSTGRES_PASSWORD: synapse
+          POSTGRES_DB: synapse
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U synapse -d synapse"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@localhost:5433/synapse
+      SYNAPSE_REDIS_URL: redis://localhost:6380/0
+      SYNAPSE_SECRET_KEY: e2e-only-secret-key-32-bytes-minimum-ok!
+      SYNAPSE_AUTH_RATE_LIMIT_PER_IP: "1000"
+      SYNAPSE_AUTH_RATE_LIMIT_PER_IDENTITY: "100"
+      SYNAPSE_AUTO_SYNC_PLANS: "true"
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      E2E_BASE_URL: http://localhost:3000
+      E2E_API_URL: http://localhost:8000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install console dependencies
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build console
+        working-directory: apps/web
+        run: pnpm build
+
+      - name: Install Playwright browsers
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Set up Python + framework
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv sync --all-groups --frozen
+
+      - name: Run API (background)
+        run: |
+          nohup uv run uvicorn apps.api.main:app --port 8000 > /tmp/api.log 2>&1 &
+          echo $! > /tmp/api.pid
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/healthz && break
+            sleep 1
+          done
+          curl -sf http://localhost:8000/healthz
+
+      - name: Seed system (roles, plans)
+        run: uv run synapse-cli seed
+
+      - name: Run console (background)
+        working-directory: apps/web
+        run: |
+          nohup pnpm start > /tmp/web.log 2>&1 &
+          echo $! > /tmp/web.pid
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/login > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:3000/login > /dev/null
+
+      - name: Run Playwright (video for every test)
+        working-directory: apps/web
+        run: pnpm exec playwright test
+
+      - name: Upload videos + traces + report (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload service logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-logs
+          path: |
+            /tmp/api.log
+            /tmp/web.log
+          retention-days: 7
+          if-no-files-found: ignore

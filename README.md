@@ -1,6 +1,7 @@
 # Synapse SaaS Framework
 
 [![CI](https://github.com/allandanos/synapse-saas/actions/workflows/ci.yml/badge.svg)](https://github.com/allandanos/synapse-saas/actions/workflows/ci.yml)
+[![E2E](https://github.com/allandanos/synapse-saas/actions/workflows/e2e.yml/badge.svg)](https://github.com/allandanos/synapse-saas/actions/workflows/e2e.yml)
 
 An open-source, multi-tenant SaaS framework: clone → define your domain → configure plans → deploy.
 

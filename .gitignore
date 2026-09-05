@@ -45,3 +45,7 @@ sdk/java/target/
 examples/**/node_modules/
 examples/**/target/
 examples/**/dist/
+
+# Playwright
+apps/web/test-results/
+apps/web/playwright-report/
