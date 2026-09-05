@@ -23,10 +23,16 @@ test.describe("platform journeys", () => {
     const secretValue = await secret.textContent();
     expect(secretValue).toMatch(/^sk_[A-Za-z0-9_-]{20,}$/);
 
-    // Dismiss; the list shows the prefix only, never the full key again
+    // Dismiss; the list shows the prefix only, never the full key again.
+    // The server's prefix (what the UI renders) may differ in length from a
+    // naive slice — read it from the create response via the API.
     await page.getByRole("button", { name: /i'?ve saved it/i }).click();
     await expect(secret).toHaveCount(0);
-    await expect(page.getByText(`${secretValue?.slice(0, 8)}…`).first()).toBeVisible();
+    const listed = await request.get(`${API_URL}/v1/api-keys`, {
+      headers: { Authorization: `Bearer ${ctx.accessToken}`, "X-Org-Id": ctx.orgId },
+    });
+    const keyRow = ((await listed.json()) as Array<{ prefix: string; revoked_at: null }>)[0];
+    await expect(page.getByText(`${keyRow.prefix}…`).first()).toBeVisible();
 
     // Revoke kills the credential server-side
     const revoke = page.getByRole("button", { name: "Revoke" }).first();
