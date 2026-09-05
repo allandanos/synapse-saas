@@ -1,0 +1,188 @@
+package dev.synapse.example;
+
+import com.sun.net.httpserver.HttpServer;
+import dev.synapse.client.SynapseClient;
+import dev.synapse.client.SynapseException;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executors;
+
+/**
+ * domain-service (Java) — a real product service extending the framework.
+ *
+ * <p>The polyglot extension model: this Java service owns its domain
+ * ({@code POST /v1/reports}) and delegates tenancy decisions to the Synapse
+ * API server-to-server with an org API key:
+ *
+ * <ol>
+ *   <li>authenticates the caller with its own bearer token
+ *   <li>checks the org's entitlement (feature gate) via the SDK
+ *   <li>meters the work atomically (402 typed error when the ai_tokens
+ *       quota trips — before the expensive work runs)
+ *   <li>does the domain work
+ * </ol>
+ *
+ * <p>Env: SYNAPSE_API, SYNAPSE_KEY (org API key), SERVICE_TOKEN (default
+ * "demo-token" — what the product's own clients present), ADDR (default 8091).
+ */
+public final class DomainServiceSample {
+
+    public static void main(String[] args) throws IOException {
+        String api = envOr("SYNAPSE_API", "http://localhost:8000");
+        String key = System.getenv("SYNAPSE_KEY");
+        String serviceToken = envOr("SERVICE_TOKEN", "demo-token");
+        int port = Integer.parseInt(envOr("ADDR_PORT", "8091"));
+
+        if (key == null || key.isBlank()) {
+            System.err.println("Set SYNAPSE_KEY to an org API key (console → API keys)");
+            System.exit(1);
+        }
+
+        // One shared SDK client: the org's credential, pinned server-side.
+        SynapseClient client = SynapseClient.withApiKey(api, key);
+
+        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+        server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+
+        // ── Product metadata: what the org can see ─────────────────────────
+        server.createContext("/v1/plan", exchange -> {
+            if (!authorized(exchange, serviceToken)) {
+                respond(exchange, 401, Map.of("error", "unauthorized"));
+                return;
+            }
+            try {
+                Map<String, Object> ent = client.entitlements.effective();
+                respond(exchange, 200, Map.of(
+                    "plan", ent.get("plan_key"),
+                    "features", ent.get("features"),
+                    "limits", ent.get("limits")));
+            } catch (Exception e) {
+                respond(exchange, 502, Map.of("error", "framework unavailable",
+                    "detail", String.valueOf(e.getMessage())));
+            }
+        });
+
+        // ── The domain endpoint: gated + metered report generation ────────
+        server.createContext("/v1/reports", exchange -> {
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                respond(exchange, 405, Map.of("error", "POST only"));
+                return;
+            }
+            if (!authorized(exchange, serviceToken)) {
+                respond(exchange, 401, Map.of("error", "unauthorized"));
+                return;
+            }
+            try {
+                // 1 — Feature gate: is the org entitled to advanced_reports?
+                Map<String, Object> ent = client.entitlements.effective();
+                boolean entitled = ent.get("features") instanceof List<?> fl
+                    && fl.contains("advanced_reports");
+                if (!entitled) {
+                    respond(exchange, 403, Map.of(
+                        "error", "feature_not_entitled",
+                        "feature", "advanced_reports",
+                        "current_plan", ent.get("plan_key")));
+                    return;
+                }
+
+                String prompt = new String(exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8).replace("{\"prompt\":\"", "").replace("\"}", "");
+                if (prompt.isBlank()) {
+                    respond(exchange, 400, Map.of("error", "prompt required"));
+                    return;
+                }
+
+                // 2 — Meter BEFORE the work: quota trips are typed 402s.
+                int tokens = 500 + 25 * prompt.length();
+                try {
+                    client.usage.consume("ai_tokens", tokens);
+                } catch (SynapseException.LimitException ex) {
+                    respond(exchange, 402, Map.of(
+                        "error", "usage_limit_exceeded",
+                        "metric", ex.metric(),
+                        "limit", ex.limit(),
+                        "upgrade_url", ex.getBody().get("upgrade_url")));
+                    return;
+                }
+
+                // 3 — The domain work (stand-in for calling your model).
+                respond(exchange, 200, Map.of(
+                    "report", "Report for \"" + prompt + "\" — generated by the Java domain service.",
+                    "tokens_used", tokens,
+                    "plan", String.valueOf(ent.get("plan_key")),
+                    "metered", true));
+            } catch (Exception e) {
+                respond(exchange, 502, Map.of("error", "framework unavailable",
+                    "detail", String.valueOf(e.getMessage())));
+            }
+        });
+
+        server.start();
+        System.out.printf("Java domain service on %d — POST /v1/reports, GET /v1/plan%n", port);
+    }
+
+    private static boolean authorized(com.sun.net.httpserver.HttpExchange exchange, String token) {
+        return ("Bearer " + token).equals(
+            exchange.getRequestHeaders().getFirst("Authorization"));
+    }
+
+    private static void respond(com.sun.net.httpserver.HttpExchange exchange, int status, Object body)
+            throws IOException {
+        // Minimal JSON encoding for Map.of shapes used above
+        String json = toJson(body);
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(status, bytes.length);
+        try (OutputStream out = exchange.getResponseBody()) {
+            out.write(bytes);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String toJson(Object body) {
+        if (body instanceof Map<?, ?> map) {
+            StringBuilder sb = new StringBuilder("{");
+            boolean first = true;
+            for (Map.Entry<?, ?> e : ((Map<Object, Object>) map).entrySet()) {
+                if (!first) {
+                    sb.append(',');
+                }
+                first = false;
+                sb.append('"').append(e.getKey()).append("\":");
+                sb.append(toJson(e.getValue()));
+            }
+            return sb.append('}').toString();
+        }
+        if (body instanceof List<?> list) {
+            StringBuilder sb = new StringBuilder("[");
+            boolean first = true;
+            for (Object v : list) {
+                if (!first) {
+                    sb.append(',');
+                }
+                first = false;
+                sb.append(toJson(v));
+            }
+            return sb.append(']').toString();
+        }
+        if (body instanceof String s) {
+            return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        }
+        if (body instanceof Number || body instanceof Boolean) {
+            return String.valueOf(body);
+        }
+        return "null";
+    }
+
+    private static String envOr(String key, String fallback) {
+        String v = System.getenv(key);
+        return v == null || v.isBlank() ? fallback : v;
+    }
+
+    private DomainServiceSample() {}
+}

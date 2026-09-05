@@ -1,6 +1,6 @@
 # Examples
 
-Every example type in every SDK language — 4 × 4. All run against a live
+Every example type in every SDK language — 4 × 5. All run against a live
 compose stack; each demonstrates the same framework behaviors with the
 idioms of its language.
 
@@ -10,11 +10,18 @@ idioms of its language.
 | **multi-tenant** | [`python/`](python/multi-tenant/) | [`typescript/`](typescript/multi-tenant/) | [`go/`](go/multi-tenant/) | [`java/`](java/multi-tenant/) |
 | **subscription** | [`python/`](python/subscription/) | [`typescript/`](typescript/subscription/) | [`go/`](go/subscription/) | [`java/`](java/subscription/) |
 | **ai-saas** | [`python/`](python/ai-saas/) | [`typescript/`](typescript/ai-saas/) | [`go/`](go/ai-saas/) | [`java/`](java/ai-saas/) |
+| **domain-service** | [`python/`](python/domain-service/)² | [`typescript/`](typescript/domain-service/)² | [`go/`](go/domain-service/)² | [`java/`](java/domain-service/)² |
 
 ¹ The Python hello-saas is the **server-side extension** variant — it defines
 a real `Project(TenantMixin)` ORM model + router inside the framework process.
-Every other cell is a **client-side** script driving the running API through
-its SDK: same behaviors, different vantage point.
+Every other hello-saas cell is a **client-side** script driving the running
+API through its SDK.
+
+² domain-service cells are the **polyglot extension** variant: a real HTTP
+service per language owning its own domain endpoints, delegating entitlement
+gates and usage metering to the framework server-to-server with an org API
+key. See [docs/extending.md](../docs/extending.md) for the two extension
+models and when to pick which.
 
 ## The example types
 
@@ -24,6 +31,7 @@ its SDK: same behaviors, different vantage point.
 | **multi-tenant** | one user, two orgs: per-org usage/members/entitlements, cross-tenant 404s |
 | **subscription** | freemium lifecycle: quota wall (upgrade hints) → trial grant without a plan change → plan upgrade |
 | **ai-saas** | the SynapseDev.AI shape: metered inference calls (`ai_tokens`), typed quota errors to bill around, automatic `api_requests` metering on key auth |
+| **domain-service** | a real product service per language: own domain endpoints, own auth, SDK-driven feature gates (403) + quota walls (402) + metering |
 
 ## Common setup
 

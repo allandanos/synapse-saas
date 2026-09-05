@@ -99,6 +99,9 @@ usage.within_limit("api_requests")     # checked against the effective, overridd
 - [Usage metering](docs/usage-metering.md)
 - [Billing providers](docs/billing-providers.md)
 - [Webhooks](docs/webhooks.md)
+- [Extending the framework](docs/extending.md) (in-process vs. domain service)
+- [Observability](docs/observability.md)
+- [Deployment & HA](docs/deployment.md)
 - [API reference](docs/api.md) (live: `/docs`)
 - [ADRs](docs/adr/)
 
