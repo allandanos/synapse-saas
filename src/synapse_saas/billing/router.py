@@ -2,18 +2,31 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Request, status
 
 from synapse_saas.authorization.dependencies import require_permission
+from synapse_saas.billing.invoicing import InvoicingService
 from synapse_saas.billing.protocol import WebhookRequest
-from synapse_saas.billing.schemas import CheckoutRequest, CheckoutResponse, InvoiceRead, PortalUrlResponse
+from synapse_saas.billing.reporting import ReportingService
+from synapse_saas.billing.schemas import (
+    CheckoutRequest,
+    CheckoutResponse,
+    InvoiceDetailRead,
+    InvoiceDraftRequest,
+    InvoiceLineRead,
+    InvoiceRead,
+    PaymentRecordRequest,
+    PortalUrlResponse,
+)
 from synapse_saas.billing.service import BillingService
 from synapse_saas.billing.webhooks import BillingWebhookService
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.subscriptions.service import SubscriptionService
-from synapse_saas.tenancy.dependencies import TenantDep
+from synapse_saas.tenancy.dependencies import PlatformAdminDep, TenantDep
 from synapse_saas.tenancy.service import OrganizationService
 
 router = APIRouter(prefix="/billing", tags=["billing"])
@@ -83,6 +96,123 @@ async def list_invoices(tenant: TenantDep, session: SessionDep, user: CurrentUse
     await require_permission("billing:read", user, session, tenant)
     invoices = await BillingService(session).invoices_for_org(tenant.organization_id)
     return [InvoiceRead.model_validate(inv) for inv in invoices]
+
+
+# ── Reporting (tenant spend + platform revenue) ──────────────────────────────
+
+
+@router.get("/spend-summary")
+async def spend_summary(tenant: TenantDep, session: SessionDep, user: CurrentUser) -> dict[str, Any]:
+    """This org's lifetime billing position: billed/paid/outstanding by status."""
+    await require_permission("billing:read", user, session, tenant)
+    return await ReportingService(session).org_spend_summary(tenant.organization_id)
+
+
+@router.get("/spend-monthly")
+async def spend_monthly(tenant: TenantDep, session: SessionDep, user: CurrentUser) -> list[dict[str, Any]]:
+    await require_permission("billing:read", user, session, tenant)
+    return await ReportingService(session).org_monthly_spend(tenant.organization_id)
+
+
+@router.get("/admin/revenue-summary")
+async def revenue_summary(platform: PlatformAdminDep, session: SessionDep) -> dict[str, Any]:
+    """Platform-wide revenue view (MRR proxy, collected, outstanding)."""
+    return await ReportingService(session).revenue_summary()
+
+
+@router.get("/admin/revenue-monthly")
+async def revenue_monthly(platform: PlatformAdminDep, session: SessionDep) -> list[dict[str, Any]]:
+    return await ReportingService(session).monthly_revenue()
+
+
+# ── Framework-native invoicing (manual/enterprise path) ─────────────────────
+
+
+@router.post("/invoices/draft", response_model=InvoiceDetailRead, status_code=status.HTTP_201_CREATED)
+async def draft_invoice(
+    body: InvoiceDraftRequest,
+    tenant: TenantDep,
+    session: SessionDep,
+    user: CurrentUser,
+) -> InvoiceDetailRead:
+    """Generate (or return the existing) draft for the period: plan + overage lines."""
+    await require_permission("billing:manage", user, session, tenant)
+    period = _parse_period(body.period)
+    invoice = await InvoicingService(session).draft_for_org(
+        tenant.organization_id, period=period, created_by_user_id=user.id
+    )
+    return await _detail(session, invoice)
+
+
+@router.post("/invoices/{invoice_id}/finalize", response_model=InvoiceDetailRead)
+async def finalize_invoice(
+    invoice_id: UUID,
+    tenant: TenantDep,
+    session: SessionDep,
+    user: CurrentUser,
+) -> InvoiceDetailRead:
+    """Assign a number, lock amounts, move to open. Outbox emits for webhooks/email."""
+    await require_permission("billing:manage", user, session, tenant)
+    invoice = await InvoicingService(session).finalize(invoice_id, tenant.organization_id)
+    return await _detail(session, invoice)
+
+
+@router.post("/invoices/{invoice_id}/pay", response_model=InvoiceDetailRead)
+async def record_payment(
+    invoice_id: UUID,
+    body: PaymentRecordRequest,
+    tenant: TenantDep,
+    session: SessionDep,
+    user: CurrentUser,
+) -> InvoiceDetailRead:
+    """Record an external payment (bank transfer, check, cash) against an open invoice."""
+    await require_permission("billing:manage", user, session, tenant)
+    invoice = await InvoicingService(session).record_payment(
+        invoice_id,
+        tenant.organization_id,
+        amount_cents=body.amount_cents,
+        reference=body.reference,
+    )
+    return await _detail(session, invoice)
+
+
+@router.post("/invoices/{invoice_id}/void", response_model=InvoiceDetailRead)
+async def void_invoice(
+    invoice_id: UUID,
+    tenant: TenantDep,
+    session: SessionDep,
+    user: CurrentUser,
+) -> InvoiceDetailRead:
+    await require_permission("billing:manage", user, session, tenant)
+    invoice = await InvoicingService(session).void(invoice_id, tenant.organization_id)
+    return await _detail(session, invoice)
+
+
+@router.get("/invoices/{invoice_id}", response_model=InvoiceDetailRead)
+async def get_invoice_detail(
+    invoice_id: UUID, tenant: TenantDep, session: SessionDep, user: CurrentUser
+) -> InvoiceDetailRead:
+    await require_permission("billing:read", user, session, tenant)
+    invoice = await InvoicingService(session).get(invoice_id, tenant.organization_id)
+    return await _detail(session, invoice)
+
+
+async def _detail(session: SessionDep, invoice: Any) -> InvoiceDetailRead:
+    service = InvoicingService(session)
+    lines = await service.lines_for(invoice.id, invoice.organization_id)
+    base = InvoiceRead.model_validate(invoice)
+    return InvoiceDetailRead(
+        **base.model_dump(),
+        lines=[InvoiceLineRead.model_validate(line) for line in lines],
+    )
+
+
+def _parse_period(raw: str | None) -> date | None:
+    if raw is None:
+        return None
+    from datetime import datetime as _dt
+
+    return _dt.strptime(raw, "%Y-%m").date().replace(day=1)
 
 
 @router.post("/webhooks/{provider}", status_code=status.HTTP_200_OK)

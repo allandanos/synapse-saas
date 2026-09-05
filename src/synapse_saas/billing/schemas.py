@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CheckoutRequest(BaseModel):
@@ -38,3 +38,28 @@ class InvoiceRead(BaseModel):
     issued_at: datetime | None
     paid_at: datetime | None
     created_at: datetime
+
+
+class InvoiceLineRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    kind: str
+    description: str
+    quantity: int
+    unit_amount_cents: int
+    amount_cents: int
+    metric: str | None
+
+
+class InvoiceDetailRead(InvoiceRead):
+    lines: list[InvoiceLineRead] = []
+
+
+class InvoiceDraftRequest(BaseModel):
+    period: str | None = Field(None, pattern=r"^\d{4}-\d{2}$")
+
+
+class PaymentRecordRequest(BaseModel):
+    amount_cents: int = Field(gt=0)
+    reference: str | None = None

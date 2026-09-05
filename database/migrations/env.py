@@ -31,6 +31,7 @@ from synapse_saas import (  # noqa: F401
 from synapse_saas.api_keys import models as _api_keys_models  # noqa: F401
 from synapse_saas.audit import models as _audit_models  # noqa: F401
 from synapse_saas.authorization import models as _authz_models  # noqa: F401
+from synapse_saas.billing import invoicing as _billing_invoicing  # noqa: F401
 from synapse_saas.billing import models as _billing_models  # noqa: F401
 from synapse_saas.entitlements import models as _entl_models  # noqa: F401
 from synapse_saas.feature_flags import models as _feature_flags_models  # noqa: F401
