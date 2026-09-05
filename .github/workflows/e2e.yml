@@ -99,8 +99,10 @@ jobs:
           done
           curl -sf http://localhost:8000/healthz
 
-      - name: Seed system (roles, plans)
-        run: uv run synapse-cli seed
+      - name: Migrate + seed system (roles, plans)
+        run: |
+          uv run alembic -c database/alembic.ini upgrade head
+          uv run synapse-cli seed
 
       - name: Run console (background)
         working-directory: apps/web
