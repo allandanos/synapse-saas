@@ -55,7 +55,7 @@ class Handler(BaseHTTPRequestHandler):
     def _authorized(self) -> bool:
         return self.headers.get("Authorization") == f"Bearer {SERVICE_TOKEN}"
 
-    def do_GET(self) -> None:  # noqa: N802 — http.server API
+    def do_GET(self) -> None:  # http.server API naming
         if self.path != "/v1/plan":
             self._json(404, {"error": "not found"})
             return
@@ -65,7 +65,7 @@ class Handler(BaseHTTPRequestHandler):
         ent = client.entitlements.effective()
         self._json(200, {"plan": ent["plan_key"], "features": ent["features"], "limits": ent["limits"]})
 
-    def do_POST(self) -> None:  # noqa: N802 — http.server API
+    def do_POST(self) -> None:  # http.server API naming
         if self.path != "/v1/reports":
             self._json(404, {"error": "not found"})
             return
