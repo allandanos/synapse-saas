@@ -203,6 +203,15 @@ class InvoicingService:
             organization_id=organization_id,
             payload={"number": invoice.number, "total_cents": invoice.total_cents, "status": "open"},
         )
+        # Delivery email rides the same outbox (worker renders + attaches the PDF)
+        append_outbox(
+            self.session,
+            event_type="invoice.email",
+            aggregate_type="invoice",
+            aggregate_id=invoice.id,
+            organization_id=organization_id,
+            payload={"invoice_id": str(invoice.id), "reason": "finalized"},
+        )
         AuditService(self.session).log(
             "invoice.finalized",
             organization_id=organization_id,
@@ -244,6 +253,14 @@ class InvoicingService:
                 "currency": invoice.currency,
                 "reference": reference,
             },
+        )
+        append_outbox(
+            self.session,
+            event_type="invoice.email",
+            aggregate_type="invoice",
+            aggregate_id=invoice.id,
+            organization_id=organization_id,
+            payload={"invoice_id": str(invoice.id), "reason": "paid"},
         )
         AuditService(self.session).log(
             "invoice.payment_recorded",

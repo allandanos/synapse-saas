@@ -321,3 +321,109 @@ class TestReporting:
 
         monthly = (await client.get("/v1/billing/admin/revenue-monthly", headers=headers)).json()
         assert any(m["collected_cents"] >= 199900 for m in monthly)
+
+
+class TestInvoicePdfAndEmail:
+    async def test_pdf_downloads_with_valid_header(self, client: AsyncClient, org_and_tokens) -> None:
+        headers = org_headers(org_and_tokens)
+        await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "pro"})
+        invoice = await draft(client, org_and_tokens)
+
+        res = await client.get(f"/v1/billing/invoices/{invoice['id']}/pdf", headers=headers)
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "application/pdf"
+        assert res.headers["content-disposition"].startswith("attachment; filename=")
+        body = res.content
+        assert len(body) > 500  # a real PDF, not a stub
+        assert body[:5] == b"%PDF-"
+        # Drafts carry no number yet — filename falls back to the id
+        assert invoice["id"] in res.headers["content-disposition"]
+
+    async def test_pdf_after_finalize_has_number_in_filename(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        headers = org_headers(org_and_tokens)
+        await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "starter"})
+        invoice = await draft(client, org_and_tokens)
+        finalized = (
+            await client.post(f"/v1/billing/invoices/{invoice['id']}/finalize", headers=headers)
+        ).json()
+
+        res = await client.get(f"/v1/billing/invoices/{invoice['id']}/pdf", headers=headers)
+        assert finalized["number"] in res.headers["content-disposition"]
+
+    async def test_pdf_is_tenant_scoped(self, client: AsyncClient, org_and_tokens) -> None:
+        invoice = await draft(client, org_and_tokens)
+        rival = await client.post(
+            "/v1/auth/register",
+            json={
+                "email": f"pdf-rival-{uuid.uuid4().hex[:6]}@example.com",
+                "password": "password12345",
+                "display_name": "R",
+            },
+        )
+        rival_token = rival.json()["tokens"]["access_token"]
+        rival_org = (
+            await client.post(
+                "/v1/orgs",
+                headers={"Authorization": f"Bearer {rival_token}"},
+                json={"name": "Rival"},
+            )
+        ).json()["id"]
+
+        res = await client.get(
+            f"/v1/billing/invoices/{invoice['id']}/pdf",
+            headers={"Authorization": f"Bearer {rival_token}", "X-Org-Id": rival_org},
+        )
+        assert res.status_code == 404
+
+    async def test_finalize_queues_email_with_attachment(
+        self, client: AsyncClient, org_and_tokens, monkeypatch
+    ) -> None:
+        """The invoice.email outbox event drives a send WITH the PDF attached."""
+        headers = org_headers(org_and_tokens)
+        await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "pro"})
+
+        # Give the org a billing email (recipient resolution)
+        from synapse_saas.core.db import get_session_factory
+        from synapse_saas.tenancy.models import Organization
+
+        factory = get_session_factory()
+        async with factory() as session:
+            org = await session.get(Organization, uuid.UUID(org_and_tokens["org_id"]))
+            org.settings = {**org.settings, "billing_email": "ap@example.com"}
+            await session.commit()
+
+        from synapse_saas.notifications import handlers
+        from synapse_saas.notifications.smtp import Attachment
+
+        sent: list[dict] = []
+
+        class RecordingNotifier:
+            async def send(self, *, to, subject, body, attachments=None):
+                sent.append(
+                    {
+                        "to": to,
+                        "subject": subject,
+                        "attachments": list(attachments or []),
+                    }
+                )
+
+        monkeypatch.setattr(handlers, "get_notifier", RecordingNotifier)
+
+        invoice = await draft(client, org_and_tokens)
+        finalize_res = await client.post(f"/v1/billing/invoices/{invoice['id']}/finalize", headers=headers)
+        assert finalize_res.status_code == 200
+
+        from synapse_saas.worker.jobs import dispatch_outbox
+
+        await dispatch_outbox({})
+
+        deliveries = [s for s in sent if s["to"] == "ap@example.com"]
+        assert deliveries, f"expected invoice email, sent: {sent}"
+        email = deliveries[0]
+        assert "INV-" in email["subject"]
+        assert email["attachments"], "PDF must be attached"
+        assert isinstance(email["attachments"][0], Attachment)
+        assert email["attachments"][0].content[:5] == b"%PDF-"
+        assert email["attachments"][0].filename.endswith(".pdf")

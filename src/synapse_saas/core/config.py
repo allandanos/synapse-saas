@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     grace_on_past_due: bool = True
     default_plan_key: str = "free"
 
+    # ── Invoicing ────────────────────────────────────────────────────────────────
+    # Printed in the footer of framework-generated invoices (bank details etc.)
+    manual_pay_to_instructions: str = ""
+
     # ── Email ───────────────────────────────────────────────────────────────────
     smtp_host: str = ""
     smtp_port: int = 1025

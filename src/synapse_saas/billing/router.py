@@ -6,9 +6,10 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request, Response, status
 
 from synapse_saas.authorization.dependencies import require_permission
+from synapse_saas.billing.invoice_pdf import render_invoice_pdf
 from synapse_saas.billing.invoicing import InvoicingService
 from synapse_saas.billing.protocol import WebhookRequest
 from synapse_saas.billing.reporting import ReportingService
@@ -186,6 +187,51 @@ async def void_invoice(
     await require_permission("billing:manage", user, session, tenant)
     invoice = await InvoicingService(session).void(invoice_id, tenant.organization_id)
     return await _detail(session, invoice)
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+async def download_invoice_pdf(
+    invoice_id: UUID,
+    tenant: TenantDep,
+    session: SessionDep,
+    user: CurrentUser,
+) -> Response:
+    """Stream the framework-rendered PDF for an invoice."""
+    from fastapi.responses import Response as FastResponse
+
+    await require_permission("billing:read", user, session, tenant)
+    service = InvoicingService(session)
+    invoice = await service.get(invoice_id, tenant.organization_id)
+    lines = await service.lines_for(invoice_id, tenant.organization_id)
+
+    from synapse_saas.tenancy.models import Organization
+
+    org = await session.get(Organization, tenant.organization_id)
+    org_name = org.name if org else "Unknown Organization"
+
+    from synapse_saas.core.config import get_settings
+
+    settings = get_settings()
+    billing_email = None
+    if invoice.billing_customer_id is not None:
+        from synapse_saas.billing.models import BillingCustomer
+
+        customer = await session.get(BillingCustomer, invoice.billing_customer_id)
+        billing_email = str(customer.email) if customer and customer.email else None
+
+    pdf_bytes = render_invoice_pdf(
+        invoice,
+        lines,
+        org_name=org_name,
+        billing_email=billing_email,
+        pay_to_instructions=settings.manual_pay_to_instructions or None,
+    )
+    filename = f"invoice-{invoice.number or invoice.id}.pdf"
+    return FastResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/invoices/{invoice_id}", response_model=InvoiceDetailRead)
