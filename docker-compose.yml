@@ -17,6 +17,9 @@ x-api-base: &api-base
     SYNAPSE_WEB_ORIGIN: ${SYNAPSE_WEB_ORIGIN:-http://localhost:3000}
     SYNAPSE_STRIPE_SECRET_KEY: ${SYNAPSE_STRIPE_SECRET_KEY:-}
     SYNAPSE_STRIPE_WEBHOOK_SECRET: ${SYNAPSE_STRIPE_WEBHOOK_SECRET:-}
+    SYNAPSE_SMTP_HOST: ${SYNAPSE_SMTP_HOST:-}          # e.g. mailhog for local mail capture
+    SYNAPSE_SMTP_PORT: ${SYNAPSE_SMTP_PORT:-1025}
+    SYNAPSE_SMTP_FROM: ${SYNAPSE_SMTP_FROM:-synapse@localhost}
     SYNAPSE_XENDIT_SECRET_KEY: ${SYNAPSE_XENDIT_SECRET_KEY:-}
     SYNAPSE_XENDIT_WEBHOOK_TOKEN: ${SYNAPSE_XENDIT_WEBHOOK_TOKEN:-}
     SYNAPSE_PAYMONGO_SECRET_KEY: ${SYNAPSE_PAYMONGO_SECRET_KEY:-}
@@ -110,7 +113,8 @@ services:
     image: mailhog/mailhog:latest
     profiles: [extras]
     ports:
-      - "8025:8025"
+      - "1025:1025"  # SMTP — point SYNAPSE_SMTP_HOST here to capture mail
+      - "8025:8025"  # Web UI + JSON API
 
   minio:
     image: minio/minio:latest

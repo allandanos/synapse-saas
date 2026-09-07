@@ -74,6 +74,30 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
   return body as T;
 }
 
+/**
+ * Authenticated binary download (invoice PDFs). Returns the decoded Blob and
+ * the server's content-disposition filename. Bearer-authed like `api()`; a
+ * plain <a href> cannot carry the Authorization header.
+ */
+export async function apiDownload(
+  path: string,
+): Promise<{ blob: Blob; filename: string | null }> {
+  let res = await rawRequest(path, { method: "GET" });
+
+  if (res.status === 401) {
+    const refreshed = await refreshTokens();
+    if (refreshed) res = await rawRequest(path, { method: "GET" });
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body);
+  }
+  const disposition = res.headers.get("content-disposition");
+  const match = disposition?.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+  return { blob: await res.blob(), filename: match?.[1] ?? null };
+}
+
 /* ── Shared types ────────────────────────────────────────────────────────── */
 
 export interface Org {

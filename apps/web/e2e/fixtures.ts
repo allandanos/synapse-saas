@@ -127,5 +127,54 @@ export function api(request: APIRequestContext, ctx: StackContext) {
   };
 }
 
+// ── MailHog (SMTP sink) ─────────────────────────────────────────────────────
+
+export const MAILHOG_API_URL = process.env.MAILHOG_API_URL ?? "http://localhost:8025";
+
+export interface MailhogMessage {
+  to: string;
+  subject: string;
+  /** Raw MIME source — attachment assertions parse this. */
+  raw: string;
+}
+
+/** All messages currently captured by MailHog. */
+export async function mailhogMessages(
+  request: APIRequestContext,
+): Promise<MailhogMessage[]> {
+  const res = await request.get(`${MAILHOG_API_URL}/api/v2/messages?limit=50`);
+  if (!res.ok()) return [];
+  const body = (await res.json()) as {
+    items?: { To?: { Mailbox?: string; Domain?: string }[]; Content?: { Headers?: { Subject?: string[] }; Body?: string } }[];
+  };
+  return (body.items ?? []).map((item) => ({
+    to: (item.To ?? []).map((t) => `${t.Mailbox}@${t.Domain}`).join(","),
+    subject: item.Content?.Headers?.Subject?.[0] ?? "",
+    raw: item.Content?.Body ?? "",
+  }));
+}
+
+/** Poll until a message matching `predicate` lands (worker dispatch is async). */
+export async function waitForEmail(
+  request: APIRequestContext,
+  predicate: (m: MailhogMessage) => boolean,
+  timeoutMs = 15_000,
+): Promise<MailhogMessage> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const found = (await mailhogMessages(request)).find(predicate);
+    if (found) return found;
+    if (Date.now() > deadline) {
+      const all = await mailhogMessages(request);
+      throw new Error(
+        `expected email not received within ${timeoutMs}ms; mailbox: ${JSON.stringify(
+          all.map((m) => ({ to: m.to, subject: m.subject })),
+        )}`,
+      );
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
 // Re-export so journeys import one module.
 export { base as test, expect };

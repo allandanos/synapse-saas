@@ -73,7 +73,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Request-Id", "Retry-After"],
+        expose_headers=["X-Request-Id", "Retry-After", "Content-Disposition"],
     )
     app.add_middleware(AuthRateLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)

@@ -49,6 +49,12 @@ def _record_job(job: str, outcome: str, t0: float) -> None:
 
 
 async def _dispatch_outbox_impl(ctx: dict[str, Any]) -> int:
+    # Import order matters: these models FK cross-module (organizations, users).
+    # A partial registry fails mapper configuration at query time — the worker's
+    # lazy imports must land the whole graph before any ORM use.
+    import synapse_saas.authorization.models
+    import synapse_saas.identity.models
+    import synapse_saas.tenancy.models  # noqa: F401
     from synapse_saas.audit.models import OutboxEvent
     from synapse_saas.webhooks.models import WebhookDelivery
 

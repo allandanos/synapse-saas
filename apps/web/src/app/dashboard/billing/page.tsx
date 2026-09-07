@@ -2,12 +2,20 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check } from "lucide-react";
-import { api, formatMoney, type Invoice, type Plan, type Subscription } from "@/lib/api";
+import { Check, Download } from "lucide-react";
+import {
+  api,
+  apiDownload,
+  formatMoney,
+  type Invoice,
+  type Plan,
+  type Subscription,
+} from "@/lib/api";
 
 export default function BillingPage() {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const { data: plans } = useQuery({
     queryKey: ["plans"],
@@ -59,6 +67,25 @@ export default function BillingPage() {
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
     },
   });
+
+  const downloadPdf = async (invoiceId: string) => {
+    setDownloadingId(invoiceId);
+    try {
+      const { blob, filename } = await apiDownload(`/v1/billing/invoices/${invoiceId}/pdf`);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename ?? `invoice-${invoiceId}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "PDF download failed");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   const currentKey = subscription?.plan_snapshot.key;
 
@@ -149,6 +176,7 @@ export default function BillingPage() {
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 font-medium">Amount</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium sr-only">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -171,11 +199,22 @@ export default function BillingPage() {
                       {inv.status}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => downloadPdf(inv.id)}
+                      disabled={downloadingId === inv.id}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:opacity-50"
+                      aria-label={`Download invoice PDF${inv.paid_at ? " (paid)" : ""}`}
+                    >
+                      <Download className="h-3.5 w-3.5" aria-hidden />
+                      {downloadingId === inv.id ? "Downloading…" : "PDF"}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {(invoices ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-zinc-400">
+                  <td colSpan={4} className="px-4 py-8 text-center text-zinc-400">
                     No invoices yet.
                   </td>
                 </tr>

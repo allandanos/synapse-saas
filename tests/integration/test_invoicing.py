@@ -427,3 +427,52 @@ class TestInvoicePdfAndEmail:
         assert isinstance(email["attachments"][0], Attachment)
         assert email["attachments"][0].content[:5] == b"%PDF-"
         assert email["attachments"][0].filename.endswith(".pdf")
+
+    async def test_pdf_render_survives_hostile_unicode(self, org_and_tokens) -> None:
+        """Core fonts are latin-1; any user-sourced string must render, not crash.
+
+        Regression: the PAID stamp (bold font) and pay-to instructions
+        (multi_cell) bypassed the sanitizer and crashed the email handler.
+        """
+        from datetime import UTC, datetime
+
+        from synapse_saas.billing.invoice_pdf import render_invoice_pdf
+        from synapse_saas.billing.invoicing import InvoiceLine
+        from synapse_saas.billing.models import Invoice
+
+        def make_line(description: str) -> InvoiceLine:
+            return InvoiceLine(
+                id=None,
+                invoice_id=None,
+                kind="plan",
+                description=description,
+                quantity=1,
+                unit_amount_cents=199900,
+                amount_cents=199900,
+            )
+
+        hostile = "Acme — “Enterprises” Ltd ₱ tier"
+        for status, paid_at, pay_to in (
+            ("open", None, "BDO bank — acct 1234"),
+            ("paid", datetime(2026, 9, 7, tzinfo=UTC), None),
+        ):
+            invoice = Invoice(
+                id=None,
+                organization_id=None,
+                status=status,
+                total_cents=199900,
+                subtotal_cents=199900,
+                tax_cents=0,
+                currency="PHP",
+                number="INV-202609-0099",
+                issued_at=datetime(2026, 9, 7, tzinfo=UTC),
+                paid_at=paid_at,
+            )
+            data = render_invoice_pdf(
+                invoice,
+                [make_line("Pro plan — “annual” ₱1,999")],
+                org_name=hostile,
+                billing_email="ap@example.com",
+                pay_to_instructions=pay_to,
+            )
+            assert data[:5] == b"%PDF-", f"{status} path must render"

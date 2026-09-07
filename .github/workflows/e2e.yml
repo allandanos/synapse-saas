@@ -46,6 +46,12 @@ jobs:
           --health-interval 2s
           --health-timeout 3s
           --health-retries 20
+      mailhog:
+        # SMTP sink for invoice-email journeys: API sends to :1025,
+        # tests assert against the :8025 JSON API.
+        image: mailhog/mailhog:latest
+        ports:
+          - 8025:8025
 
     env:
       SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@localhost:5433/synapse
@@ -54,9 +60,13 @@ jobs:
       SYNAPSE_AUTH_RATE_LIMIT_PER_IP: "1000"
       SYNAPSE_AUTH_RATE_LIMIT_PER_IDENTITY: "100"
       SYNAPSE_AUTO_SYNC_PLANS: "true"
+      SYNAPSE_SMTP_HOST: localhost
+      SYNAPSE_SMTP_PORT: "1025"
+      SYNAPSE_SMTP_FROM: billing@synapse.test
       NEXT_PUBLIC_API_URL: http://localhost:8000
       E2E_BASE_URL: http://localhost:3000
       E2E_API_URL: http://localhost:8000
+      MAILHOG_API_URL: http://localhost:8025
 
     steps:
       - uses: actions/checkout@v4
@@ -104,6 +114,13 @@ jobs:
           done
           curl -sf http://localhost:8000/healthz
 
+      - name: Run worker (background — outbox dispatch drives invoice emails)
+        run: |
+          nohup uv run synapse-worker > /tmp/worker.log 2>&1 &
+          echo $! > /tmp/worker.pid
+          sleep 3
+          grep -q "worker_started" /tmp/worker.log || (cat /tmp/worker.log && exit 1)
+
       - name: Run console (background)
         working-directory: apps/web
         run: |
@@ -137,6 +154,7 @@ jobs:
           name: service-logs
           path: |
             /tmp/api.log
+            /tmp/worker.log
             /tmp/web.log
           retention-days: 7
           if-no-files-found: ignore

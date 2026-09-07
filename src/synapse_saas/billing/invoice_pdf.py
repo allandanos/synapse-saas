@@ -8,7 +8,7 @@ for fpdf2's file-ID header.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
@@ -57,8 +57,27 @@ def format_qty(n: int) -> str:
     return f"{n:,}"
 
 
+def _cell_sanitize(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Sanitize the `text` argument of fpdf2 cell/multi_cell calls.
+
+    `text` is positional #3 (w, h, text) in both signatures; it may also
+    arrive by keyword. Everything else passes through untouched.
+    """
+    if "text" in kwargs:
+        if isinstance(kwargs["text"], str):
+            kwargs["text"] = _latin1(kwargs["text"])
+    elif len(args) >= 3 and isinstance(args[2], str):
+        args = (*args[:2], _latin1(args[2]), *args[3:])
+    return fn(*args, **kwargs)
+
+
 class InvoicePDF(FPDF):
-    """Minimal A4 invoice layout with a repeating footer."""
+    """Minimal A4 invoice layout with a repeating footer.
+
+    Every text primitive is sanitized at this boundary — core fonts are
+    latin-1, and callers (including future literals) must not have to know
+    that. A raw em-dash in a bold cell crashes fpdf2 otherwise.
+    """
 
     def __init__(self, invoice_number: str) -> None:
         super().__init__(orientation="P", unit="mm", format="A4")
@@ -67,6 +86,12 @@ class InvoicePDF(FPDF):
         self.set_auto_page_break(auto=True, margin=24)
         self.set_title(f"Invoice {invoice_number}")
         self.add_page()
+
+    def cell(self, *args: Any, **kwargs: Any) -> Any:
+        return _cell_sanitize(super().cell, *args, **kwargs)
+
+    def multi_cell(self, *args: Any, **kwargs: Any) -> Any:
+        return _cell_sanitize(super().multi_cell, *args, **kwargs)
 
     def footer(self) -> None:
         self.set_y(-16)
@@ -256,7 +281,7 @@ def _instructions(pdf: InvoicePDF, invoice: Invoice, pay_to: str | None) -> None
         pdf.cell(
             0,
             6,
-            f"PAID{'' if invoice.paid_at is None else f' — {invoice.paid_at:%b %d, %Y}'}",
+            f"PAID{'' if invoice.paid_at is None else f' - {invoice.paid_at:%b %d, %Y}'}",
             new_x=XPos.LMARGIN,
             new_y=YPos.NEXT,
         )
