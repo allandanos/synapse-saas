@@ -45,6 +45,9 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     # Project-scoped example (the pattern domain apps extend)
     PermissionDef("project:read", "project", "read", "View projects"),
     PermissionDef("project:manage", "project", "manage", "Create, update, and delete projects"),
+    # Agents (registry governance — ADR 0007)
+    PermissionDef("agents:read", "agents", "read", "View registered agents"),
+    PermissionDef("agents:manage", "agents", "manage", "Register, update, enable/disable agents"),
 )
 
 PERMISSION_KEYS: frozenset[str] = frozenset(p.key for p in PERMISSIONS)
@@ -69,6 +72,7 @@ _DEVELOPER = {
     "webhook:manage",
     "usage:read",
     "apikey:manage",
+    "agents:read",
 }
 _MEMBER = {"org:read", "project:read"}
 

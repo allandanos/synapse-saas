@@ -28,7 +28,7 @@ x-api-base: &api-base
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: synapse
       POSTGRES_PASSWORD: synapse
@@ -59,7 +59,7 @@ services:
   # the dev stack's postgres (whose system roles a suite TRUNCATE would wipe).
   # tmpfs: disposable by design; `make test-pg` recreates schema each run.
   postgres-test:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     profiles: [test]
     environment:
       POSTGRES_USER: synapse

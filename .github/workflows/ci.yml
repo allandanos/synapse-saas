@@ -67,7 +67,7 @@ jobs:
     needs: [lint, unit]
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: synapse
           POSTGRES_PASSWORD: synapse

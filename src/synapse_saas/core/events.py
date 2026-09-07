@@ -67,3 +67,8 @@ WEBHOOK_ENDPOINT_DELETED = "webhook.endpoint_deleted"
 WEBHOOK_DELIVERED = "webhook.delivered"
 WEBHOOK_DELIVERY_FAILED = "webhook.delivery_failed"
 WEBHOOK_DELIVERY_EXHAUSTED = "webhook.delivery_exhausted"
+
+# ── Agents (registry/governance only — see ADR 0007) ──────────────────────────
+AGENT_REGISTERED = "agent.registered"
+AGENT_UPDATED = "agent.updated"
+AGENT_DISABLED = "agent.disabled"
