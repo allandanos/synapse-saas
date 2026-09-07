@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Bot,
   Building2,
   Code2,
   CreditCard,
@@ -21,6 +22,7 @@ import { useAuth } from "@/lib/auth-context";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/dashboard/members", label: "Members", icon: Users },
+  { href: "/dashboard/agents", label: "Agents", icon: Bot },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
   { href: "/dashboard/api-keys", label: "API keys", icon: KeyRound },
   { href: "/dashboard/developer", label: "Developer", icon: Code2 },

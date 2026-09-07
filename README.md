@@ -98,6 +98,7 @@ usage.within_limit("api_requests")     # checked against the effective, overridd
 - [Multi-tenancy](docs/multi-tenancy.md)
 - [Plans & entitlements](docs/plans-and-entitlements.md)
 - [Usage metering](docs/usage-metering.md)
+- [Agents — governance & billing](docs/agents.md)
 - [Billing providers](docs/billing-providers.md)
 - [Webhooks](docs/webhooks.md)
 - [Extending the framework](docs/extending.md) (in-process vs. domain service)
