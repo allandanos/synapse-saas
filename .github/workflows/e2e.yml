@@ -51,7 +51,8 @@ jobs:
         # tests assert against the :8025 JSON API.
         image: mailhog/mailhog:latest
         ports:
-          - 8025:8025
+          - 1025:1025  # SMTP — the worker sends here
+          - 8025:8025  # JSON API — the tests assert here
 
     env:
       SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@localhost:5433/synapse
