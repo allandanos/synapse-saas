@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from synapse_saas.api.v1 import api_v1
 from synapse_saas.audit.middleware import RequestContextMiddleware
+from synapse_saas.core.commit_before_send import CommitBeforeSendMiddleware
 from synapse_saas.core.config import get_settings
 from synapse_saas.core.db import dispose_engine, get_session_factory
 from synapse_saas.core.errors import DomainError
@@ -76,6 +77,10 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(AuthRateLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
+    # Innermost: session commits land before the first response byte —
+    # a follow-up request on the same connection can never read pre-commit
+    # state (see core/commit_before_send.py).
+    app.add_middleware(CommitBeforeSendMiddleware)
 
     @app.exception_handler(DomainError)
     async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:

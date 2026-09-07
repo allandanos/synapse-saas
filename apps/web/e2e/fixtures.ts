@@ -36,21 +36,39 @@ export async function createStackContext(
   const reg = await request.post(`${API_URL}/v1/auth/register`, {
     data: { email, password, display_name: `E2E ${label}` },
   });
-  expect(reg.ok(), `register ${email}`).toBeTruthy();
-  const tokens = (await reg.json()).tokens as { access_token: string; refresh_token: string };
+  // Surface the RFC7807 body on failure — "create org 401" alone hides the why.
+  const regBody = (await reg.json().catch(() => ({}))) as {
+    tokens?: { access_token: string; refresh_token: string };
+  };
+  expect(
+    reg.ok(),
+    `register ${email}: ${reg.status()} ${JSON.stringify(regBody).slice(0, 300)}`,
+  ).toBeTruthy();
+  expect(
+    regBody.tokens?.access_token,
+    `register returned no access token: ${reg.status()}`,
+  ).toBeTruthy();
 
   const org = await request.post(`${API_URL}/v1/orgs`, {
-    headers: { Authorization: `Bearer ${tokens.access_token}` },
+    headers: { Authorization: `Bearer ${regBody.tokens!.access_token}` },
     data: { name: `E2E ${label} Org` },
   });
-  expect(org.ok(), "create org").toBeTruthy();
-  const orgBody = (await org.json()) as { id: string; slug: string };
+  const orgBody = (await org.json().catch(() => ({}))) as {
+    id?: string;
+    slug?: string;
+    detail?: string;
+  };
+  expect(
+    org.ok(),
+    `create org: ${org.status()} ${JSON.stringify(orgBody).slice(0, 300)}`,
+  ).toBeTruthy();
+  expect(orgBody.id, "org id").toBeTruthy();
 
   return {
-    accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token,
-    orgId: orgBody.id,
-    orgSlug: orgBody.slug,
+    accessToken: regBody.tokens!.access_token,
+    refreshToken: regBody.tokens!.refresh_token,
+    orgId: orgBody.id!,
+    orgSlug: orgBody.slug ?? "",
     email,
   };
 }
