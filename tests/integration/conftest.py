@@ -20,9 +20,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def _database_url() -> str:
     import os
 
+    # Default: the scratch test database (compose service `postgres-test`,
+    # port 5434, tmpfs). NEVER the dev stack's 5433 — the between-test
+    # TRUNCATE would wipe its system roles mid-development.
     return os.environ.get(
         "SYNAPSE_DATABASE_URL",
-        "postgresql+asyncpg://synapse:synapse@localhost:5433/synapse",
+        "postgresql+asyncpg://synapse:synapse@localhost:5434/synapse_test",
     )
 
 

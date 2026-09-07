@@ -105,6 +105,7 @@ export interface Org {
   slug: string;
   name: string;
   role_keys: string[];
+  settings: Record<string, unknown>;
 }
 
 export interface Me {

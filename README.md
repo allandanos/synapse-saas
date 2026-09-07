@@ -111,7 +111,8 @@ usage.within_limit("api_requests")     # checked against the effective, overridd
 ```bash
 make install      # uv sync
 make test         # unit tests
-make test-pg      # integration tests (docker compose up -d postgres first)
+make test-pg      # integration tests — auto-starts a scratch postgres (port 5434,
+                  # profile: test); never shares the dev stack's database
 make test-all     # everything, 80% coverage gate
 make lint typecheck
 ```

@@ -8,6 +8,7 @@ import {
   apiDownload,
   formatMoney,
   type Invoice,
+  type Org,
   type Plan,
   type Subscription,
 } from "@/lib/api";
@@ -29,6 +30,34 @@ export default function BillingPage() {
   const { data: invoices } = useQuery({
     queryKey: ["invoices"],
     queryFn: () => api<Invoice[]>("/v1/billing/invoices"),
+  });
+  const { data: org, refetch: refetchOrg } = useQuery({
+    queryKey: ["org"],
+    queryFn: () => api<Org>("/v1/orgs/current"),
+  });
+
+  const savedBillingEmail =
+    typeof org?.settings?.billing_email === "string" ? org.settings.billing_email : "";
+  const [billingEmail, setBillingEmail] = useState<string | null>(null);
+  const emailValue = billingEmail ?? savedBillingEmail;
+
+  const saveBillingEmail = useMutation({
+    mutationFn: async (value: string) => {
+      const trimmed = value.trim();
+      await api("/v1/orgs/current", {
+        method: "PATCH",
+        body: JSON.stringify({
+          settings: { ...org?.settings, billing_email: trimmed || null },
+        }),
+      });
+      return trimmed;
+    },
+    onSuccess: (trimmed) => {
+      setBillingEmail(null);
+      setMessage(trimmed ? "Billing contact saved." : "Billing contact cleared.");
+      refetchOrg();
+    },
+    onError: (err) => setMessage(err instanceof Error ? err.message : "Save failed"),
   });
 
   const changePlan = useMutation({
@@ -164,6 +193,51 @@ export default function BillingPage() {
           </button>
         </div>
       )}
+
+      <section
+        aria-labelledby="billing-contact-h"
+        className="mt-10 rounded-xl border border-zinc-200 p-6"
+      >
+        <h2
+          id="billing-contact-h"
+          className="text-sm font-semibold uppercase tracking-wide text-zinc-500"
+        >
+          Billing contact
+        </h2>
+        <p className="mt-1 text-sm text-zinc-500">
+          Invoice emails (with PDF attached) are delivered here on finalize and payment.
+        </p>
+        <form
+          className="mt-4 flex flex-col gap-2 sm:flex-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveBillingEmail.mutate(emailValue);
+          }}
+        >
+          <label htmlFor="billing-email" className="sr-only">
+            Billing contact email
+          </label>
+          <input
+            id="billing-email"
+            type="email"
+            value={emailValue}
+            onChange={(e) => setBillingEmail(e.target.value)}
+            placeholder="accounts@yourcompany.com"
+            className="flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+          />
+          <button
+            type="submit"
+            disabled={
+              saveBillingEmail.isPending ||
+              emailValue === savedBillingEmail ||
+              (emailValue === "" && savedBillingEmail === "")
+            }
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-default disabled:bg-zinc-100 disabled:text-zinc-400"
+          >
+            {saveBillingEmail.isPending ? "Saving…" : "Save"}
+          </button>
+        </form>
+      </section>
 
       <section aria-labelledby="invoices-h" className="mt-10">
         <h2 id="invoices-h" className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-500">

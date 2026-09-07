@@ -55,6 +55,26 @@ services:
       timeout: 3s
       retries: 20
 
+  # Scratch database for the Python integration suite — NEVER shares state with
+  # the dev stack's postgres (whose system roles a suite TRUNCATE would wipe).
+  # tmpfs: disposable by design; `make test-pg` recreates schema each run.
+  postgres-test:
+    image: postgres:17-alpine
+    profiles: [test]
+    environment:
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: synapse
+      POSTGRES_DB: synapse_test
+    ports:
+      - "5434:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapse -d synapse_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
   migrate:
     <<: *api-base
     environment:

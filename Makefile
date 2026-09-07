@@ -23,11 +23,15 @@ web: ## Run Next.js console locally
 test: ## Fast unit tests (no database)
 	uv run pytest -m 'not pg' --no-cov
 
-test-pg: ## Integration tests against compose postgres
-	uv run pytest -m pg --no-cov
+test-pg: ## Integration tests against the scratch test database (compose profile: test)
+	docker compose --profile test up -d --wait postgres-test
+	SYNAPSE_DATABASE_URL="postgresql+asyncpg://synapse:synapse@localhost:5434/synapse_test" \
+		uv run pytest -m pg --no-cov
 
-test-all: ## Everything, with coverage gate
-	uv run pytest -m "" --cov=src/synapse_saas --cov-fail-under=80
+test-all: ## Everything, with coverage gate (scratch test database)
+	docker compose --profile test up -d --wait postgres-test
+	SYNAPSE_DATABASE_URL="postgresql+asyncpg://synapse:synapse@localhost:5434/synapse_test" \
+		uv run pytest -m "" --cov=src/synapse_saas --cov-fail-under=80
 
 lint: ## Ruff + import-linter
 	uv run ruff check src tests

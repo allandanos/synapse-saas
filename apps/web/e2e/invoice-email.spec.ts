@@ -127,4 +127,43 @@ test.describe("invoice delivery", () => {
     expect(email.subject).toContain(finalized.number);
     expect(email.raw).toContain("application/pdf");
   });
+
+  test("billing contact field in the console routes invoice emails", async ({
+    page,
+    request,
+  }) => {
+    const ctx = await createStackContext(request, "invcontact");
+    const client = api(request, ctx);
+    const recipient = `e2e-${ctx.orgSlug}-finance@example.com`;
+
+    // Set the billing contact through the UI (the journey under test)
+    await loginConsole(page, ctx);
+    await page.goto("/dashboard/billing");
+    await page.getByLabel("Billing contact email").fill(recipient);
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Billing contact saved.")).toBeVisible();
+
+    // The saved value round-trips through the org settings
+    const org = (await (
+      await request.get(`${API_URL}/v1/orgs/current`, {
+        headers: { Authorization: `Bearer ${ctx.accessToken}`, "X-Org-Id": ctx.orgId },
+      })
+    ).json()) as { settings: { billing_email?: string } };
+    expect(org.settings.billing_email).toBe(recipient);
+
+    // And a finalized invoice now routes to that address
+    await client.post("/v1/subscription/change", { plan_key: "pro" });
+    const invoice = (await (
+      await client.post("/v1/billing/invoices/draft", {})
+    ).json()) as { id: string };
+    const finalized = (await (
+      await client.post(`/v1/billing/invoices/${invoice.id}/finalize`, {})
+    ).json()) as { number: string };
+
+    const email = await waitForEmail(
+      request,
+      (m) => m.to === recipient && m.subject.includes(finalized.number),
+    );
+    expect(email.to).toBe(recipient);
+  });
 });
