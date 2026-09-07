@@ -62,6 +62,7 @@ class AgentService:
         )
         self.session.add(agent)
         await self.session.flush()
+        await self.session.refresh(agent)  # server-defaulted attrs must not lazy-fire in serialization
 
         append_outbox(
             self.session,
@@ -101,8 +102,10 @@ class AgentService:
             diff["config"] = "updated"
             agent.config = config
         if diff:
-            agent.updated_at = datetime.now(UTC)
             await self.session.flush()
+            # JSONB mutations expire attributes at the asyncpg boundary;
+            # re-load so response serialization never lazy-fires IO.
+            await self.session.refresh(agent)
             append_outbox(
                 self.session,
                 event_type=events.AGENT_UPDATED,
@@ -128,8 +131,8 @@ class AgentService:
             return agent
 
         agent.status = status
-        agent.updated_at = datetime.now(UTC)
         await self.session.flush()
+        await self.session.refresh(agent)  # onupdate-expired attrs must not lazy-fire in serialization
 
         event_type = events.AGENT_DISABLED if status == "disabled" else events.AGENT_UPDATED
         append_outbox(
