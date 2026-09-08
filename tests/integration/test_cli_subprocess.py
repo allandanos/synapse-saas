@@ -18,7 +18,7 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         **os.environ,
         "SYNAPSE_DATABASE_URL": os.environ.get(
             "SYNAPSE_DATABASE_URL",
-            "postgresql+asyncpg://synapse:synapse@localhost:5433/synapse",
+            "postgresql+asyncpg://synapse:synapse@localhost:5434/synapse_test",
         ),
         "SYNAPSE_REDIS_URL": "",
         "SYNAPSE_AUTO_SYNC_PLANS": "false",
@@ -48,31 +48,60 @@ class TestSeed:
         assert again.returncode == 0
         assert "permissions" in again.stdout
 
-    def test_seed_dev_creates_demo_org(self) -> None:
+    def test_seed_dev_creates_demo_org_with_one_user_per_role(self) -> None:
         result = run_cli("seed", "--dev")
         assert result.returncode == 0, result.stderr
-        # Either freshly seeded or idempotently skipped — the org must exist
-        assert "owner@acme.test" in result.stdout or "already seeded" in result.stdout
+        # Fresh seed prints the role-user summary; a DB already holding the
+        # demo org skips idempotently (structurallog line).
+        assert "owner@/" in result.stdout or "already seeded" in result.stdout
 
         from sqlalchemy import select
 
         from synapse_saas.core.db import dispose_engine, get_session_factory
-        from synapse_saas.tenancy.models import Organization
+        from synapse_saas.identity.models import User  # noqa: F401 — completes the mapper registry
+        from synapse_saas.tenancy.models import Membership, Organization
 
         factory = get_session_factory()
 
-        async def check() -> str | None:
+        async def check() -> tuple[str | None, dict[str, str]]:
             async with factory() as session:
                 org = (
                     await session.execute(select(Organization).where(Organization.slug == "acme"))
                 ).scalar_one_or_none()
-                return org.name if org else None
+                if org is None:
+                    return None, {}
+                # role per demo user — membership → user email → role key
+                rows = (
+                    (
+                        await session.execute(
+                            select(Membership)
+                            .where(Membership.organization_id == org.id)
+                            .where(Membership.status == "active")
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                roles_by_email: dict[str, str] = {}
+                for membership in rows:
+                    email = str(membership.user.email)
+                    keys = sorted(r.key for r in membership.roles)
+                    roles_by_email[email] = keys[0] if keys else "?"
+                return org.name, roles_by_email
 
         import asyncio
 
-        name = asyncio.run(check())
+        name, roles = asyncio.run(check())
         asyncio.run(dispose_engine())
         assert name == "Acme Corporation"
+        # One demo user per system role, all active members of the org
+        assert roles == {
+            "owner@acme.example.com": "owner",
+            "admin@acme.example.com": "admin",
+            "billing@acme.example.com": "billing",
+            "developer@acme.example.com": "developer",
+            "member@acme.example.com": "member",
+        }
 
 
 class TestPlansSync:

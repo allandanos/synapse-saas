@@ -35,6 +35,7 @@ async def _seed(dev: bool) -> None:
     from synapse_saas.core.db import get_session_factory
     from synapse_saas.core.logging import configure_logging
     from synapse_saas.seeds import seed_dev, seed_system
+    from synapse_saas.seeds.dev_seed import DEV_PASSWORD
     from synapse_saas.subscriptions.catalog import load_catalog
     from synapse_saas.subscriptions.sync import sync_plans
 
@@ -55,7 +56,9 @@ async def _seed(dev: bool) -> None:
         f"plans: +{result.plans_added} new, ~{result.plans_updated} updated."
     )
     if dev and not settings.is_production:
-        click.echo("Dev data: owner@acme.test / password123 (member@acme.test too)")
+        click.echo(
+            f"Dev data: owner@/admin@/billing@/developer@/member@acme.example.com — all use / {DEV_PASSWORD}"
+        )
 
 
 @cli.group()
