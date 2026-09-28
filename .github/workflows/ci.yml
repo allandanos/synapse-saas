@@ -214,6 +214,45 @@ jobs:
           SYNAPSE_REDIS_URL: ""
         run: uv run python scripts/check_docs.py --check
 
+  # ── Scaffold: a generated product installs, migrates both branches, and passes its own tests ──
+  scaffold-smoke:
+    name: Scaffold smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: synapse
+          POSTGRES_PASSWORD: synapse
+          POSTGRES_DB: synapse_test
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U synapse -d synapse_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@localhost:5434/synapse_test
+      SYNAPSE_REDIS_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install the framework
+        run: uv sync --all-groups --frozen
+      - name: Generate a product against this checkout
+        run: uv run synapse-cli new demo-product --dir /tmp --framework-path "$GITHUB_WORKSPACE"
+      - name: The product installs, migrates, and passes its tests
+        working-directory: /tmp/demo-product
+        run: |
+          uv sync
+          uv run python -m demo_product.migrate upgrade heads
+          uv run pytest -q -m ""
+
   # ── Images: no secrets baked, correct entrypoints, writable storage ────────
   docker-image:
     name: Docker images

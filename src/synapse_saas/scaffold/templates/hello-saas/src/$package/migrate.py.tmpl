@@ -1,0 +1,67 @@
+"""Migrations for $product: the framework's branch + this product's, one command.
+
+Alembic decides which version directories exist when the command starts, so
+the framework's packaged versions cannot be added from env.py. This wrapper
+builds the config programmatically and hands off to Alembic:
+
+    uv run python -m $package.migrate upgrade heads
+    uv run python -m $package.migrate revision -m "add widgets"
+    uv run python -m $package.migrate downgrade $package@base
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.resources
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+
+MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
+
+
+def alembic_config() -> Config:
+    framework_versions = importlib.resources.files("synapse_saas") / "migrations" / "versions"
+    config = Config(str(MIGRATIONS_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    config.set_main_option("version_locations", f"{framework_versions} {MIGRATIONS_DIR / 'versions'}")
+    return config
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="$package-migrate", description=__doc__)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    up = sub.add_parser("upgrade")
+    up.add_argument("revision", nargs="?", default="heads")
+    down = sub.add_parser("downgrade")
+    down.add_argument("revision")
+    rev = sub.add_parser("revision")
+    rev.add_argument("-m", "--message", required=True)
+    rev.add_argument("--autogenerate", action="store_true")
+    sub.add_parser("heads")
+    sub.add_parser("current")
+    args = parser.parse_args(argv)
+
+    config = alembic_config()
+    if args.cmd == "upgrade":
+        command.upgrade(config, args.revision)
+    elif args.cmd == "downgrade":
+        command.downgrade(config, args.revision)
+    elif args.cmd == "revision":
+        command.revision(
+            config,
+            message=args.message,
+            autogenerate=args.autogenerate,
+            head="$package@head",
+            version_path=str(MIGRATIONS_DIR / "versions"),
+        )
+    elif args.cmd == "heads":
+        command.heads(config)
+    elif args.cmd == "current":
+        command.current(config)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

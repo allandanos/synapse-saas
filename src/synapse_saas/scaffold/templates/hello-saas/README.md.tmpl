@@ -1,0 +1,33 @@
+# $package_title
+
+A product on the [Synapse SaaS Framework](https://github.com/allandanos/synapse-saas):
+auth, tenancy, RBAC, plans, entitlements, usage metering, billing, webhooks
+and the console come from the package; this repository holds only the
+product — a Projects CRUD to start from.
+
+```bash
+uv sync                                   # installs synapse-saas + this package
+docker compose up -d postgres redis        # or point SYNAPSE_DATABASE_URL anywhere
+cp .env.example .env
+make migrate                              # framework migrations + this product's branch
+make seed                                 # permissions, system roles, plan catalog
+make dev                                  # http://localhost:8000/docs
+make test
+```
+
+## Layout
+
+| Path | What |
+|---|---|
+| `src/$package/models.py` | `Project(TenantMixin, Base)` — one line of tenancy |
+| `src/$package/router.py` | CRUD: permission-checked, plan-limited (`projects` gauge), audited |
+| `src/$package/app.py` | `create_product_app()` = framework `create_app()` + your routers |
+| `src/$package/worker.py` | your cron jobs, on the framework's arq worker |
+| `migrations/` | an Alembic **branch** (`$package`) that depends on the framework head; run via `python -m $package.migrate` |
+| `config/plans.yaml` | your pricing (start from the framework's default catalog) |
+| `tests/` | run on the framework's public pytest plugin |
+
+## Upgrading the framework
+
+Bump `synapse-saas` in `pyproject.toml`, `uv sync`, `make migrate`. Your
+migrations never touch framework tables; the framework's never touch yours.

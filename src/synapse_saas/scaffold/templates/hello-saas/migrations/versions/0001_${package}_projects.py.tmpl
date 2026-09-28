@@ -1,0 +1,51 @@
+"""${package}_projects — the product's first table.
+
+Branch "$package"; depends on the framework head this project was generated
+against. Later product migrations chain off this one (down_revision); they
+never edit framework migrations.
+
+Revision ID: 0001_${package}_projects
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Union
+
+import sqlalchemy as sa
+from alembic import op
+
+revision: str = "0001_${package}_projects"
+down_revision: Union[str, None] = None
+branch_labels: Union[str, Sequence[str], None] = ("$package",)
+depends_on: Union[str, Sequence[str], None] = "$framework_head"
+
+
+def upgrade() -> None:
+    op.create_table(
+        "${package}_projects",
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "organization_id",
+            sa.Uuid(),
+            sa.ForeignKey("organizations.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column("title", sa.Text(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+    )
+    # Row-level security like every framework tenant table (SYNAPSE_TENANT_ISOLATION=app_and_rls)
+    predicate = (
+        "organization_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid "
+        "OR current_setting('app.rls_platform', true) = 'on'"
+    )
+    op.execute("ALTER TABLE ${package}_projects ENABLE ROW LEVEL SECURITY")
+    op.execute(
+        f"CREATE POLICY tenant_isolation ON ${package}_projects USING ({predicate}) WITH CHECK ({predicate})"
+    )
+
+
+def downgrade() -> None:
+    op.drop_table("${package}_projects")

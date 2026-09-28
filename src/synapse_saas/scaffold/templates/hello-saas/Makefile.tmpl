@@ -1,0 +1,20 @@
+.PHONY: dev worker migrate seed test lint
+
+dev: ## API with hot reload
+	uv run uvicorn $package.app:app --reload --port 8000
+
+worker: ## Background jobs (framework crons + yours)
+	uv run python -m $package.worker
+
+migrate: ## Framework migrations + this product's branch, in dependency order
+	uv run python -m $package.migrate upgrade heads
+
+seed: ## Permissions, system roles, plan catalog (+ demo users with --dev)
+	uv run synapse-cli seed
+
+test:
+	uv run pytest -q
+
+lint:
+	uv run ruff check src tests
+	uv run ruff format --check src tests

@@ -1,0 +1,52 @@
+"""The framework's public fixtures + this product's app and migrations."""
+
+from __future__ import annotations
+
+import asyncio
+import os
+from collections.abc import AsyncIterator
+
+import pytest_asyncio
+
+pytest_plugins = ["synapse_saas.testing.fixtures"]
+
+
+@pytest_asyncio.fixture(scope="session")
+async def migrated_db() -> AsyncIterator[None]:
+    """Override: apply the framework migrations AND this product's branch."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from synapse_saas.testing.fixtures import database_url
+
+    os.environ["SYNAPSE_DATABASE_URL"] = database_url()
+    os.environ.setdefault("SYNAPSE_REDIS_URL", "")
+    os.environ.setdefault("SYNAPSE_AUTO_SYNC_PLANS", "false")
+
+    def _migrate() -> None:
+        from alembic import command
+
+        from $package.migrate import alembic_config
+
+        command.upgrade(alembic_config(), "heads")
+
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        await loop.run_in_executor(pool, _migrate)
+    yield
+
+
+@pytest_asyncio.fixture
+async def app(clean_db: None) -> AsyncIterator[object]:
+    """Override: the PRODUCT app (framework + our routers), seeded."""
+    from synapse_saas.core.db import get_session_factory
+    from synapse_saas.seeds import seed_system
+    from synapse_saas.subscriptions.catalog import load_catalog
+    from synapse_saas.subscriptions.sync import sync_plans
+
+    from $package.app import create_product_app
+
+    async with get_session_factory()() as session:
+        await seed_system(session)
+        await sync_plans(session, load_catalog())
+        await session.commit()
+    yield create_product_app()

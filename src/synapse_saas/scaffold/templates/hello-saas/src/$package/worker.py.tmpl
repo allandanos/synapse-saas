@@ -1,0 +1,27 @@
+"""Background jobs: the framework's crons plus yours, on one arq worker.
+
+Run with: uv run python -m $package.worker
+"""
+
+from __future__ import annotations
+
+from typing import Any, ClassVar
+
+from arq import cron, run_worker
+from synapse_saas.worker.jobs import WorkerSettings as FrameworkWorkerSettings
+
+
+async def nightly_project_report(ctx: dict[str, Any]) -> int:
+    """Example cron: runs as the schema owner, sees every tenant — scope your queries."""
+    return 0
+
+
+class WorkerSettings(FrameworkWorkerSettings):
+    cron_jobs: ClassVar[list[object]] = [
+        *FrameworkWorkerSettings.cron_jobs,
+        cron(nightly_project_report, hour=2, minute=0),
+    ]
+
+
+if __name__ == "__main__":
+    run_worker(WorkerSettings)  # type: ignore[arg-type]

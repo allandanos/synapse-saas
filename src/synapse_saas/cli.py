@@ -154,6 +154,45 @@ async def _run_jobs_once(names: list[str]) -> dict[str, object]:
     return results
 
 
+@cli.command("new")
+@click.argument("name", required=False)
+@click.option("--template", default="hello-saas", show_default=True, help="Project template")
+@click.option("--dir", "directory", default=".", show_default=True, help="Parent directory")
+@click.option(
+    "--framework-path",
+    default=None,
+    help="Depend on a local checkout of the framework instead of PyPI (uv path source)",
+)
+@click.option("--list-templates", "list_only", is_flag=True, help="List templates and exit")
+def new_project(
+    name: str | None, template: str, directory: str, framework_path: str | None, list_only: bool
+) -> None:
+    """Generate a product that depends on the framework (ADR 0011).
+
+    The project gets its own package, an Alembic branch that depends on the
+    framework head, tests on the public pytest plugin, and a compose stack.
+    """
+    from pathlib import Path
+
+    from synapse_saas.scaffold import generate, list_templates
+
+    if list_only:
+        for info in list_templates():
+            click.echo(f"{info.name:<14} {info.description}")
+        return
+    if not name:
+        raise click.UsageError("NAME is required (e.g. `synapse-cli new my-product`)")
+    destination = Path(directory) / name
+    try:
+        written = generate(name, destination=destination, template=template, framework_path=framework_path)
+    except (ValueError, FileExistsError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"Created {destination} ({len(written)} files) from template {template!r}.")
+    click.echo(
+        "Next: cd " + str(destination) + " && uv sync && cp .env.example .env && make migrate seed dev"
+    )
+
+
 @cli.group()
 def plans() -> None:
     """Plan catalog operations."""

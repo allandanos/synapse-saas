@@ -73,6 +73,14 @@ usage meters) works locally out of the box.
 | Admin console (Next.js), SDKs (Python/TypeScript/Go/Java), K8s/Terraform | ✅ Phase 3–5 |
 | Row-level security as a real boundary (`make test-rls`) | ✅ Hardening |
 
+## Build a product on it
+
+```bash
+uv run synapse-cli new my-product        # a dependent project, not a fork (ADR 0011)
+```
+
+See [Extending the framework](docs/extending.md).
+
 ## Plans are configuration, not code
 
 `config/plans.yaml` is the pricing source of truth:

@@ -1,0 +1,41 @@
+"""Projects: tenant-scoped, permission-checked, plan-limited — proven end to end."""
+
+from __future__ import annotations
+
+import pytest
+from httpx import AsyncClient
+from synapse_saas.testing.fixtures import org_headers
+
+pytestmark = pytest.mark.pg
+
+
+async def test_create_list_delete(client: AsyncClient, org_and_tokens) -> None:
+    headers = org_headers(org_and_tokens)
+    created = await client.post("/v1/projects", headers=headers, json={"title": "First"})
+    assert created.status_code == 201, created.text
+    listed = await client.get("/v1/projects", headers=headers)
+    assert [p["title"] for p in listed.json()] == ["First"]
+    assert listed.headers["X-Total-Count"] == "1"
+    deleted = await client.delete(f"/v1/projects/{created.json()['id']}", headers=headers)
+    assert deleted.status_code == 204
+
+
+async def test_free_plan_caps_projects_with_a_typed_402(client: AsyncClient, org_and_tokens) -> None:
+    headers = org_headers(org_and_tokens)
+    for title in ("one", "two"):
+        assert (await client.post("/v1/projects", headers=headers, json={"title": title})).status_code == 201
+    third = await client.post("/v1/projects", headers=headers, json={"title": "three"})
+    assert third.status_code == 402, third.text
+    assert third.json()["metric"] == "projects" and third.json()["limit"] == 2
+
+
+async def test_other_orgs_never_see_my_projects(client: AsyncClient, org_and_tokens) -> None:
+    headers = org_headers(org_and_tokens)
+    await client.post("/v1/projects", headers=headers, json={"title": "mine"})
+    other = await client.post(
+        "/v1/orgs",
+        headers={"Authorization": headers["Authorization"]},
+        json={"name": "Other", "slug": "other"},
+    )
+    other_headers = {**headers, "X-Org-Id": other.json()["id"]}
+    assert (await client.get("/v1/projects", headers=other_headers)).json() == []

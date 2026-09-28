@@ -1,0 +1,16 @@
+"""Domain models. `TenantMixin` gives every row an organization_id, the FK
+cascade, and — through `TenantRepository` — automatic tenant scoping."""
+
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy.orm import Mapped, mapped_column
+from synapse_saas.core.db import Base, TenantMixin, TimestampMixin
+
+
+class Project(TenantMixin, TimestampMixin, Base):
+    __tablename__ = "${package}_projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(nullable=False)

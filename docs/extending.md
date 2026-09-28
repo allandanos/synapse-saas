@@ -11,6 +11,24 @@ both get the full tenancy/entitlement/usage machinery.
 | Best for | products built *on* the framework in one deployable | polyglot products, existing services, teams per language |
 | Example | [`examples/python/hello-saas`](../examples/python/hello-saas/) | [`examples/*/domain-service`](../examples/) |
 
+## Start from the scaffold
+
+```bash
+uvx --from synapse-saas synapse-cli new my-product     # or: uv run synapse-cli new … in this repo
+cd my-product && uv sync && cp .env.example .env
+docker compose up -d postgres redis
+make migrate seed dev
+```
+
+`synapse-cli new` (ADR 0011) generates a product that **depends on** the
+framework package: its own package with a Projects CRUD (tenant-scoped,
+permission-checked, plan-limited), an Alembic branch whose first revision
+`depends_on` the framework head (so `alembic upgrade heads` applies both,
+and framework upgrades never touch your migrations), tests on the public
+pytest plugin (`synapse_saas.testing.fixtures`), a compose stack and a
+Dockerfile. `--list-templates` shows what is available;
+`--framework-path` points at a local checkout instead of PyPI.
+
 ## Model 1 — In-process extension (Python)
 
 Your domain code imports framework primitives directly. This is the "your

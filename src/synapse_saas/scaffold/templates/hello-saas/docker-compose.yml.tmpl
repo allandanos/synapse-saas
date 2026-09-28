@@ -1,0 +1,35 @@
+name: $package
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: synapse
+      POSTGRES_DB: synapse
+    ports: ["5433:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapse -d synapse"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6380:6379"]
+
+  api:
+    build: .
+    command: ["uvicorn", "$package.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file: .env
+    environment:
+      SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@postgres:5432/synapse
+      SYNAPSE_REDIS_URL: redis://redis:6379/0
+    ports: ["8000:8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

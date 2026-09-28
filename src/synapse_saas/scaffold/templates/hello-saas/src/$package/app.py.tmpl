@@ -1,0 +1,23 @@
+"""The product's ASGI app: the framework's `create_app()` plus your routers."""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+from synapse_saas.api.app import create_app
+
+from $package.router import router as projects_router
+
+
+def create_product_app() -> FastAPI:
+    app = create_app()
+    app.include_router(projects_router, prefix="/v1")
+    return app
+
+
+app = create_product_app()
+
+
+def run() -> None:
+    import uvicorn
+
+    uvicorn.run("$package.app:app", host="0.0.0.0", port=8000)  # binds all interfaces: container boundary
