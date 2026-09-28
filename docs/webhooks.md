@@ -88,6 +88,72 @@ Endpoint secrets are Fernet-encrypted at rest under a SHA-256-derived key from
 
 ## Event catalog
 
-Canonical types live in `core/events.py`: `org.*`, `member.*`, `subscription.*`,
-`entitlement.*`, `invoice.*`, `usage.soft_limit_reached`,
-`usage.hard_limit_reached`, `webhook.*`.
+Canonical types live in `core/events.py`. Not every type is emitted by every
+code path today (the audit found roughly a third of the historical vocabulary
+unemitted); the list below is the vocabulary an endpoint may subscribe to.
+
+<!-- events:start -->
+
+_Generated from `core/events.py` by `scripts/check_docs.py --fix`; do not edit by hand._
+
+**Public** — fan out to tenant webhook endpoints (subject to each endpoint's `events` filter):
+
+- `agent.disabled`
+- `agent.registered`
+- `agent.updated`
+- `api_key.authenticated`
+- `api_key.created`
+- `api_key.revoked`
+- `entitlement.expired`
+- `entitlement.granted`
+- `entitlement.revoked`
+- `file.deleted`
+- `file.uploaded`
+- `invoice.created`
+- `invoice.failed`
+- `invoice.paid`
+- `member.invited`
+- `member.joined`
+- `member.removed`
+- `member.role_assigned`
+- `member.role_revoked`
+- `member.updated`
+- `org.created`
+- `org.suspended`
+- `org.unsuspended`
+- `org.updated`
+- `role.created`
+- `role.deleted`
+- `role.updated`
+- `subscription.activated`
+- `subscription.canceled`
+- `subscription.expired`
+- `subscription.past_due`
+- `subscription.plan_changed`
+- `subscription.resumed`
+- `subscription.trial_started`
+- `subscription.updated`
+- `usage.hard_limit_reached`
+- `usage.soft_limit_reached`
+- `user.logged_out`
+- `user.login_failed`
+- `user.login_succeeded`
+- `user.password_reset_completed`
+- `user.password_reset_requested`
+- `user.registered`
+- `user.token_refreshed`
+- `user.token_reuse_detected`
+- `webhook.delivered`
+- `webhook.delivery_exhausted`
+- `webhook.delivery_failed`
+- `webhook.endpoint_created`
+- `webhook.endpoint_deleted`
+- `webhook.endpoint_updated`
+
+**Internal** — consumed in-process only (email handlers); never delivered to a webhook:
+
+- `invoice.email`
+- `member.invite_email`
+- `user.password_reset_link`
+
+<!-- events:end -->

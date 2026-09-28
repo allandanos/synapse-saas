@@ -4,6 +4,7 @@ Single pydantic-settings entrypoint; every environment variable is `SYNAPSE_`-pr
 Loaded once via `get_settings()` (cached) and importable anywhere below the api/worker layer.
 """
 
+import importlib.resources
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -12,8 +13,11 @@ from typing import Annotated, ClassVar, Literal
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_PLANS_FILE = REPO_ROOT / "config" / "plans.yaml"
+# The default catalog ships INSIDE the package (src/synapse_saas/config/plans.yaml),
+# so a pip-installed framework resolves it from any working directory. The
+# repo-root config/plans.yaml is the same file (a test keeps them identical);
+# products point SYNAPSE_PLANS_FILE at their own.
+DEFAULT_PLANS_FILE = Path(str(importlib.resources.files("synapse_saas") / "config" / "plans.yaml"))
 
 
 class Settings(BaseSettings):

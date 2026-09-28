@@ -97,7 +97,7 @@ ignore = [
   "PLR2004", # HTTP 200/400 comparisons against literals are clear as written
   "RUF012", # arq WorkerSettings wants plain list attributes by contract
 ]
-exclude = ["database/migrations/*"]
+exclude = ["src/synapse_saas/migrations/versions/*"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "PLR2004"]
@@ -108,7 +108,7 @@ strict = true
 warn_unreachable = true
 warn_redundant_casts = true
 plugins = ["pydantic.mypy"]
-exclude = ["database/migrations/", "examples/"]
+exclude = ["src/synapse_saas/migrations/", "examples/"]
 
 [[tool.mypy.overrides]]
 module = ["arq.*", "fakeredis.*", "aioboto3.*"]
@@ -130,8 +130,21 @@ omit = ["*/migrations/*"]
 [tool.importlinter]
 root_packages = ["synapse_saas"]
 
+# Composition roots sit on top (the CLI runs worker jobs on demand); domain
+# modules may import each other and core; core imports no domain module.
+# `synapse_saas.testing` is a test-time composition helper like `api`, not a domain module.
 [[tool.importlinter.contracts]]
-name = "Modules may only import core outside themselves"
+name = "Layers: api > cli > worker > core"
+type = "layers"
+layers = [
+  "synapse_saas.api",
+  "synapse_saas.cli",
+  "synapse_saas.worker",
+  "synapse_saas.core",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain modules never import the composition roots"
 type = "forbidden"
 source_modules = [
   "synapse_saas.agents",
@@ -149,14 +162,45 @@ source_modules = [
   "synapse_saas.notifications",
   "synapse_saas.storage",
   "synapse_saas.feature_flags",
+  "synapse_saas.seeds",
 ]
 forbidden_modules = [
   "synapse_saas.api",
   "synapse_saas.worker",
+  "synapse_saas.cli",
 ]
 
 [[tool.importlinter.contracts]]
-name = "Billing providers may only import billing protocol and core"
+name = "core is the bottom: it imports no domain module"
+type = "forbidden"
+source_modules = ["synapse_saas.core"]
+forbidden_modules = [
+  "synapse_saas.agents",
+  "synapse_saas.api_keys",
+  "synapse_saas.identity",
+  "synapse_saas.tenancy",
+  "synapse_saas.authorization",
+  "synapse_saas.subscriptions",
+  "synapse_saas.entitlements",
+  "synapse_saas.usage",
+  "synapse_saas.billing",
+  "synapse_saas.webhooks",
+  "synapse_saas.notifications",
+  "synapse_saas.storage",
+  "synapse_saas.feature_flags",
+  "synapse_saas.seeds",
+]
+# The outbox writer and the RLS lookups need the ORM rows for these tables;
+# the models modules are leaf modules (no service imports), so the exception is bounded.
+ignore_imports = [
+  "synapse_saas.core.outbox -> synapse_saas.audit.models",
+]
+
+# Billing providers are adapters: protocol + core only. (The previous version
+# forbade `synapse_saas.billing`, which contains the providers themselves and
+# the protocol they must import — a silent no-op.)
+[[tool.importlinter.contracts]]
+name = "Billing providers may only import billing.protocol and core"
 type = "forbidden"
 source_modules = [
   "synapse_saas.billing.providers.stripe_provider",
@@ -165,4 +209,13 @@ source_modules = [
   "synapse_saas.billing.providers.paymongo_provider",
   "synapse_saas.billing.providers.paddle_provider",
 ]
-forbidden_modules = ["synapse_saas.billing", "synapse_saas.api"]
+forbidden_modules = [
+  "synapse_saas.billing.service",
+  "synapse_saas.billing.webhooks",
+  "synapse_saas.billing.router",
+  "synapse_saas.billing.invoicing",
+  "synapse_saas.billing.registry",
+  "synapse_saas.billing.models",
+  "synapse_saas.api",
+  "synapse_saas.worker",
+]

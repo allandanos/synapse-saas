@@ -40,3 +40,13 @@ Do **not** open a public issue. Email allan.danos@gmail.com — see [SECURITY.md
 ## License
 
 By contributing you agree your contributions are licensed under Apache-2.0.
+
+## Where things live (after ADR 0011)
+
+- Migrations: `src/synapse_saas/migrations/versions/` (new revision:
+  `uv run alembic -c database/alembic.ini revision -m "…"`; the root ini is a
+  shim onto the packaged scripts). Numbering is sequential: `0018_…` next.
+- Plan catalog: edit `config/plans.yaml` and copy it to
+  `src/synapse_saas/config/plans.yaml` — a unit test fails when they differ.
+- Test fixtures: `src/synapse_saas/testing/fixtures.py` (public plugin);
+  `tests/integration/conftest.py` only re-exports helpers.

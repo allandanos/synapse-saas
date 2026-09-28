@@ -8,6 +8,7 @@ Revision ID: 0003_usage_events
 Revises: 0002_framework_schema
 Create Date: 2026-08-31
 """
+
 from __future__ import annotations
 
 from typing import Sequence, Union

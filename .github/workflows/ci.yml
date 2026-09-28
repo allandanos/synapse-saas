@@ -209,6 +209,11 @@ jobs:
           SYNAPSE_REDIS_URL: ""
         run: uv run python scripts/export_openapi.py --check
 
+      - name: Docs cover every operation and the event catalog is generated
+        env:
+          SYNAPSE_REDIS_URL: ""
+        run: uv run python scripts/check_docs.py --check
+
   # ── Images: no secrets baked, correct entrypoints, writable storage ────────
   docker-image:
     name: Docker images

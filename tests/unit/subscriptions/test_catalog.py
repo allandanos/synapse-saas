@@ -231,3 +231,22 @@ class TestOverageCatalog:
         bad["metrics"][0]["overage"] = {"unit": 0, "price_cents": 20}
         with pytest.raises(ValidationError):
             PlanCatalog.model_validate(bad)
+
+
+class TestPackagedCatalog:
+    def test_repo_catalog_and_packaged_default_are_identical(self) -> None:
+        """config/plans.yaml (what you edit) == the copy shipped inside the wheel."""
+        import importlib.resources
+
+        packaged = importlib.resources.files("synapse_saas") / "config" / "plans.yaml"
+        assert PLANS_FILE.read_text() == packaged.read_text(), (
+            "config/plans.yaml and src/synapse_saas/config/plans.yaml differ — "
+            "copy the edited one over the other"
+        )
+
+    def test_default_settings_point_at_the_packaged_catalog(self) -> None:
+        from synapse_saas.core.config import DEFAULT_PLANS_FILE
+
+        assert DEFAULT_PLANS_FILE.name == "plans.yaml"
+        assert "synapse_saas" in DEFAULT_PLANS_FILE.parts
+        assert DEFAULT_PLANS_FILE.exists()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 import click
+from alembic.config import Config
 
 
 @click.group()
@@ -16,11 +17,18 @@ def cli() -> None:
 def migrate() -> None:
     """Apply Alembic migrations."""
     from alembic import command
-    from alembic.config import Config
 
-    config = Config("database/alembic.ini")
-    command.upgrade(config, "head")
+    command.upgrade(alembic_config(), "head")
     click.echo("Migrations applied.")
+
+
+def alembic_config() -> Config:
+    """Alembic config bound to the PACKAGED migrations — works from any cwd,
+    installed from PyPI or a checkout alike."""
+    import importlib.resources
+
+    ini = importlib.resources.files("synapse_saas") / "migrations" / "alembic.ini"
+    return Config(str(ini))
 
 
 @cli.command()

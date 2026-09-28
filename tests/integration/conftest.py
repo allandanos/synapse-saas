@@ -1,249 +1,38 @@
-"""Integration test fixtures: compose Postgres, Alembic, per-test truncation.
+"""Integration fixtures come from the public plugin (`synapse_saas.testing`).
 
-Runs against the compose stack (`docker compose up -d postgres redis`).
-Postgres-only — jsonb/partitions/RLS make sqlite a lie.
+This module only re-exports the helpers so existing imports keep working:
+
+    from tests.integration.conftest import owner_session_factory, grant_as_platform
 """
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import AsyncIterator
-from pathlib import Path
+from synapse_saas.testing.fixtures import (
+    DEFAULT_TEST_DATABASE_URL,
+    PLATFORM_ADMIN_EMAIL,
+    PLATFORM_ADMIN_PASSWORD,
+    database_url,
+    grant_as_platform,
+    org_headers,
+    owner_database_url,
+    owner_engine,
+    owner_session_factory,
+    pay_as_platform,
+    platform_admin_headers,
+    void_as_platform,
+)
 
-import pytest_asyncio
-from asgi_lifespan import LifespanManager
-from httpx import ASGITransport, AsyncClient
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-
-def _database_url() -> str:
-    import os
-
-    # Default: the scratch test database (compose service `postgres-test`,
-    # port 5434, tmpfs). NEVER the dev stack's 5433 — the between-test
-    # TRUNCATE would wipe its system roles mid-development.
-    return os.environ.get(
-        "SYNAPSE_DATABASE_URL",
-        "postgresql+asyncpg://synapse:synapse@localhost:5434/synapse_test",
-    )
-
-
-@pytest_asyncio.fixture(scope="session")
-async def migrated_db() -> AsyncIterator[None]:
-    """Apply migrations once per session (Alembic is sync — run it in a thread)."""
-    import os
-    from concurrent.futures import ThreadPoolExecutor
-
-    os.environ["SYNAPSE_DATABASE_URL"] = _database_url()
-    os.environ.setdefault("SYNAPSE_REDIS_URL", "")
-    os.environ.setdefault("SYNAPSE_AUTO_SYNC_PLANS", "false")
-
-    def _sync_migrate() -> None:
-        from alembic import command
-        from alembic.config import Config
-
-        config = Config(str(REPO_ROOT / "database" / "alembic.ini"))
-        config.set_main_option("script_location", str(REPO_ROOT / "database" / "migrations"))
-        command.upgrade(config, "head")
-
-    loop = asyncio.get_running_loop()
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        await loop.run_in_executor(pool, _sync_migrate)
-    yield
-
-
-@pytest_asyncio.fixture
-async def db_session(migrated_db) -> AsyncIterator[object]:
-    """Fresh session with a rolled-back transaction — tests are isolated."""
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    from synapse_saas.core.db import get_engine
-
-    factory = async_sessionmaker(get_engine(), expire_on_commit=False)
-    async with factory() as session:
-        yield session
-        await session.rollback()
-
-
-def _owner_database_url() -> str:
-    """Schema-owner DSN: migrations, TRUNCATE, and direct-DB test helpers.
-
-    Equals the app DSN in the default suite (superuser). Under `make test-rls`
-    the app connects as the RLS-subject role and this stays the owner.
-    """
-    import os
-
-    return os.environ.get("SYNAPSE_WORKER_DATABASE_URL") or _database_url()
-
-
-_owner_engine = None
-
-
-def owner_engine():  # type: ignore[no-untyped-def]
-    """Engine bound to the owner DSN (bypasses RLS). Lazily built, shared per session."""
-    global _owner_engine
-    if _owner_engine is None:
-        from sqlalchemy.ext.asyncio import create_async_engine
-
-        _owner_engine = create_async_engine(_owner_database_url(), pool_pre_ping=True)
-    return _owner_engine
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def _dispose_owner_engine() -> AsyncIterator[None]:
-    """Every test runs on its own event loop; asyncpg connections are loop-bound.
-
-    The app's global engine survives because the API lifespan disposes it per
-    test. The owner engine has no such hook, so drop its pool after each test.
-    """
-    global _owner_engine
-    yield
-    if _owner_engine is not None:
-        await _owner_engine.dispose()
-        _owner_engine = None
-
-
-def owner_session_factory():  # type: ignore[no-untyped-def]
-    """Session factory on the owner engine — for tests that poke the DB directly."""
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    return async_sessionmaker(owner_engine(), expire_on_commit=False, autoflush=False)
-
-
-@pytest_asyncio.fixture
-async def clean_db(migrated_db) -> AsyncIterator[None]:
-    """Truncate all tables between tests (order-independent via CASCADE)."""
-    from sqlalchemy import text
-
-    engine = owner_engine()
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(
-                """
-                DO $$
-                DECLARE r RECORD;
-                BEGIN
-                    FOR r IN (
-                        SELECT tablename FROM pg_tables
-                        WHERE schemaname = 'public' AND tablename != 'alembic_version'
-                    ) LOOP
-                        EXECUTE format('TRUNCATE TABLE %I CASCADE', r.tablename);
-                    END LOOP;
-                END $$;
-                """
-            )
-        )
-
-    # The in-process TTL-dict cache outlives truncation — clear it or stale
-    # permission/entitlement sets bleed across tests. Same for the rate limiter:
-    # every test shares one client IP, so its bucket would trip suite-wide.
-    from synapse_saas.core import cache as cache_module
-    from synapse_saas.core import rate_limit as rl_module
-
-    cache_module._ttl_backend = None
-    rl_module.reset_rate_limiter()
-    yield
-    rl_module.reset_rate_limiter()
-
-
-@pytest_asyncio.fixture
-async def app(clean_db: None) -> AsyncIterator[object]:
-    """FastAPI app with lifespan (seeds system roles + plans via sync)."""
-    from synapse_saas.api.app import create_app
-    from synapse_saas.core.db import get_session_factory
-    from synapse_saas.seeds import seed_system
-    from synapse_saas.subscriptions.catalog import load_catalog
-    from synapse_saas.subscriptions.sync import sync_plans
-
-    # Seed before handing out the app
-    factory = get_session_factory()
-    async with factory() as session:
-        await seed_system(session)
-        await sync_plans(session, load_catalog(str(REPO_ROOT / "config" / "plans.yaml")))
-        await session.commit()
-
-    yield create_app()
-
-
-@pytest_asyncio.fixture
-async def client(app) -> AsyncIterator[AsyncClient]:
-    async with LifespanManager(app) as manager:
-        transport = ASGITransport(app=manager.app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
-
-
-@pytest_asyncio.fixture
-async def org_and_tokens(client: AsyncClient) -> dict[str, str]:
-    """A registered user with one organization; returns tokens + ids."""
-    register = await client.post(
-        "/v1/auth/register",
-        json={
-            "email": "owner@example.com",
-            "password": "password12345",
-            "display_name": "Owner",
-        },
-    )
-    assert register.status_code == 201, register.text
-    tokens = register.json()["tokens"]
-    org = await client.post(
-        "/v1/orgs",
-        headers={"Authorization": f"Bearer {tokens['access_token']}"},
-        json={"name": "Test Org", "slug": "test-org"},
-    )
-    assert org.status_code == 201, org.text
-    return {
-        "access_token": tokens["access_token"],
-        "refresh_token": tokens["refresh_token"],
-        "org_id": org.json()["id"],
-    }
-
-
-# ── Platform operator helpers ─────────────────────────────────────────────────
-# Grants and money movements are operator actions (PlatformAdminDep). Tests that
-# exercise them as *setup* use these; tests that assert the tenant CANNOT do
-# them call the tenant routes directly.
-
-PLATFORM_ADMIN_EMAIL = "operator@platform.example.com"
-PLATFORM_ADMIN_PASSWORD = "operator-password-12345"
-
-
-async def platform_admin_headers(client: AsyncClient) -> dict[str, str]:
-    """Register (once per test DB state) and promote a platform operator; return auth headers."""
-    from sqlalchemy import select
-
-    from synapse_saas.identity.models import User
-
-    reg = await client.post(
-        "/v1/auth/register",
-        json={"email": PLATFORM_ADMIN_EMAIL, "password": PLATFORM_ADMIN_PASSWORD, "display_name": "Operator"},
-    )
-    if reg.status_code == 201:
-        async with owner_session_factory()() as session:
-            user = (
-                await session.execute(select(User).where(User.email == PLATFORM_ADMIN_EMAIL))
-            ).scalar_one()
-            user.is_platform_admin = True
-            await session.commit()
-    # A fresh login mints a JWT carrying the platform_admin claim
-    login = await client.post(
-        "/v1/auth/login", json={"email": PLATFORM_ADMIN_EMAIL, "password": PLATFORM_ADMIN_PASSWORD}
-    )
-    assert login.status_code == 200, login.text
-    return {"Authorization": f"Bearer {login.json()['tokens']['access_token']}"}
-
-
-async def grant_as_platform(client: AsyncClient, org_id: str, body: dict[str, object]):  # type: ignore[no-untyped-def]
-    headers = await platform_admin_headers(client)
-    return await client.post(f"/v1/admin/orgs/{org_id}/entitlements/grants", headers=headers, json=body)
-
-
-async def pay_as_platform(client: AsyncClient, invoice_id: str, body: dict[str, object]):  # type: ignore[no-untyped-def]
-    headers = await platform_admin_headers(client)
-    return await client.post(f"/v1/billing/admin/invoices/{invoice_id}/pay", headers=headers, json=body)
-
-
-async def void_as_platform(client: AsyncClient, invoice_id: str):  # type: ignore[no-untyped-def]
-    headers = await platform_admin_headers(client)
-    return await client.post(f"/v1/billing/admin/invoices/{invoice_id}/void", headers=headers)
+__all__ = [
+    "DEFAULT_TEST_DATABASE_URL",
+    "PLATFORM_ADMIN_EMAIL",
+    "PLATFORM_ADMIN_PASSWORD",
+    "database_url",
+    "grant_as_platform",
+    "org_headers",
+    "owner_database_url",
+    "owner_engine",
+    "owner_session_factory",
+    "pay_as_platform",
+    "platform_admin_headers",
+    "void_as_platform",
+]

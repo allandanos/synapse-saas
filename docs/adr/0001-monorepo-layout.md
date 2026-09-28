@@ -31,3 +31,11 @@ Module boundaries are enforced with import-linter:
 
 The prompt's `packages/*` concept maps 1:1 to `src/synapse_saas/*`; the mental
 model survives, the packaging ceremony doesn't.
+
+## Amendment (2026-09-28, P4 / WS-J)
+
+The monorepo layout stands, but the package no longer assumes it is running
+from a checkout: the plan catalog and the migrations live inside
+`src/synapse_saas/` and are resolved as package resources; `database/` keeps
+only an `alembic.ini` shim for repo tooling. The integration fixtures are a
+public plugin (`synapse_saas.testing`). See ADR 0011.

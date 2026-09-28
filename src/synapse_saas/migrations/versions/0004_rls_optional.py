@@ -10,6 +10,7 @@ Revision ID: 0004_rls_optional
 Revises: 0003_usage_events
 Create Date: 2026-08-31
 """
+
 from __future__ import annotations
 
 from typing import Sequence, Union

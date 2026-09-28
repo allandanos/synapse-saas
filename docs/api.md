@@ -22,6 +22,7 @@ body stays a plain JSON array; the total number of rows rides the
 | POST | `/auth/register` | 201 + tokens |
 | POST | `/auth/login` | tokens; refresh also set as httpOnly cookie |
 | POST | `/auth/refresh` | rotation; reuse outside grace revokes the session |
+| POST | `/auth/accept-invite` | `{token}` from the invite email joins the caller's user to the org |
 | POST | `/auth/logout` | 204 |
 | GET | `/auth/me` | user + orgs + role keys |
 | POST | `/auth/switch-org` | re-scopes the session to one org |
@@ -66,6 +67,14 @@ body stays a plain JSON array; the total number of rows rides the
 | POST | `/billing/checkout/confirm` | manual-provider activation |
 | GET | `/billing/portal-url` | provider portal, null when unsupported |
 | GET | `/billing/invoices` | org invoices |
+| GET | `/billing/invoices/{id}` | invoice detail with lines (plan, overage, credit/custom) |
+| GET | `/billing/invoices/{id}/pdf` | framework-rendered PDF (`Content-Disposition` carries the number) |
+| POST | `/billing/invoices/draft` | `{period?: "YYYY-MM"}` — draft (or return) the period invoice: plan + catalog-priced overage + prorated adjustments (`billing:manage`) |
+| POST | `/billing/invoices/{id}/finalize` | assign a number, lock amounts, queue the delivery email (`billing:manage`) |
+| GET | `/billing/spend-summary` | this org's billed / paid / outstanding totals (`billing:read`) |
+| GET | `/billing/spend-monthly` | this org's monthly spend series (`billing:read`) |
+| GET | `/billing/admin/revenue-summary` | **platform admin** — revenue across orgs |
+| GET | `/billing/admin/revenue-monthly` | **platform admin** — monthly revenue series |
 | POST | `/billing/admin/invoices/{id}/pay` | **platform admin** — record an out-of-band payment (tenants cannot mark their own invoice paid) |
 | POST | `/billing/admin/invoices/{id}/void` | **platform admin** — void an open invoice |
 | POST | `/billing/webhooks/{provider}` | raw-body ingest; provider-verifiable |
@@ -128,6 +137,22 @@ See [Feature flags](feature-flags.md) — deployment toggles, distinct from enti
 | GET | `/webhooks/deliveries` | `webhook:manage` |
 | POST | `/webhooks/deliveries/{id}/retry` | `webhook:manage` |
 | GET | `/audit` | `audit:read`; filters `event_type`, `actor_user_id` |
+
+## Agents
+
+Registry and governance only (ADR 0007); execution lives in the sibling
+agentic runtime. Every route is behind the `agents` feature (403 with
+`available_in` on plans without it).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/agents` | org registry (`agents:read`); paginated |
+| POST | `/agents` | register `{slug, name, description?, config?}` (`agents:manage`) |
+| GET | `/agents/{id}` | one agent (`agents:read`) |
+| PATCH | `/agents/{id}` | update name/description/config (`agents:manage`) |
+| DELETE | `/agents/{id}` | remove (`agents:manage`) |
+| POST | `/agents/{id}/enable` | (`agents:manage`) |
+| POST | `/agents/{id}/disable` | kill switch (`agents:manage`) |
 
 ## Health
 
