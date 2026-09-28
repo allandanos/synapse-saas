@@ -1,0 +1,166 @@
+{
+  "api_key_not_found": {
+    "status": 404,
+    "class": "ApiKeyNotFoundError"
+  },
+  "billing_provider_error": {
+    "status": 502,
+    "class": "BillingProviderError"
+  },
+  "billing_provider_not_configured": {
+    "status": 409,
+    "class": "BillingProviderNotConfiguredError"
+  },
+  "checkout_confirm_not_allowed": {
+    "status": 409,
+    "class": "CheckoutConfirmNotAllowedError"
+  },
+  "checkout_required": {
+    "status": 409,
+    "class": "CheckoutRequiredError"
+  },
+  "conflict": {
+    "status": 409,
+    "class": "ConflictError"
+  },
+  "email_already_registered": {
+    "status": 409,
+    "class": "EmailAlreadyRegisteredError"
+  },
+  "entitlement_not_found": {
+    "status": 404,
+    "class": "EntitlementNotFoundError"
+  },
+  "feature_flag_not_found": {
+    "status": 404,
+    "class": "FeatureFlagNotFoundError"
+  },
+  "feature_not_entitled": {
+    "status": 403,
+    "class": "FeatureNotEntitledError"
+  },
+  "invalid_credentials": {
+    "status": 401,
+    "class": "InvalidCredentialsError"
+  },
+  "invalid_subscription_transition": {
+    "status": 409,
+    "class": "SubscriptionStateError"
+  },
+  "invite_already_used": {
+    "status": 409,
+    "class": "InviteAlreadyUsedError"
+  },
+  "invite_not_found": {
+    "status": 404,
+    "class": "InviteNotFoundError"
+  },
+  "invoice_not_found": {
+    "status": 404,
+    "class": "InvoiceNotFoundError"
+  },
+  "not_found": {
+    "status": 404,
+    "class": "TenantNotResolvedError"
+  },
+  "organization_suspended": {
+    "status": 403,
+    "class": "OrganizationSuspendedError"
+  },
+  "permission_denied": {
+    "status": 403,
+    "class": "PermissionDeniedError"
+  },
+  "plan_catalog_invalid": {
+    "status": 400,
+    "class": "CatalogInvalidError"
+  },
+  "plan_not_found": {
+    "status": 404,
+    "class": "PlanNotPublicError"
+  },
+  "presign_unsupported": {
+    "status": 409,
+    "class": "PresignUnsupportedError"
+  },
+  "rate_limited": {
+    "status": 429,
+    "class": "RateLimitedError"
+  },
+  "role_not_found": {
+    "status": 404,
+    "class": "RoleNotFoundError"
+  },
+  "slug_unavailable": {
+    "status": 409,
+    "class": "SlugUnavailableError"
+  },
+  "storage_error": {
+    "status": 400,
+    "class": "StorageError"
+  },
+  "subscription_not_found": {
+    "status": 404,
+    "class": "SubscriptionNotFoundError"
+  },
+  "system_role_immutable": {
+    "status": 409,
+    "class": "SystemRoleImmutableError"
+  },
+  "tenant_context_missing": {
+    "status": 400,
+    "class": "TenantContextMissingError"
+  },
+  "tenant_violation": {
+    "status": 403,
+    "class": "TenantViolationError"
+  },
+  "token_reuse_detected": {
+    "status": 401,
+    "class": "TokenReuseError"
+  },
+  "trial_not_allowed": {
+    "status": 409,
+    "class": "TrialNotAllowedError"
+  },
+  "unauthorized": {
+    "status": 401,
+    "class": "AuthenticationError"
+  },
+  "unknown_metric": {
+    "status": 422,
+    "class": "UnknownMetricError"
+  },
+  "upload_incomplete": {
+    "status": 409,
+    "class": "UploadIncompleteError"
+  },
+  "usage_limit_exceeded": {
+    "status": 402,
+    "class": "UsageLimitExceededError"
+  },
+  "user_not_found": {
+    "status": 404,
+    "class": "UserNotFoundError"
+  },
+  "validation_failed": {
+    "status": 422,
+    "class": "ValidationFailedError"
+  },
+  "weak_password": {
+    "status": 400,
+    "class": "WeakPasswordError"
+  },
+  "webhook_delivery_not_found": {
+    "status": 404,
+    "class": "WebhookDeliveryNotFoundError"
+  },
+  "webhook_endpoint_not_found": {
+    "status": 404,
+    "class": "WebhookEndpointNotFoundError"
+  },
+  "webhook_signature_invalid": {
+    "status": 400,
+    "class": "WebhookSignatureInvalidError"
+  }
+}

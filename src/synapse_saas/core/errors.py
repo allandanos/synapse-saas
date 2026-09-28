@@ -31,17 +31,21 @@ class DomainError(Exception):
         return f"{BASE_PROBLEM_URI}/{self.title}"
 
     def to_problem(self, *, instance: str | None = None, request_id: str | None = None) -> dict[str, Any]:
-        doc: dict[str, Any] = {
-            "type": self.problem_type,
-            "title": self.title.replace("_", " "),
-            "status": self.status,
-            "detail": self.message,
-        }
+        # Extras first: the RFC 7807 members and request_id always win, so an
+        # extension named `status` can never rewrite the HTTP status in the body.
+        doc: dict[str, Any] = dict(self.extras)
+        doc.update(
+            {
+                "type": self.problem_type,
+                "title": self.title.replace("_", " "),
+                "status": self.status,
+                "detail": self.message,
+            }
+        )
         if instance is not None:
             doc["instance"] = instance
         if request_id is not None:
             doc["request_id"] = request_id
-        doc.update(self.extras)
         return doc
 
 
@@ -110,6 +114,13 @@ class OrganizationNotFoundError(DomainError):
 class SlugUnavailableError(DomainError):
     status = 409
     title = "slug_unavailable"
+
+
+class OrganizationSuspendedError(DomainError):
+    """Operator-suspended org: members are told why (403), never a bare 404."""
+
+    status = 403
+    title = "organization_suspended"
 
 
 class MembershipLimitReachedError(DomainError):

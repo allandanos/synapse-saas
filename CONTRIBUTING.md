@@ -50,3 +50,16 @@ By contributing you agree your contributions are licensed under Apache-2.0.
   `src/synapse_saas/config/plans.yaml` — a unit test fails when they differ.
 - Test fixtures: `src/synapse_saas/testing/fixtures.py` (public plugin);
   `tests/integration/conftest.py` only re-exports helpers.
+
+## Contract conformance
+
+`tests/conformance` is a black-box suite over the frozen v1 contract. It runs
+in-process by default (part of `make test-all`) and against any base URL:
+
+```bash
+SYNAPSE_CONFORMANCE_API_URL=http://localhost:8000 uv run pytest tests/conformance -m "" --no-cov
+```
+
+A route change is complete when the contract (`scripts/export_openapi.py --check`,
+`scripts/export_contracts.py --check`), the docs (`scripts/check_docs.py --check`),
+the four SDKs (`scripts/sdk_coverage.py --check`) and this suite all agree.

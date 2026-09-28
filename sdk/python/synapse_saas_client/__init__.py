@@ -12,7 +12,7 @@ Two credential modes:
         print(m["metric"], m["used"], "/", m["limit"])
 """
 
-from synapse_saas_client.client import SynapseClient
+from synapse_saas_client.client import Page, SynapseClient
 from synapse_saas_client.errors import (
     SynapseAuthError,
     SynapseError,
@@ -22,6 +22,7 @@ from synapse_saas_client.errors import (
 )
 
 __all__ = [
+    "Page",
     "SynapseAuthError",
     "SynapseClient",
     "SynapseError",

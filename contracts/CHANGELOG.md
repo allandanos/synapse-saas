@@ -5,6 +5,31 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
+### Contract v1 freeze (P6 WS-K)
+
+No path changes. Behaviour pinned by the new black-box suite
+(`tests/conformance`, runnable in-process or against any base URL) and the
+four SDKs, which now cover every non-exempt operation
+(`scripts/sdk_coverage.py --check`).
+
+- **Every error is a problem document.** Request-parsing failures used to be
+  FastAPI's bare `{"detail": [...]}`; they are now `422` `validation_failed`
+  with `type/title/status/detail/instance/request_id` and the parser's list in
+  `errors[]`. Clients that read `detail` as a string keep working.
+- Extensions can no longer shadow the RFC 7807 members (`status` in a problem
+  body is always the HTTP status).
+- `POST /v1/feature-flags` with an existing key answers **409** `conflict`
+  (was a mislabelled 404).
+- `POST /v1/files/{id}/presign` on a backend without presigned URLs answers
+  **409** `presign_unsupported` (was 400 `storage_error`), the same type as
+  `presign-upload`.
+- Org suspension applies to JWT members too: **403** `organization_suspended`
+  on every tenant route (was enforced for API keys only).
+- `PATCH /v1/roles/{id}` echoes the permission set it just stored.
+- `contracts/events.json` (public + internal event catalog) and
+  `contracts/problems.json` (problem-type registry) are generated and checked in
+  CI beside the OpenAPI document.
+
 ### Operator vs tenant split (P1 WS-A, ADR 0008) — **breaking**
 
 Grants and money movements are platform-operator actions. Tenants could

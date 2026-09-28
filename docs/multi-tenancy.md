@@ -33,6 +33,12 @@ Per request, in order:
 Then membership is verified. **Failure is always 404** with a body identical to
 a nonexistent org — the API never leaks which organizations exist.
 
+Operator suspension (`POST /v1/orgs/{id}/suspend`, ADR 0008) is checked *after*
+membership, for every principal: members get **403** `organization_suspended`
+(with `organization_id` and `organization_status`), API keys of that org fail
+authentication, and a non-member still sees the same 404 as before. Platform
+admins keep access so they can investigate.
+
 ## Tenant-scoped persistence
 
 Inherit `TenantMixin` and use `TenantRepository`:

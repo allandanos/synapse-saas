@@ -119,3 +119,69 @@ describe("constructor", () => {
     expect(requests[0].auth).toBe("Bearer jwt");
   });
 });
+
+function fakeFetchWithHeaders(status: number, body: BodyInit | null, headers: Record<string, string>) {
+  const requests: Array<{ method: string; url: string; body: unknown; contentType: string | null }> = [];
+  const impl: typeof fetch = async (input, init) => {
+    requests.push({
+      method: init?.method ?? "GET",
+      url: String(input),
+      body: init?.body,
+      contentType: (init?.headers as Record<string, string>)?.["Content-Type"] ?? null,
+    });
+    return new Response(body, { status, headers });
+  };
+  return { impl, requests };
+}
+
+describe("full contract surface", () => {
+  it("pages read X-Total-Count and pass paging params", async () => {
+    const { impl, requests } = fakeFetchWithHeaders(200, JSON.stringify([{ id: "a" }, { id: "b" }]), {
+      "X-Total-Count": "7",
+    });
+    const page = await client(impl).invoices.listPage({ limit: 2, offset: 4 });
+    expect(page).toEqual({ items: [{ id: "a" }, { id: "b" }], total: 7, limit: 2, offset: 4 });
+    expect(requests[0].url).toBe("http://test/v1/billing/invoices?limit=2&offset=4");
+  });
+
+  it("bytes routes return the raw body", async () => {
+    const { impl } = fakeFetchWithHeaders(200, new Uint8Array([37, 80, 68, 70]), { "Content-Type": "application/pdf" });
+    const pdf = await client(impl).invoices.pdf("inv1");
+    expect(new Uint8Array(pdf)).toEqual(new Uint8Array([37, 80, 68, 70]));
+  });
+
+  it("bytes route errors still map to typed errors", async () => {
+    const { impl } = fakeFetchWithHeaders(404, JSON.stringify({ title: "not found" }), {});
+    await expect(client(impl).files.download("nope")).rejects.toBeInstanceOf(SynapseNotFoundError);
+  });
+
+  it("uploads as multipart without a JSON content type", async () => {
+    const { impl, requests } = fakeFetchWithHeaders(201, JSON.stringify({ id: "f1" }), {});
+    await client(impl).files.upload("a.txt", new Uint8Array([104, 105]), "text/plain");
+    expect(requests[0].body).toBeInstanceOf(FormData);
+    expect(requests[0].contentType).toBeNull();
+    expect((requests[0].body as FormData).get("file")).toBeInstanceOf(Blob);
+  });
+
+  it("shapes admin, auth, flags, roles and usage.record payloads", async () => {
+    const { impl, requests } = fakeFetchWithHeaders(200, JSON.stringify({}), {});
+    const c = client(impl);
+    await c.auth.login("a@b.c", "pw");
+    expect(JSON.parse(requests[0].body as string)).toEqual({ email: "a@b.c", password: "pw" });
+    await c.featureFlags.setOverride("k", { enabled: true, organizationId: "o1" });
+    expect(JSON.parse(requests[1].body as string)).toEqual({ enabled: true, organization_id: "o1" });
+    await c.roles.update("r1", { permissions: ["org:read"] });
+    expect(JSON.parse(requests[2].body as string)).toEqual({ permissions: ["org:read"] });
+    await c.usage.record([{ metric: "api_requests", quantity: 2, idempotencyKey: "k1" }]);
+    expect(requests[3].url).toBe("http://test/v1/usage/events");
+    expect(JSON.parse(requests[3].body as string).events[0]).toEqual({
+      metric: "api_requests",
+      quantity: 2,
+      idempotency_key: "k1",
+    });
+    await c.webhooks.listDeliveries({ endpointId: "e1", limit: 10 });
+    expect(requests[4].url).toBe("http://test/v1/webhooks/deliveries?limit=10&endpoint_id=e1");
+    await c.admin.suspendOrg("org1");
+    expect(requests[5]).toMatchObject({ method: "POST", url: "http://test/v1/orgs/org1/suspend" });
+  });
+});

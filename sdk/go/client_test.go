@@ -123,3 +123,104 @@ func TestRequiresCredentials(t *testing.T) {
 		t.Error("expected error for missing credentials")
 	}
 }
+
+func TestPagesReadTotalHeader(t *testing.T) {
+	var gotURL string
+	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		gotURL = r.URL.String()
+		resp := jsonResponse(200, `[{"id":"a"},{"id":"b"}]`)
+		resp.Header.Set("X-Total-Count", "7")
+		return resp, nil
+	})
+	page, err := c.Invoices().List(context.Background(), Paging{Limit: 2, Offset: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 7 || len(page.Items) != 2 || page.Limit != 2 || page.Offset != 4 {
+		t.Errorf("page = %+v", page)
+	}
+	if gotURL != "http://test/v1/billing/invoices?limit=2&offset=4" {
+		t.Errorf("url = %s", gotURL)
+	}
+}
+
+func TestBytesRoutes(t *testing.T) {
+	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(r.URL.Path, "/nope/pdf") {
+			return jsonResponse(404, `{"title":"not found"}`), nil
+		}
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/pdf"}},
+			Body:       io.NopCloser(strings.NewReader("%PDF-1.7")),
+		}, nil
+	})
+	pdf, err := c.Invoices().PDF(context.Background(), "inv1")
+	if err != nil || string(pdf) != "%PDF-1.7" {
+		t.Fatalf("pdf = %q err = %v", pdf, err)
+	}
+	var notFound *NotFoundError
+	if _, err := c.Invoices().PDF(context.Background(), "nope"); !errors.As(err, &notFound) {
+		t.Errorf("expected NotFoundError, got %v", err)
+	}
+}
+
+func TestUploadIsMultipart(t *testing.T) {
+	var contentType, body string
+	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		contentType = r.Header.Get("Content-Type")
+		raw, _ := io.ReadAll(r.Body)
+		body = string(raw)
+		return jsonResponse(201, `{"id":"f1"}`), nil
+	})
+	if _, err := c.Files().Upload(context.Background(), "a.txt", []byte("hello"), "text/plain"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(contentType, "multipart/form-data; boundary=") {
+		t.Errorf("content type = %s", contentType)
+	}
+	if !strings.Contains(body, `filename="a.txt"`) || !strings.Contains(body, "hello") {
+		t.Errorf("body = %s", body)
+	}
+}
+
+func TestPayloadShapes(t *testing.T) {
+	type call struct{ method, path, query, body string }
+	var calls []call
+	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		var raw []byte
+		if r.Body != nil {
+			raw, _ = io.ReadAll(r.Body)
+		}
+		calls = append(calls, call{r.Method, r.URL.Path, r.URL.RawQuery, string(raw)})
+		if r.Method == "DELETE" || strings.HasSuffix(r.URL.Path, "/suspend") {
+			return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
+		}
+		return jsonResponse(200, `{}`), nil
+	})
+	ctx := context.Background()
+	_, _ = c.Auth().Login(ctx, "a@b.c", "pw")
+	_, _ = c.FeatureFlags().SetOverride(ctx, "k", map[string]any{"enabled": true, "organization_id": "o1"})
+	_, _ = c.Roles().Update(ctx, "r1", map[string]any{"permissions": []string{"org:read"}})
+	_, _ = c.Usage().Record(ctx, []UsageEvent{{Metric: "api_requests", Quantity: 2, IdempotencyKey: "k1"}})
+	_, _ = c.Webhooks().ListDeliveries(ctx, Paging{Limit: 10}, "e1")
+	_ = c.Admin().SuspendOrg(ctx, "org1")
+	_ = c.Admin().RevokeGrant(ctx, "org1", "g1")
+	want := []call{
+		{"POST", "/v1/auth/login", "", `{"email":"a@b.c","password":"pw"}`},
+		{"POST", "/v1/feature-flags/k/overrides", "", `{"enabled":true,"organization_id":"o1"}`},
+		{"PATCH", "/v1/roles/r1", "", `{"permissions":["org:read"]}`},
+		{"POST", "/v1/usage/events", "", `{"events":[{"metric":"api_requests","quantity":2,"idempotency_key":"k1"}]}`},
+		{"GET", "/v1/webhooks/deliveries", "endpoint_id=e1&limit=10", ""},
+		{"POST", "/v1/orgs/org1/suspend", "", ""},
+		{"DELETE", "/v1/admin/orgs/org1/entitlements/grants/g1", "", ""},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("calls = %+v", calls)
+	}
+	for i := range want {
+		if calls[i] != want[i] {
+			t.Errorf("call %d = %+v, want %+v", i, calls[i], want[i])
+		}
+	}
+}

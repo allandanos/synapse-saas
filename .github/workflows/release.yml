@@ -1,0 +1,123 @@
+name: Release
+
+# Tag `vX.Y.Z` ⇒ publish the framework + clients (ADR 0011).
+#   PyPI: trusted publishing (configure the `synapse-saas` and
+#         `synapse-saas-client` projects to trust this repo/workflow).
+#   npm:  NPM_TOKEN secret (or provenance via `npm publish --provenance`).
+#   Maven Central: MAVEN_CENTRAL_USERNAME/PASSWORD + GPG_PRIVATE_KEY/GPG_PASSPHRASE
+#         secrets and a verified `dev.synapse` namespace on central.sonatype.com.
+#   Go:   the module is consumed by tag — `sdk/go/vX.Y.Z` is pushed by this job.
+# Every step is a dry run until the matching secret/trust exists.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build everything, publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  python:
+    name: PyPI (framework + client)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Build framework wheel + sdist
+        run: uv build --out-dir dist
+      - name: Build client wheel + sdist
+        run: uv build --out-dir dist-client sdk/python
+      - name: Smoke-install the framework wheel and migrate from an empty directory
+        run: |
+          python -m venv /tmp/smoke && /tmp/smoke/bin/pip install -q dist/*.whl
+          cd /tmp && /tmp/smoke/bin/synapse-cli new smoke-app --list-templates
+      - name: Publish framework to PyPI
+        if: github.event_name == 'push' || inputs.dry_run == false
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: true
+      - name: Publish client to PyPI
+        if: github.event_name == 'push' || inputs.dry_run == false
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-client
+          skip-existing: true
+
+  npm:
+    name: npm (@synapse-saas/client)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test && pnpm build
+      - name: Publish (dry run without a token)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ] || [ "${{ inputs.dry_run }}" = "true" ]; then
+            npm publish --access public --dry-run
+          else
+            npm publish --access public --provenance
+          fi
+
+  maven:
+    name: Maven Central (dev.synapse:synapse-saas-client)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/java
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Verify + package
+        run: mvn -q -B verify
+      - name: Deploy to Central (needs the dev.synapse namespace + secrets)
+        if: github.event_name == 'push' && inputs.dry_run != true
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [ -z "$MAVEN_CENTRAL_USERNAME" ]; then echo "no Central credentials — skipping deploy"; exit 0; fi
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          mvn -q -B -Pcentral deploy -Dgpg.passphrase="$GPG_PASSPHRASE"
+
+  go:
+    name: Go module tag (sdk/go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - run: cd sdk/go && go vet ./... && go test ./...
+      - name: Push the nested module tag
+        if: github.event_name == 'push'
+        run: |
+          TAG="sdk/go/${GITHUB_REF_NAME}"
+          git tag "$TAG" && git push origin "$TAG"

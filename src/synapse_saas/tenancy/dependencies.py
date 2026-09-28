@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from synapse_saas.core.cache import VersionedCache
 from synapse_saas.core.context import TenantContext, current_tenant, set_tenant
 from synapse_saas.core.db import get_session, set_rls_platform, set_rls_tenant
-from synapse_saas.core.errors import AuthenticationError, TenantNotResolvedError
+from synapse_saas.core.errors import AuthenticationError, OrganizationSuspendedError, TenantNotResolvedError
 from synapse_saas.core.logging import bind_request_context, get_logger
 from synapse_saas.core.security import decode_access_token
 from synapse_saas.identity.dependencies import CurrentUser
@@ -91,6 +91,15 @@ async def resolve_tenant(request: Request, user: CurrentUser, session: SessionDe
     membership = await members.get_active(org.id, user.id)
     if membership is None and not user.is_platform_admin:
         raise TenantNotResolvedError("Organization not found")  # identical response: no existence leak
+
+    # Operator suspension (ADR 0008) applies to every principal, not just API
+    # keys. Checked after membership so a non-member learns nothing. Platform
+    # admins keep read access to investigate.
+    if org.status != "active" and not user.is_platform_admin:
+        raise OrganizationSuspendedError(
+            "Organization is suspended",
+            extras={"organization_id": str(org.id), "organization_status": org.status},
+        )
 
     context = TenantContext(organization_id=org.id, slug=org.slug)
     # Bind for the rest of the request: tenant-scoped repositories, audit, logs.

@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST
@@ -106,6 +107,30 @@ def create_app() -> FastAPI:
                 instance=str(request.url.path),
                 request_id=context.current_request_id() or request.headers.get("X-Request-Id") or _trace_id(),
             ),
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """Request-parsing failures are problem documents too (contract v1: every
+        error body is RFC 7807). The parser's per-field list rides in `errors`."""
+        errors = [
+            {"loc": list(e.get("loc", ())), "msg": e.get("msg", ""), "type": e.get("type", "")}
+            for e in exc.errors()
+        ]
+        fields = ", ".join(".".join(str(part) for part in e["loc"][1:]) or "body" for e in errors[:3])
+        return JSONResponse(
+            status_code=422,
+            content={
+                "type": "https://synapse-saas.dev/problems/validation_failed",
+                "title": "validation failed",
+                "status": 422,
+                "detail": f"Invalid request: {fields}",
+                "instance": str(request.url.path),
+                "request_id": context.current_request_id()
+                or request.headers.get("X-Request-Id")
+                or _trace_id(),
+                "errors": errors,
+            },
         )
 
     @app.exception_handler(Exception)

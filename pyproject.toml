@@ -120,6 +120,7 @@ asyncio_mode = "auto"
 markers = [
   "pg: integration tests requiring PostgreSQL (deselect with -m 'not pg')",
   "fga: integration tests requiring a live OpenFGA (SYNAPSE_OPENFGA_URL)",
+  "conformance: black-box contract journeys (in-process, or SYNAPSE_CONFORMANCE_API_URL)",
 ]
 addopts = "-m 'not pg and not fga' --cov=src/synapse_saas --cov-report=term-missing --no-cov-on-fail"
 filterwarnings = ["error::DeprecationWarning"]

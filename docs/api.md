@@ -4,7 +4,12 @@ Live OpenAPI docs: **`/docs`** (Swagger) and **`/redoc`** on a running API.
 
 Conventions:
 
-- Base path `/v1`; JSON bodies; RFC 7807 `application/problem+json` errors
+- Base path `/v1`; JSON bodies; **every** error is an RFC 7807 problem document
+  (`application/json`): `type`, `title`, `status`, `detail`, `instance`,
+  `request_id`, plus typed extensions (`metric`/`limit` on 402, `feature`/
+  `available_in` on 403 gates, …). Request-parsing failures are
+  `validation_failed` (422) with the per-field list in `errors[]`. The registry
+  is `contracts/problems.json`.
 - `X-Request-Id` is honored inbound and echoed outbound
 - Org context via `X-Org-Id` (UUID) or `X-Org-Slug`; unauthorized cross-tenant
   access is 404 identical to a nonexistent org
@@ -40,7 +45,7 @@ body stays a plain JSON array; the total number of rows rides the
 | GET | `/orgs/current/members` | `member:read` |
 | POST | `/orgs/current/members/invite` | `member:invite` (seat limit enforced) |
 | PATCH/DELETE | `/memberships/{id}` | `member:update` / `member:remove` |
-| POST/DELETE | `/orgs/{id}/suspend` | platform admin |
+| POST/DELETE | `/orgs/{id}/suspend` | platform admin; while suspended every member gets **403** `organization_suspended`, API keys 401 |
 
 ## Roles
 
@@ -105,14 +110,14 @@ body stays a plain JSON array; the total number of rows rides the
 | GET | `/files/{id}` | stream download |
 | POST | `/files/presign-upload` | reserve quota + PUT URL for a direct upload (S3 backends; 409 on local disk) |
 | POST | `/files/{id}/complete` | verify the uploaded object and mark it ready (409 `upload_incomplete` on mismatch) |
-| POST | `/files/{id}/presign` | time-limited direct download URL (S3 backends) |
+| POST | `/files/{id}/presign` | time-limited direct download URL (S3 backends; 409 `presign_unsupported` on local disk) |
 | DELETE | `/files/{id}` | soft-delete + object delete + quota released |
 
 ## Feature flags
 
 | Method | Path | Notes |
 |---|---|---|
-| GET/POST | `/feature-flags` | platform admin; list / create |
+| GET/POST | `/feature-flags` | platform admin; list / create (409 `conflict` on a duplicate key) |
 | PATCH | `/feature-flags/{key}` | flip default / rollout |
 | GET/POST | `/feature-flags/{key}/overrides` | org/user overrides |
 | DELETE | `/feature-flags/overrides/{id}` | remove override |

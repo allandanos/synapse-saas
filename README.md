@@ -117,6 +117,7 @@ usage.within_limit("api_requests")     # checked against the effective, overridd
 - [Deployment & HA](docs/deployment.md)
 - [API reference](docs/api.md) (live: `/docs`)
 - [ADRs](docs/adr/)
+- [Porting guide (Java / TypeScript)](ports/README.md) — contract-first sibling ports, ADR 0012
 
 ## Development
 

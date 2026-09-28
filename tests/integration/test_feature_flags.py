@@ -77,7 +77,8 @@ class TestLifecycle:
             headers=admin,
             json={"key": "dup-flag", "name": "Dup Flag 2"},
         )
-        assert again.status_code == 404  # flag-not-found misuse class
+        assert again.status_code == 409, again.text
+        assert again.json()["title"] == "conflict" and again.json()["key"] == "dup-flag"
 
     async def test_invalid_key_format_rejected(self, client: AsyncClient, org_and_tokens) -> None:
         await make_platform_admin(client, "owner@example.com")

@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from synapse_saas.core.cache import VersionedCache, defer_bump
-from synapse_saas.core.errors import FeatureFlagNotFoundError
+from synapse_saas.core.errors import ConflictError, FeatureFlagNotFoundError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.feature_flags.models import FeatureFlag, FeatureFlagOverride
 
@@ -104,7 +104,7 @@ class FeatureFlagService:
     ) -> FeatureFlag:
         existing = await self._flag(key)
         if existing is not None:
-            raise FeatureFlagNotFoundError(f"Flag {key!r} already exists")  # 404-class misuse
+            raise ConflictError(f"Flag {key!r} already exists", extras={"key": key})
         flag = FeatureFlag(
             key=key,
             name=name,

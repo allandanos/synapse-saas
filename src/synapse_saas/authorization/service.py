@@ -184,6 +184,8 @@ class AuthorizationService:
                     f"Unknown permissions: {sorted(unknown)}", extras={"unknown": sorted(unknown)}
                 )
             await self._set_role_permissions(role, permission_keys)
+            # The selectin-loaded relationship was populated before the swap
+            await self.session.refresh(role, attribute_names=["permissions"])
         await self.invalidate_org_perms(organization_id)
         return role
 

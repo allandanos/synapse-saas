@@ -194,8 +194,13 @@ async def presign_download(
 ) -> PresignResponse:
     """Time-limited direct URL (S3 backends)."""
     await require_permission("file:read", user, session, tenant)
+    storage = get_storage()
+    if not storage.supports_presigned_upload:  # local disk has no presigned URLs in either direction
+        raise PresignUnsupportedError(
+            "Presigned URLs need an S3-compatible backend; download via GET /files/{id}"
+        )
     row = await _get_scoped(file_id, tenant.organization_id, session)
-    url = await get_storage().presign_get(key=row.key)
+    url = await storage.presign_get(key=row.key)
     from synapse_saas.core.config import get_settings
 
     return PresignResponse(url=url, key=row.key, expires_in=get_settings().storage_presign_seconds)

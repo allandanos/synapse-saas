@@ -128,3 +128,82 @@ class TestConstructor:
         c = SynapseClient("http://test", access_token="jwt", _transport=transport)  # type: ignore[call-arg]
         c.auth.me()
         assert transport.requests[-1].headers["Authorization"] == "Bearer jwt"
+
+
+class PagedTransport(httpx.BaseTransport):
+    """Answers every list route with two rows and a bigger X-Total-Count; bytes routes with raw content."""
+
+    def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        request.read()  # multipart bodies are streams until read
+        self.requests.append(request)
+        path = request.url.path
+        if path == "/v1/billing/invoices/nope/pdf":
+            return httpx.Response(404, json={"title": "not found"})
+        if path.endswith("/pdf") or (path.startswith("/v1/files/") and request.method == "GET"):
+            return httpx.Response(200, content=b"%PDF-1.7 bytes", headers={"Content-Type": "application/pdf"})
+        if path == "/v1/files" and request.method == "POST":
+            return httpx.Response(201, json={"id": "f1", "content_type": request.headers["Content-Type"].split(";")[0]})
+        if path.startswith("/v1/orgs/") and path.endswith("/suspend"):
+            return httpx.Response(204)
+        return httpx.Response(200, json=[{"id": "a"}, {"id": "b"}], headers={"X-Total-Count": "7"})
+
+
+@pytest.fixture
+def paged() -> PagedTransport:
+    return PagedTransport()
+
+
+@pytest.fixture
+def paged_client(paged: PagedTransport) -> SynapseClient:
+    return SynapseClient("http://test", api_key="sk_test", _transport=paged)  # type: ignore[call-arg]
+
+
+class TestFullContract:
+    def test_pages_read_the_total_header(self, paged_client: SynapseClient, paged: PagedTransport) -> None:
+        page = paged_client.invoices.list_page(limit=2, offset=4)
+        assert page.total == 7 and page.limit == 2 and page.offset == 4 and len(page.items) == 2
+        assert dict(paged.requests[-1].url.params) == {"limit": "2", "offset": "4"}
+
+    def test_plain_lists_pass_paging_params(self, paged_client: SynapseClient, paged: PagedTransport) -> None:
+        paged_client.webhooks.list_deliveries(endpoint_id="e1", limit=10)
+        assert dict(paged.requests[-1].url.params) == {"endpoint_id": "e1", "limit": "10"}
+
+    def test_bytes_routes_return_raw_content(self, paged_client: SynapseClient) -> None:
+        assert paged_client.invoices.pdf("inv1") == b"%PDF-1.7 bytes"
+        assert paged_client.files.download("f1") == b"%PDF-1.7 bytes"
+
+    def test_bytes_route_errors_still_map(self, paged_client: SynapseClient) -> None:
+        with pytest.raises(SynapseNotFoundError):
+            paged_client.invoices.pdf("nope")
+
+    def test_upload_is_multipart(self, paged_client: SynapseClient, paged: PagedTransport) -> None:
+        out = paged_client.files.upload("a.txt", b"hello", "text/plain")
+        assert out["content_type"] == "multipart/form-data"
+        assert b'filename="a.txt"' in paged.requests[-1].content and b"hello" in paged.requests[-1].content
+
+    def test_admin_and_auth_paths(self, paged_client: SynapseClient, paged: PagedTransport) -> None:
+        assert paged_client.admin.suspend_org("org1") is None
+        assert paged.requests[-1].method == "POST" and paged.requests[-1].url.path == "/v1/orgs/org1/suspend"
+        paged_client.auth.login("a@b.c", "pw")
+        assert json.loads(paged.requests[-1].content) == {"email": "a@b.c", "password": "pw"}
+        paged_client.feature_flags.set_override("k", enabled=True, organization_id="o1")
+        assert json.loads(paged.requests[-1].content) == {"enabled": True, "organization_id": "o1"}
+        paged_client.roles.update("r1", permissions=["org:read"])
+        assert json.loads(paged.requests[-1].content) == {"permissions": ["org:read"]}
+        paged_client.usage.record([{"metric": "api_requests", "quantity": 2, "idempotency_key": "k1"}])
+        assert paged.requests[-1].url.path == "/v1/usage/events"
+
+    async def test_async_pages_and_bytes(self) -> None:
+        transport = PagedTransport()
+
+        class AsyncPaged(httpx.AsyncBaseTransport):
+            async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+                return transport.handle_request(request)
+
+        client = SynapseClient("http://test", api_key="sk_test", is_async=True, _transport=AsyncPaged())  # type: ignore[call-arg]
+        page = await client.files.list_page(limit=1)
+        assert page.total == 7
+        assert await client.files.download("f1") == b"%PDF-1.7 bytes"
