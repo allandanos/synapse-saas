@@ -1,0 +1,107 @@
+name: E2E (SSO, nightly)
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: e2e-sso-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-sso:
+    name: Playwright against a real Keycloak
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: synapse
+          POSTGRES_PASSWORD: synapse
+          POSTGRES_DB: synapse
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U synapse -d synapse"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+
+    env:
+      SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@localhost:5433/synapse
+      SYNAPSE_REDIS_URL: redis://localhost:6380/0
+      SYNAPSE_SECRET_KEY: e2e-only-secret-key-32-bytes-minimum-ok!
+      SYNAPSE_AUTH_RATE_LIMIT_PER_IP: "1000"
+      SYNAPSE_AUTH_RATE_LIMIT_PER_IDENTITY: "100"
+      SYNAPSE_AUTO_SYNC_PLANS: "true"
+      SYNAPSE_IDENTITY_PROVIDER: keycloak
+      SYNAPSE_KEYCLOAK_BASE_URL: http://localhost:8080
+      SYNAPSE_KEYCLOAK_REALM: synapse
+      SYNAPSE_KEYCLOAK_CLIENT_ID: synapse-web
+      SYNAPSE_KEYCLOAK_CLIENT_SECRET: dev-client-secret
+      SYNAPSE_WEB_ORIGIN: http://localhost:3000
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      E2E_BASE_URL: http://localhost:3000
+      E2E_API_URL: http://localhost:8000
+      E2E_KEYCLOAK: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Keycloak with the dev realm
+        run: |
+          docker run -d --name keycloak -p 8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+            -v "$PWD/infrastructure/keycloak:/opt/keycloak/data/import:ro" \
+            quay.io/keycloak/keycloak:26.0 start-dev --import-realm --http-port=8080
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8080/realms/synapse/.well-known/openid-configuration >/dev/null && break
+            sleep 2
+          done
+          curl -sf http://localhost:8080/realms/synapse/.well-known/openid-configuration >/dev/null
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Build console
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile && pnpm build && pnpm exec playwright install --with-deps chromium
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-groups --frozen
+      - name: Migrate + seed
+        run: uv run synapse-cli migrate && uv run synapse-cli seed --dev
+
+      - name: Run API + console
+        run: |
+          nohup uv run uvicorn apps.api.main:app --port 8000 > /tmp/api.log 2>&1 &
+          (cd apps/web && nohup pnpm start > /tmp/web.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf http://localhost:8000/healthz && curl -sf http://localhost:3000/login >/dev/null && break; sleep 1; done
+
+      - name: Playwright (SSO journey)
+        working-directory: apps/web
+        run: pnpm exec playwright test e2e/sso.spec.ts
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-sso
+          path: |
+            apps/web/test-results/
+            /tmp/api.log
+          retention-days: 7
+          if-no-files-found: ignore

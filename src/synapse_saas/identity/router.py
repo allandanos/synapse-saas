@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, Response, status
+import base64
+import hashlib
+import json
+import secrets
+from urllib.parse import quote
 
+from fastapi import APIRouter, Request, Response, status
+from fastapi.responses import RedirectResponse
+
+from synapse_saas.core.cache import VersionedCache
 from synapse_saas.core.config import get_settings
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
+from synapse_saas.identity.provider import get_identity_provider
 from synapse_saas.identity.schemas import (
     AuthResponse,
     ForgotPasswordRequest,
@@ -25,6 +34,7 @@ from synapse_saas.tenancy.repository import MembershipRepository
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 REFRESH_COOKIE = "synapse_rt"
+OIDC_STATE_TTL_SECONDS = 600
 
 
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
@@ -90,6 +100,87 @@ async def refresh(
     )
     _set_refresh_cookie(response, tokens.refresh_token)
     return tokens
+
+
+# ── OIDC (Keycloak) — authorization-code flow with PKCE ───────────────────────
+# The browser never sees tokens in a URL: the callback sets the refresh cookie
+# and bounces to the console, which mints an access token through /auth/refresh.
+
+_oidc_state = VersionedCache("oidc", ttl=OIDC_STATE_TTL_SECONDS)
+
+
+def _safe_return_to(raw: str | None) -> str:
+    """Only same-origin paths — never an open redirect."""
+    if raw and raw.startswith("/") and not raw.startswith("//"):
+        return raw
+    return "/dashboard"
+
+
+def _callback_uri(request: Request) -> str:
+    settings = get_settings()
+    if settings.oidc_redirect_uri:
+        return settings.oidc_redirect_uri
+    return str(request.url_for("oidc_callback"))
+
+
+@router.get("/oidc/start", status_code=status.HTTP_302_FOUND, response_class=RedirectResponse)
+async def oidc_start(request: Request, return_to: str | None = None) -> RedirectResponse:
+    """Start an SSO login: PKCE verifier + nonce are kept server-side under an
+    opaque `state` for OIDC_STATE_TTL_SECONDS; the browser is sent to the IdP."""
+    provider = get_identity_provider()
+    state = secrets.token_urlsafe(32)
+    verifier = secrets.token_urlsafe(64)
+    nonce = secrets.token_urlsafe(16)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    await _oidc_state.set(
+        state, json.dumps({"verifier": verifier, "nonce": nonce, "return_to": _safe_return_to(return_to)})
+    )
+    url = provider.authorization_url(
+        redirect_uri=_callback_uri(request), state=state, nonce=nonce, code_challenge=challenge
+    )
+    return RedirectResponse(url, status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/oidc/callback", name="oidc_callback", response_class=RedirectResponse)
+async def oidc_callback(
+    request: Request,
+    session: SessionDep,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+) -> RedirectResponse:
+    """Finish an SSO login: consume the state (one shot), exchange the code
+    with PKCE, verify the id_token, link/create the user, set the refresh cookie."""
+    from synapse_saas.core.errors import AuthenticationError
+
+    if error:
+        raise AuthenticationError(f"Identity provider refused the login: {error}")
+    if not code or not state:
+        raise AuthenticationError("Missing code or state")
+    raw = await _oidc_state.get(state)
+    if raw is None:
+        raise AuthenticationError("Unknown or expired login state")
+    await _oidc_state.delete(state)  # single use
+    pending = json.loads(raw)
+
+    provider = get_identity_provider()
+    _, claims = await provider.exchange_oidc_code(
+        code, redirect_uri=_callback_uri(request), code_verifier=pending["verifier"], nonce=pending["nonce"]
+    )
+    service = IdentityService(session)
+    user = await service.link_or_create_oidc_user(claims)
+    tokens = await service.issue_tokens(
+        user,
+        user_agent=request.headers.get("user-agent"),
+        ip=request.client.host if request.client else None,
+    )
+    settings = get_settings()
+    target = (
+        f"{settings.web_origin.rstrip('/')}/auth/callback?return_to={quote(pending['return_to'], safe='/')}"
+    )
+    response = RedirectResponse(target, status_code=status.HTTP_302_FOUND)
+    _set_refresh_cookie(response, tokens.refresh_token)
+    return response
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

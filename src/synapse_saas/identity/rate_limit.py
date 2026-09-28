@@ -32,6 +32,8 @@ AUTH_ROUTES: dict[str, str | None] = {
     "/v1/auth/forgot-password": "email",
     "/v1/auth/reset-password": None,  # token-based; IP limit only
     "/v1/auth/refresh": None,  # a stolen refresh token replayed at speed; IP limit only
+    "/v1/auth/oidc/start": None,  # SSO round-trips; IP limit only
+    "/v1/auth/oidc/callback": None,
 }
 
 

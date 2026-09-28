@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     keycloak_realm: str = ""
     keycloak_client_id: str = ""
     keycloak_client_secret: str = ""
+    # Resource-owner password grant (email+password proxied to Keycloak) is off
+    # by default: browser logins go through the authorization-code flow.
+    keycloak_allow_password_grant: bool = False
+    # The API's OIDC callback as Keycloak must see it; derived from the request
+    # when empty (set it behind proxies that rewrite scheme/host).
+    oidc_redirect_uri: str = ""
 
     # ── Billing ─────────────────────────────────────────────────────────────────
     billing_provider: str = "manual"

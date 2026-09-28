@@ -44,6 +44,17 @@ Not a path change, but a semantic one clients may observe:
   unless the configured provider declares `client_confirm` (only the manual
   provider does). Hosted-checkout providers activate via their webhook only.
 
+### SSO login (P5 WS-I, ADR 0010)
+
+- **Added** `GET /v1/auth/oidc/start` and `GET /v1/auth/oidc/callback` —
+  authorization-code flow with PKCE against Keycloak; the callback sets the
+  refresh cookie and redirects to `{web_origin}/auth/callback`.
+- **Changed** `POST /v1/auth/login` answers **401** with `sso_url` and
+  `identity_provider` for SSO-only accounts (no local password).
+- `/v1/meta` already reported `identity_provider`; the console uses it to show
+  the SSO button.
+- New settings: `SYNAPSE_KEYCLOAK_ALLOW_PASSWORD_GRANT`, `SYNAPSE_OIDC_REDIRECT_URI`.
+
 ### Infrastructure, pagination, presigned uploads (P4 WS-F)
 
 - **Added** `POST /v1/files/presign-upload` and `POST /v1/files/{id}/complete`

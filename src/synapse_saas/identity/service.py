@@ -75,6 +75,13 @@ class IdentityService:
 
     async def login(self, *, email: str, password: str) -> User:
         user = (await self.session.execute(select(User).where(User.email == email))).scalar_one_or_none()
+        if user is not None and user.identity_provider != "local" and user.password_hash is None:
+            # SSO-only account: the password form cannot sign it in — point at the flow that can
+            verify_password(password, _dummy_hash())
+            raise AuthenticationError(
+                "This account signs in with single sign-on",
+                extras={"sso_url": "/v1/auth/oidc/start", "identity_provider": user.identity_provider},
+            )
         if user is None or user.password_hash is None or not user.is_active:
             if user is None:
                 verify_password(password, _dummy_hash())  # timing equalization
@@ -95,20 +102,78 @@ class IdentityService:
             raise UserNotFoundError("User not found")
         return user
 
-    async def upsert_oidc_user(self, *, email: str, display_name: str, provider_subject: str) -> User | None:
-        user = (await self.session.execute(select(User).where(User.email == email))).scalar_one_or_none()
-        if user is None:
-            user = User(
-                email=email,
-                display_name=display_name,
-                identity_provider="keycloak",
-                provider_subject=provider_subject,
+    async def link_or_create_oidc_user(self, claims: dict[str, Any], *, provider: str = "keycloak") -> User:
+        """Resolve an OIDC identity to a local user.
+
+        1. by (provider, subject) — the stable link;
+        2. else by email, ONLY when the provider asserts `email_verified` — an
+           unverified email must never take over an existing local account;
+        3. else create an SSO-only user (no local password).
+        """
+        subject = str(claims.get("sub") or "")
+        if not subject:
+            raise AuthenticationError("OIDC claims carry no subject")
+        email = str(claims.get("email") or "").strip().lower()
+        display_name = str(claims.get("name") or claims.get("preferred_username") or email or subject)
+
+        by_subject = (
+            await self.session.execute(
+                select(User).where(User.identity_provider == provider, User.provider_subject == subject)
             )
-            self.session.add(user)
-        else:
-            user.provider_subject = provider_subject
+        ).scalar_one_or_none()
+        if by_subject is not None:
+            if not by_subject.is_active:
+                raise AuthenticationError("User is inactive")
+            by_subject.last_login_at = datetime.now(UTC)
+            self._audit(events.USER_LOGIN_SUCCEEDED, user_id=by_subject.id, diff={"via": provider})
+            return by_subject
+
+        if email and claims.get("email_verified") is True:
+            by_email = (
+                await self.session.execute(select(User).where(User.email == email))
+            ).scalar_one_or_none()
+            if by_email is not None:
+                if not by_email.is_active:
+                    raise AuthenticationError("User is inactive")
+                by_email.identity_provider = provider
+                by_email.provider_subject = subject
+                by_email.last_login_at = datetime.now(UTC)
+                self._audit(
+                    events.USER_LOGIN_SUCCEEDED,
+                    user_id=by_email.id,
+                    diff={"via": provider, "linked": "verified_email"},
+                )
+                await self.session.flush()
+                return by_email
+
+        if not email:
+            raise AuthenticationError("OIDC claims carry no email; cannot create a user")
+        existing_local = (
+            await self.session.execute(select(User).where(User.email == email))
+        ).scalar_one_or_none()
+        if existing_local is not None:
+            # Same email, unverified at the IdP: refuse rather than merge accounts
+            raise AuthenticationError(
+                "An account with this email exists; verify the email at your identity provider first",
+                extras={"reason": "email_unverified"},
+            )
+        user = User(
+            email=email,
+            display_name=display_name,
+            identity_provider=provider,
+            provider_subject=subject,
+        )
+        self.session.add(user)
         await self.session.flush()
+        self._audit(events.USER_REGISTERED, user_id=user.id, diff={"via": provider})
+        _inc_auth("register")
         return user
+
+    async def upsert_oidc_user(self, *, email: str, display_name: str, provider_subject: str) -> User | None:
+        """Back-compat shim for the password-grant path."""
+        return await self.link_or_create_oidc_user(
+            {"sub": provider_subject, "email": email, "email_verified": True, "name": display_name}
+        )
 
     # ── Tokens ──────────────────────────────────────────────────────────────────
 

@@ -40,7 +40,7 @@ their own package; only `api`/`worker` compose everything.
 | Module | Owns |
 |---|---|
 | `core` | config, tenant/user contextvars, DB engine + TenantRepository, caches, errors, security |
-| `identity` | users, JWT access tokens, refresh rotation, Keycloak OIDC adapter |
+| `identity` | users, JWT access tokens, refresh rotation, Keycloak OIDC login (code flow + PKCE) |
 | `tenancy` | organizations, memberships, invites, tenant resolution |
 | `authorization` | roles, permissions, `require_permission` (OpenFGA seam) |
 | `subscriptions` | plans, catalog YAML, sync, subscription state machine |

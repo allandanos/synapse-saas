@@ -1,0 +1,43 @@
+{
+  "realm": "synapse",
+  "enabled": true,
+  "displayName": "Synapse SaaS (dev)",
+  "registrationAllowed": false,
+  "sslRequired": "none",
+  "clients": [
+    {
+      "clientId": "synapse-web",
+      "name": "Synapse console",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "dev-client-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:8000/*", "http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000", "http://localhost:8000"],
+      "attributes": { "pkce.code.challenge.method": "S256" },
+      "defaultClientScopes": ["openid", "email", "profile"]
+    }
+  ],
+  "users": [
+    {
+      "username": "sso@acme.example.com",
+      "email": "sso@acme.example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Sso",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password123", "temporary": false }]
+    },
+    {
+      "username": "unverified@acme.example.com",
+      "email": "unverified@acme.example.com",
+      "emailVerified": false,
+      "enabled": true,
+      "firstName": "Unverified",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password123", "temporary": false }]
+    }
+  ]
+}

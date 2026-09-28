@@ -97,6 +97,7 @@ usage.within_limit("api_requests")     # checked against the effective, overridd
 
 - [Architecture](docs/architecture.md)
 - [Multi-tenancy](docs/multi-tenancy.md)
+- [Identity — local + SSO (OIDC)](docs/identity.md)
 - [Plans & entitlements](docs/plans-and-entitlements.md)
 - [Usage metering](docs/usage-metering.md)
 - [Agents — governance & billing](docs/agents.md)

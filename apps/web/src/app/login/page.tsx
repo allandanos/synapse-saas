@@ -1,8 +1,9 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { API_URL, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
 function LoginForm() {
@@ -10,6 +11,18 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const resetDone = params.get("reset") === "done";
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+
+  useEffect(() => {
+    // /v1/meta is public: it tells the console which identity provider is active
+    api<{ identity_provider: string }>("/v1/meta")
+      .then((meta) => setSsoEnabled(meta.identity_provider === "keycloak"))
+      .catch(() => setSsoEnabled(false));
+  }, []);
+
+  const ssoHref = `${API_URL}/v1/auth/oidc/start?return_to=${encodeURIComponent(
+    params.get("return_to") ?? "/dashboard",
+  )}`;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +60,24 @@ function LoginForm() {
         <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
         <p className="mt-1 text-sm text-zinc-500">Welcome back to your console.</p>
 
-        <form onSubmit={onSubmit} className="mt-8 space-y-4">
+        {ssoEnabled && (
+          <div className="mt-8">
+            <a
+              href={ssoHref}
+              data-testid="sso-button"
+              className="flex w-full items-center justify-center rounded-lg border border-zinc-900 py-2.5 text-sm font-medium text-zinc-900 hover:bg-zinc-100"
+            >
+              Continue with single sign-on
+            </a>
+            <div className="my-4 flex items-center gap-3 text-xs uppercase tracking-wide text-zinc-400">
+              <span className="h-px flex-1 bg-zinc-200" />
+              or
+              <span className="h-px flex-1 bg-zinc-200" />
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={onSubmit} className={ssoEnabled ? "space-y-4" : "mt-8 space-y-4"}>
           <div>
             <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-zinc-700">
               Email

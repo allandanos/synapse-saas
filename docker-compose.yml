@@ -145,6 +145,23 @@ services:
       - "1025:1025"  # SMTP — point SYNAPSE_SMTP_HOST here to capture mail
       - "8025:8025"  # Web UI + JSON API
 
+  # SSO for local development: SYNAPSE_IDENTITY_PROVIDER=keycloak
+  #   SYNAPSE_KEYCLOAK_BASE_URL=http://localhost:8080 SYNAPSE_KEYCLOAK_REALM=synapse
+  #   SYNAPSE_KEYCLOAK_CLIENT_ID=synapse-web SYNAPSE_KEYCLOAK_CLIENT_SECRET=dev-client-secret
+  # Realm import ships a user sso@acme.example.com / password123 (infrastructure/keycloak).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    profiles: [extras]
+    command: ["start-dev", "--import-realm", "--http-port=8080"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infrastructure/keycloak:/opt/keycloak/data/import:ro
+
   minio:
     image: minio/minio:latest
     profiles: [extras]

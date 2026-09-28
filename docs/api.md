@@ -23,6 +23,8 @@ body stays a plain JSON array; the total number of rows rides the
 | POST | `/auth/login` | tokens; refresh also set as httpOnly cookie |
 | POST | `/auth/refresh` | rotation; reuse outside grace revokes the session |
 | POST | `/auth/accept-invite` | `{token}` from the invite email joins the caller's user to the org |
+| GET | `/auth/oidc/start?return_to=` | SSO (Keycloak): 302 to the IdP with PKCE + nonce; state kept server-side 10 min ([identity](identity.md)) |
+| GET | `/auth/oidc/callback?code&state` | SSO return: verifies the id_token, links/creates the user, sets the refresh cookie, 302 to the console's `/auth/callback` |
 | POST | `/auth/logout` | 204 |
 | GET | `/auth/me` | user + orgs + role keys |
 | POST | `/auth/switch-org` | re-scopes the session to one org |
