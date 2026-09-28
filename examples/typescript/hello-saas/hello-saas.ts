@@ -34,7 +34,7 @@ async function main(): Promise<void> {
     try {
       // The domain call: in a real app this is your project-create endpoint;
       // the example meters it so the plan logic is identical either way.
-      await client.usage.consume("projects", 1);
+      await client.usage.adjustGauge("projects", 1); // a gauge: capacity-checked, 402 at the cap
       created++;
       console.log(`project ${i}: created (+1 gauge meter)`);
     } catch (err) {

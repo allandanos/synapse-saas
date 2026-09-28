@@ -72,9 +72,11 @@ async def upload_file(
             f"Direct upload capped at {MAX_DIRECT_UPLOAD_BYTES // (1024 * 1024)} MiB; use presigned upload"
         )
 
-    # Enforce the storage quota before writing a single byte
-    usage = UsageService(session)
-    await usage.consume(tenant.organization_id, "storage_bytes", quantity=len(data))
+    # storage_bytes is a GAUGE (bytes currently stored): check capacity before
+    # writing a single byte, then move the level. Deleting moves it back down.
+    await UsageService(session).adjust_gauge(
+        tenant.organization_id, "storage_bytes", len(data)
+    )  # 402 on breach
 
     key = scoped_key(tenant.organization_id, upload.filename or "unnamed")
     await get_storage().put(
@@ -121,13 +123,14 @@ async def presign_download(
 
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_file(file_id: UUID, tenant: TenantDep, session: SessionDep, user: CurrentUser) -> None:
-    """Soft-delete the index row; quota accounting stops, bytes age out."""
+    """Soft-delete the index row, remove the object, and give the bytes back to the quota."""
     await require_permission("file:write", user, session, tenant)
     row = await _get_scoped(file_id, tenant.organization_id, session)
     from datetime import UTC, datetime
 
     row.deleted_at = datetime.now(UTC)
     await get_storage().delete(key=row.key)
+    await UsageService(session).adjust_gauge(tenant.organization_id, "storage_bytes", -int(row.size_bytes))
 
 
 async def _get_scoped(file_id: UUID, organization_id: UUID, session: SessionDep) -> StoredFile:

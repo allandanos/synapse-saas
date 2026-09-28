@@ -12,6 +12,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -64,6 +65,8 @@ class Entitlement(Base, TenantMixin, TimestampMixin):
     # NULL ⇒ until revoked
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     note: Mapped[str | None] = mapped_column(Text)
+    # Only meaningful for synthetic `limit:<metric>` grants: the cap they set.
+    limit_value: Mapped[int | None] = mapped_column(BigInteger)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

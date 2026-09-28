@@ -44,6 +44,30 @@ Not a path change, but a semantic one clients may observe:
   unless the configured provider declares `client_confirm` (only the manual
   provider does). Hosted-checkout providers activate via their webhook only.
 
+### Billing integrity (P2 WS-B, ADR 0004 amendment)
+
+- **Changed** `POST /v1/subscription/change`: goes through the billing
+  provider. Hosted providers answer **409 `checkout_required`** unless the
+  subscription was purchased through them; local providers keep the period on
+  paid→paid switches and queue a prorated correction for the period invoice.
+- **Changed** `POST /v1/usage/consume`: more than one event is now **422**
+  (`batch_url` points at the batch route) instead of silently dropping the rest.
+- **Added** `POST /v1/usage/consume-batch` — all-or-nothing batch.
+- **Added** `POST /v1/usage/gauge` — `{metric, value}` or `{metric, delta}` for
+  gauge metrics (`users`, `projects`, `storage_bytes`). `/usage/events` and
+  `/usage/consume` reject gauge metrics with 422.
+- **Changed** usage results carry `deduplicated: bool`; an `idempotency_key`
+  now really dedupes (per organization, 90-day retention).
+- **Changed** overage invoice lines reconcile: `quantity` is the number of
+  priced blocks, `unit_amount_cents` the block price, `amount == quantity × unit`
+  (previously quantity was raw units and the line did not reconcile).
+  `properties` carries `units_over`, `included`, `overage_unit`.
+- **Changed** invoice drafts may carry `credit` / `custom` lines from prorated
+  plan changes; a net credit never yields a negative invoice (carried forward).
+- **Changed** webhook ingest responses gain `events_rejected`; a new
+  `unprocessable` status marks payloads that could not be translated.
+- Paddle webhooks: real `Paddle-Signature` format (`ts=…;h1=…` over `ts:body`).
+
 ### Baseline
 
 - Captured from the Python reference implementation at P0 of the

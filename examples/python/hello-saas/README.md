@@ -37,7 +37,7 @@ curl http://localhost:8020/projects \
 | Permission checks | `require_permission("project:manage")` |
 | Feature gating | `require_feature("api_access")` |
 | Seat/project limits | `ensure_gauge_capacity` against the plan |
-| Usage metering | `consume("projects")` per create |
+| Usage metering | `adjust_gauge("projects", +1)` per create, `-1` per delete (a gauge, capacity-checked) |
 | Audit trail | every mutation writes `project.*` audit rows |
 | Problem+json errors | RFC 7807 with request ids |
 

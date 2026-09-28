@@ -58,6 +58,9 @@ class Metric(Base):
         nullable=False,
     )
     unit: Mapped[str | None] = mapped_column(String(32))
+    # Default overage pricing for limits on this metric (plan_limits may override)
+    overage_unit: Mapped[int | None] = mapped_column(Integer)
+    overage_price_cents: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False
     )
@@ -112,6 +115,10 @@ class PlanLimit(Base):
     limit_value: Mapped[int | None] = mapped_column(BigInteger)
     # e.g. 0.80 ⇒ warn at 80% consumption
     soft_limit_ratio: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    # Overage pricing (from the catalog): `overage_price_cents` per `overage_unit`
+    # units beyond the limit. NULL ⇒ usage past the limit is not billable.
+    overage_unit: Mapped[int | None] = mapped_column(Integer)
+    overage_price_cents: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class Subscription(Base, TimestampMixin):
@@ -155,6 +162,10 @@ class Subscription(Base, TimestampMixin):
         ForeignKey("billing_customers.id", ondelete="SET NULL")
     )
     plan_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    # Prorated credits/charges from mid-period plan changes. Drained (and
+    # cleared) by the next `InvoicingService.draft_for_org`. Each entry:
+    # {kind, amount_cents (+charge / -credit), description, from_plan, to_plan, created_at}
+    pending_adjustments: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)
     metadata_jsonb: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict, nullable=False)
 
     plan: Mapped[Plan] = relationship(lazy="selectin")

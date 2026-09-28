@@ -37,11 +37,12 @@ public final class HelloSaasSample {
             }
         }
 
-        // Create projects until the plan says stop
+        // Create projects until the plan says stop. `projects` is a gauge (a
+        // level): moving it up is capacity-checked, so the plan wall is the same 402.
         int created = 0;
         for (int i = 1; i <= 10; i++) {
             try {
-                client.usage.consume("projects", 1);
+                client.usage.adjustGauge("projects", 1);
                 created++;
                 System.out.printf("project %d: created (+1 gauge meter)%n", i);
             } catch (SynapseException.LimitException ex) {

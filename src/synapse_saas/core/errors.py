@@ -295,3 +295,10 @@ class CheckoutConfirmNotAllowedError(DomainError):
 
     status = 409
     title = "checkout_confirm_not_allowed"
+
+
+class CheckoutRequiredError(DomainError):
+    """A hosted-billing provider cannot change a plan that was never purchased through it."""
+
+    status = 409
+    title = "checkout_required"

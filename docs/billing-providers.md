@@ -44,9 +44,25 @@ Out-of-order delivery and retries are safe by construction.
 ## Capability honesty
 
 Providers declare `supports: frozenset[BillingCapability]`. Where
-`RECURRING_HOSTED` is absent (Xendit/PayMongo today), the worker's
-`advance_manual_billing` job rolls periods and issues invoices — the same path
-the Manual provider uses. Services check capabilities, never provider names.
+`RECURRING_HOSTED` is absent (Manual, Xendit, PayMongo today), the worker's
+`advance_recurring_billing` job renews: it invoices the period that just ended
+**in arrears** through the invoicing engine (plan line + catalog-priced
+overage + prorated corrections, numbered, emailed), then rolls the period. Rows
+are claimed with `FOR UPDATE SKIP LOCKED`, each renewal is its own savepoint.
+Hosted providers (Stripe) renew on their side and report through webhooks.
+Services check capabilities, never provider names.
+
+Plan changes follow the same split (`BillingService.change_plan`): with a
+hosted provider the subscription must have been purchased through it
+(`provider_subscription_id`), otherwise **409 `checkout_required`**; the
+provider is told and owns proration. With a local provider a paid→paid switch
+keeps the billing period and queues an arrears correction (the elapsed
+fraction at the price difference) for that period's invoice; a free→paid
+upgrade starts a fresh cycle today.
+
+`client_confirm` marks providers whose activation the tenant may confirm
+without a provider callback (only Manual). `POST /billing/checkout/confirm`
+answers 409 for every other provider — hosted checkouts activate via webhook.
 
 ## Plans ↔ provider objects
 

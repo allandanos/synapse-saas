@@ -47,9 +47,25 @@ class EntitlementGrant:
 
 
 @dataclass(frozen=True, slots=True)
+class Overage:
+    """Billing for usage past the limit: `price_cents` per `unit` units, rounded up."""
+
+    unit: int
+    price_cents: int
+
+    def bill(self, units_over: int) -> tuple[int, int]:
+        """(billable quantity in `unit` blocks, amount in cents) — reconciles as qty x price."""
+        if units_over <= 0:
+            return 0, 0
+        quantity = -(-units_over // self.unit)  # ceil
+        return quantity, quantity * self.price_cents
+
+
+@dataclass(frozen=True, slots=True)
 class Limit:
     value: int | None  # None ⇒ unlimited
     soft_limit_ratio: float | None
+    overage: Overage | None = None  # None ⇒ past-limit usage is never billed
 
     @property
     def is_unlimited(self) -> bool:
@@ -65,6 +81,9 @@ class EntitlementInputs:
     plan_features: frozenset[str] = frozenset()
     plan_limits: Mapping[str, Limit] = field(default_factory=dict)
     grants: tuple[EntitlementGrant, ...] = ()
+    # Catalog default overage per metric — used when a limit has no price of
+    # its own (an addon grant on a metric the plan never limited).
+    metric_overage: Mapping[str, Overage] = field(default_factory=dict)
     # Fallback when there is no occupying subscription (default/free plan)
     grace_on_past_due: bool = True
 
@@ -132,6 +151,8 @@ def resolve_effective(inputs: EntitlementInputs) -> EffectiveEntitlements:
         limits[metric] = Limit(
             value=grant.limit_value if grant.limit_value is not None else base.value,
             soft_limit_ratio=base.soft_limit_ratio,
+            # an addon raises the cap; the plan (else the metric) still prices overage
+            overage=base.overage or inputs.metric_overage.get(metric),
         )
 
     return EffectiveEntitlements(

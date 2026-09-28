@@ -237,13 +237,26 @@ async def expire_entitlements(ctx: dict[str, Any]) -> int:
         return len(rows)
 
 
-async def advance_manual_billing(ctx: dict[str, Any]) -> int:
-    """Roll periods + issue invoices for manual-provider subscriptions."""
-    from synapse_saas.billing.models import Invoice
-    from synapse_saas.core import events as ev
+RENEWAL_BATCH = 100
+
+
+async def advance_recurring_billing(ctx: dict[str, Any]) -> int:
+    """Renew subscriptions WE bill: invoice the ended period, then roll it forward.
+
+    Applies to every provider without `recurring_hosted` (manual, Xendit,
+    PayMongo, …) — hosted providers (Stripe, …) renew on their side and report
+    through webhooks. Rows are claimed with SKIP LOCKED so N workers never
+    renew the same subscription twice; each renewal is its own savepoint so one
+    bad subscription cannot block the batch. Invoices go through the invoicing
+    engine (lines, number, overage, email) — never an inline Invoice(...).
+    """
+    from synapse_saas.billing.invoicing import InvoicingService
+    from synapse_saas.billing.registry import locally_billed_provider_names
     from synapse_saas.subscriptions.models import Subscription
 
+    local_providers = list(locally_billed_provider_names())
     factory = get_owner_session_factory()
+    renewed = 0
     async with factory() as session:
         rows = (
             (
@@ -252,51 +265,58 @@ async def advance_manual_billing(ctx: dict[str, Any]) -> int:
                         """
                         SELECT id FROM subscriptions
                         WHERE status = 'active'
-                          AND provider = 'manual'
                           AND current_period_end <= now()
                           AND cancel_at_period_end = false
+                          AND (provider IS NULL OR provider = ANY(:providers))
+                        ORDER BY current_period_end
+                        LIMIT :batch
+                        FOR UPDATE SKIP LOCKED
                         """
-                    )
+                    ),
+                    {"providers": local_providers, "batch": RENEWAL_BATCH},
                 )
             )
             .scalars()
             .all()
         )
         for subscription_id in rows:
-            subscription = await session.get(Subscription, subscription_id)
-            if subscription is None:
-                continue
-            snapshot = subscription.plan_snapshot or {}
-            interval = timedelta(days=365 if snapshot.get("interval") == "year" else 30)
-            subscription.current_period_start = subscription.current_period_end
-            subscription.current_period_end = subscription.current_period_end + interval
-
-            price = snapshot.get("price_cents")
-            if price and price > 0:
-                invoice = Invoice(
-                    organization_id=subscription.organization_id,
-                    billing_customer_id=subscription.billing_customer_id,
-                    provider="manual",
-                    currency=snapshot.get("currency", "PHP"),
-                    subtotal_cents=price,
-                    total_cents=price,
-                    status="open",
-                    period_start=subscription.current_period_start,
-                    period_end=subscription.current_period_end,
-                )
-                session.add(invoice)
-                await session.flush()
-                session.add(
-                    _outbox_row(
-                        ev.INVOICE_CREATED,
-                        aggregate_type="invoice",
-                        aggregate_id=invoice.id,
-                        organization_id=subscription.organization_id,
-                        payload={"total_cents": price, "plan_key": snapshot.get("key")},
-                    )
+            try:
+                async with session.begin_nested():
+                    subscription = await session.get(Subscription, subscription_id)
+                    if subscription is None:
+                        continue
+                    await _renew_locally_billed(session, subscription, InvoicingService(session))
+                    renewed += 1
+            except Exception as exc:  # isolate one bad renewal, keep the batch
+                logger.exception(
+                    "recurring_billing_failed", subscription_id=str(subscription_id), error=str(exc)
                 )
         await session.commit()
-        return len(rows)
+    return renewed
+
+
+async def _renew_locally_billed(session: Any, subscription: Any, invoicing: Any) -> None:
+    """Bill the period that just ended (in arrears: plan + overage + prorated
+    corrections), then roll the period forward."""
+    snapshot = subscription.plan_snapshot or {}
+    ended_start = subscription.current_period_start
+    price = int(snapshot.get("price_cents") or 0)
+    if price > 0 or subscription.pending_adjustments:
+        invoice = await invoicing.draft_for_org(
+            subscription.organization_id, period=ended_start.date().replace(day=1)
+        )
+        if invoice.status == "draft":
+            await invoicing.finalize(invoice.id, subscription.organization_id)
+
+    interval = timedelta(days=365 if snapshot.get("interval") == "year" else 30)
+    new_start = subscription.current_period_end
+    subscription.current_period_start = new_start
+    subscription.current_period_end = new_start + interval
+    await session.flush()
+
+
+# Kept as an alias for one release: the old name in cron configs/docs.
+advance_manual_billing = advance_recurring_billing
 
 
 async def ensure_partitions(ctx: dict[str, Any]) -> int:
@@ -323,13 +343,22 @@ async def ensure_partitions(ctx: dict[str, Any]) -> int:
         return 1
 
 
+IDEMPOTENCY_RETENTION_DAYS = 90
+
+
 async def purge_expired(ctx: dict[str, Any]) -> int:
-    """Retention: old webhook deliveries (30d)."""
+    """Retention: old webhook deliveries (30d), spent usage idempotency keys (90d)."""
 
     factory = get_owner_session_factory()
     async with factory() as session:
         await session.execute(
             text("DELETE FROM webhook_deliveries WHERE created_at < now() - interval '30 days'")
+        )
+        await session.execute(
+            text(
+                "DELETE FROM usage_idempotency_keys WHERE created_at < now() - make_interval(days => :days)"
+            ),
+            {"days": IDEMPOTENCY_RETENTION_DAYS},
         )
         await session.commit()
         return 1
@@ -413,7 +442,7 @@ def build_cron_jobs() -> list[object]:
         cron(deliver_webhooks, second=set(range(0, 60, 15))),  # every 15s
         cron(rollup_usage, minute=5, hour=None),  # hourly
         cron(expire_entitlements, minute=10, hour=None),  # hourly-ish
-        cron(advance_manual_billing, minute=20, hour=None),  # hourly
+        cron(advance_recurring_billing, minute=20, hour=None),  # hourly
         cron(ensure_partitions, minute=30, hour=3),  # daily
         cron(purge_expired, minute=40, hour=3),  # daily
     ]

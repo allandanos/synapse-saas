@@ -80,6 +80,7 @@ class OrganizationService:
         )
         self.session.add(membership)
         await self.session.flush()
+        await self._sync_seat_gauge(org.id)
 
         owner_role = (
             await self.session.execute(
@@ -207,6 +208,7 @@ class OrganizationService:
             # it; it is never persisted (the row keeps only the hash)
             payload={"email": invited_email, "invite_token": token, "org_name": org_name},
         )
+        await self._sync_seat_gauge(organization_id)
         return membership
 
     async def accept_invite_by_email(self, org_id: UUID, email: str) -> Membership:
@@ -268,6 +270,8 @@ class OrganizationService:
                 target_id=membership.id,
                 diff=diff,
             )
+        if "status" in diff:
+            await self._sync_seat_gauge(membership.organization_id)
         return membership
 
     async def remove_member(self, membership_id: UUID) -> None:
@@ -283,7 +287,10 @@ class OrganizationService:
             target_id=membership.id,
             diff={"email": membership.invited_email or str(membership.user_id)},
         )
+        org_id = membership.organization_id
         await self.session.delete(membership)
+        await self.session.flush()
+        await self._sync_seat_gauge(org_id)
 
     # ── Internals ───────────────────────────────────────────────────────────────
 
@@ -311,6 +318,7 @@ class OrganizationService:
             organization_id=membership.organization_id,
             payload={"email": membership.invited_email},
         )
+        await self._sync_seat_gauge(membership.organization_id)
         return membership
 
     async def _bootstrap_subscription(self, org: Organization) -> None:
@@ -387,6 +395,14 @@ class OrganizationService:
         await self.session.flush()
         self.session.expire_all()
         return await self._get_membership(membership_id)
+
+    async def _sync_seat_gauge(self, org_id: UUID) -> None:
+        """`users` is a gauge: active members + pending invites, set after every change."""
+        from synapse_saas.usage.service import UsageService
+
+        active = await self.members.count_active_members(org_id)
+        pending = await self._count_pending_invites(org_id)
+        await UsageService(self.session).set_gauge(org_id, "users", active + pending)
 
     async def _count_pending_invites(self, org_id: UUID) -> int:
         from sqlalchemy import func

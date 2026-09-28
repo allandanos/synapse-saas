@@ -76,16 +76,11 @@ async def create_project(
 ) -> ProjectRead:
     await require_permission("project:manage", user, session, tenant)
 
-    # Gauge limit: the `projects` cap from the org's plan (402 on breach,
-    # with upgrade hints — enforced inside this transaction).
+    # `projects` is a GAUGE (a level, not a flow): moving it up by one is
+    # capacity-checked against the org's plan — 402 with upgrade hints on
+    # breach — and the level and the row commit together.
     repo = ProjectRepository(session)
-    current = await repo.count()
-    await UsageService(session).ensure_gauge_capacity(
-        tenant.organization_id, "projects", current=current, adding=1
-    )
-
-    # Meter the create, then write — both commit together.
-    await UsageService(session).record(tenant.organization_id, "projects", quantity=1)
+    await UsageService(session).adjust_gauge(tenant.organization_id, "projects", 1)
     project = await repo.add(Project(title=body.title))
     await session.flush()  # populate defaults (id) before serialization
     return ProjectRead.model_validate(project)
@@ -102,6 +97,7 @@ async def delete_project(
     repo = ProjectRepository(session)
     project = await repo.get_or_404(project_id)  # 404 cross-tenant
     await repo.delete(project)
+    await UsageService(session).adjust_gauge(tenant.organization_id, "projects", -1)
 
 
 def create_example_app() -> FastAPI:

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class UsageEventIn(BaseModel):
@@ -25,6 +25,22 @@ class UsageResultOut(BaseModel):
     limit: int | None = None
     remaining: int | None = None
     within_limit: bool | None = None
+    # True when an idempotency_key matched an earlier request: nothing was counted again
+    deduplicated: bool = False
+
+
+class GaugeIn(BaseModel):
+    """Set a gauge to `value`, or move it by `delta` — exactly one of the two."""
+
+    metric: str
+    value: int | None = Field(default=None, ge=0)
+    delta: int | None = None
+
+    @model_validator(mode="after")
+    def _one_of(self) -> Self:
+        if (self.value is None) == (self.delta is None):
+            raise ValueError("provide exactly one of value or delta")
+        return self
 
 
 class UsageCheckOut(BaseModel):

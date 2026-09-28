@@ -192,3 +192,89 @@ class TestMetadata:
         result = resolve_effective(make_inputs())
         assert result.plan_key == "pro"
         assert result.subscription_status == "active"
+
+
+# ── Overage pricing rides on the limit ────────────────────────────────────────
+
+
+class TestOverage:
+    def test_bill_rounds_up_to_whole_blocks_and_reconciles(self) -> None:
+        from synapse_saas.entitlements.resolver import Overage
+
+        overage = Overage(unit=1000, price_cents=20)
+        assert overage.bill(0) == (0, 0)
+        assert overage.bill(1) == (1, 20)  # a partial block is a whole block
+        assert overage.bill(4000) == (4, 80)
+        assert overage.bill(4001) == (5, 100)
+        quantity, amount = overage.bill(123_456)
+        assert quantity * overage.price_cents == amount
+
+    def test_addon_limit_falls_back_to_the_metric_default_price(self) -> None:
+        """A limit:<metric> grant on a metric the plan never limited still bills overage."""
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        from synapse_saas.entitlements.resolver import (
+            EntitlementGrant,
+            EntitlementInputs,
+            Overage,
+            resolve_effective,
+        )
+
+        now = datetime(2026, 9, 28, tzinfo=UTC)
+        inputs = EntitlementInputs(
+            organization_id=uuid4(),
+            now=now,
+            plan_key="free",
+            subscription_status="active",
+            plan_limits={},
+            grants=(
+                EntitlementGrant(
+                    feature_key="limit:ai_tokens",
+                    source="addon",
+                    enabled=True,
+                    starts_at=now,
+                    ends_at=None,
+                    limit_value=1000,
+                ),
+            ),
+            metric_overage={"ai_tokens": Overage(unit=1000, price_cents=20)},
+        )
+        limit = resolve_effective(inputs).limit("ai_tokens")
+        assert limit is not None and limit.value == 1000
+        assert limit.overage == Overage(unit=1000, price_cents=20)
+
+    def test_plan_price_beats_the_metric_default(self) -> None:
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        from synapse_saas.entitlements.resolver import (
+            EntitlementGrant,
+            EntitlementInputs,
+            Limit,
+            Overage,
+            resolve_effective,
+        )
+
+        now = datetime(2026, 9, 28, tzinfo=UTC)
+        inputs = EntitlementInputs(
+            organization_id=uuid4(),
+            now=now,
+            plan_key="pro",
+            subscription_status="active",
+            plan_limits={"ai_tokens": Limit(value=100, soft_limit_ratio=None, overage=Overage(1000, 15))},
+            grants=(
+                EntitlementGrant(
+                    feature_key="limit:ai_tokens",
+                    source="addon",
+                    enabled=True,
+                    starts_at=now,
+                    ends_at=None,
+                    limit_value=5000,
+                ),
+            ),
+            metric_overage={"ai_tokens": Overage(unit=1000, price_cents=20)},
+        )
+        limit = resolve_effective(inputs).limit("ai_tokens")
+        assert limit is not None and limit.value == 5000  # the addon raised the cap
+        assert limit.overage == Overage(1000, 15)  # the plan still prices overage

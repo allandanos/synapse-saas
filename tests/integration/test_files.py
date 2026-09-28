@@ -173,3 +173,25 @@ class TestIsolation:
         """Keys are always {org_id}/… — the tenant boundary extends to bytes."""
         created = await upload(client, org_and_tokens, "scoped.txt", b"s")
         assert created.json()["key"].startswith(org_and_tokens["org_id"])
+
+
+class TestStorageGauge:
+    async def test_delete_gives_the_bytes_back(self, client: AsyncClient, org_and_tokens) -> None:
+        """storage_bytes is a level: upload raises it, delete lowers it, months don't reset it."""
+        first = (await upload(client, org_and_tokens, "a.txt", b"x" * 1000)).json()
+        assert (await upload(client, org_and_tokens, "b.txt", b"y" * 500)).status_code == 201
+        check = (
+            await client.get(
+                "/v1/usage/check", headers=org_headers(org_and_tokens), params={"metric": "storage_bytes"}
+            )
+        ).json()
+        assert check["used"] == 1500
+
+        res = await client.delete(f"/v1/files/{first['id']}", headers=org_headers(org_and_tokens))
+        assert res.status_code == 204
+        check = (
+            await client.get(
+                "/v1/usage/check", headers=org_headers(org_and_tokens), params={"metric": "storage_bytes"}
+            )
+        ).json()
+        assert check["used"] == 500

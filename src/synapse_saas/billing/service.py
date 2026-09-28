@@ -7,6 +7,8 @@ no local state behind.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -24,11 +26,16 @@ from synapse_saas.billing.protocol import (
 from synapse_saas.billing.registry import build_provider
 from synapse_saas.core import events
 from synapse_saas.core.config import get_settings
-from synapse_saas.core.errors import CheckoutConfirmNotAllowedError, InvoiceNotFoundError
+from synapse_saas.core.errors import (
+    CheckoutConfirmNotAllowedError,
+    CheckoutRequiredError,
+    InvoiceNotFoundError,
+)
 from synapse_saas.core.logging import get_logger
 from synapse_saas.core.outbox import append_outbox
 from synapse_saas.identity.models import User
 from synapse_saas.subscriptions.models import Plan, Subscription
+from synapse_saas.subscriptions.proration import arrears_adjustment_cents, prorate
 from synapse_saas.subscriptions.service import SubscriptionService
 from synapse_saas.tenancy.models import Organization
 
@@ -186,27 +193,104 @@ class BillingService:
         )
         return invoice
 
-    async def change_plan_remote(
-        self, organization: Organization, plan: Plan, *, provider_subscription_id: str
-    ) -> Subscription:
-        """Push a plan change through the provider, then update locally."""
-        if BillingCapability.RECURRING_HOSTED not in self.provider.supports:
-            # Manual/xendit/paymongo: apply locally, the scheduler owns renewals
-            return await SubscriptionService(self.session).change_plan(
-                organization.id, plan_key=plan.key, provider=self.provider.name
+    async def change_plan(self, organization_id: UUID, plan_key: str) -> Subscription:
+        """Change the org's plan — through the provider when the provider bills.
+
+        Rules:
+        - provider bills recurring (Stripe/…): the subscription must have been
+          purchased through it (`provider_subscription_id`), else 409
+          `checkout_required`; the provider owns proration and invoicing.
+        - otherwise (manual/Xendit/PayMongo): apply locally. paid→paid keeps
+          the period and queues the prorated correction for that period's
+          invoice (billed in arrears); free→paid starts a fresh cycle today.
+        """
+        subscriptions = SubscriptionService(self.session)
+        plan = await subscriptions.plan_by_key(plan_key)
+        current = await subscriptions.current_for_org(organization_id)
+
+        if BillingCapability.RECURRING_HOSTED in self.provider.supports:
+            if current is None or not current.provider_subscription_id:
+                raise CheckoutRequiredError(
+                    f"Plan changes on {self.provider.name} require a subscription purchased through it",
+                    extras={"plan_key": plan_key, "checkout_url": "/v1/billing/checkout"},
+                )
+            ref = await self.provider.change_plan(
+                current.provider_subscription_id,
+                ChangePlanRequest(
+                    plan_key=plan.key,
+                    price_cents=plan.price_cents or 0,
+                    currency=plan.currency,
+                    interval=plan.interval or "month",
+                ),
             )
-        ref = await self.provider.change_plan(
-            provider_subscription_id,
-            ChangePlanRequest(
+            return await subscriptions.change_plan(
+                organization_id,
                 plan_key=plan.key,
-                price_cents=plan.price_cents or 0,
-                currency=plan.currency,
-                interval=plan.interval or "month",
-            ),
+                provider=self.provider.name,
+                provider_subscription_id=ref.provider_subscription_id,
+                keep_period=True,
+            )
+
+        previous = _period_snapshot(current)
+        # A paid→paid switch keeps the billing period and prorates; a free→paid
+        # upgrade starts a fresh cycle today (nothing to prorate on ₱0).
+        keep_period = previous is not None and previous["price_cents"] > 0
+        subscription = await subscriptions.change_plan(
+            organization_id, plan_key=plan.key, provider=self.provider.name, keep_period=keep_period
         )
-        return await SubscriptionService(self.session).change_plan(
-            organization.id,
-            plan_key=plan.key,
-            provider=self.provider.name,
-            provider_subscription_id=ref.provider_subscription_id,
-        )
+        adjustment = _proration_adjustment(previous, subscription, plan) if keep_period else None
+        if adjustment is not None:
+            subscription.pending_adjustments = [*subscription.pending_adjustments, adjustment]
+            await self.session.flush()
+            logger.info(
+                "plan_change_prorated",
+                org=str(organization_id),
+                net_cents=adjustment["amount_cents"],
+                from_plan=adjustment["from_plan"],
+                to_plan=adjustment["to_plan"],
+            )
+        return subscription
+
+
+def _period_snapshot(subscription: Subscription | None) -> dict[str, Any] | None:
+    """What the org was paying, and for which period, before the change."""
+    if subscription is None or subscription.status != "active":
+        return None
+    return {
+        "plan_key": str(subscription.plan_snapshot.get("key", "")),
+        "price_cents": int(subscription.plan_snapshot.get("price_cents") or 0),
+        "period_start": subscription.current_period_start,
+        "period_end": subscription.current_period_end,
+    }
+
+
+def _proration_adjustment(
+    previous: dict[str, Any] | None, subscription: Subscription, plan: Plan
+) -> dict[str, Any] | None:
+    """Prorate the switch if the period was kept; None when nothing is owed either way."""
+    if previous is None or subscription.current_period_end != previous["period_end"]:
+        return None  # period reset (trial/lapsed) ⇒ the new period bills in full
+    now = datetime.now(UTC)
+    new_price = plan.price_cents or 0
+    amount = arrears_adjustment_cents(
+        previous["price_cents"], new_price, previous["period_start"], previous["period_end"], now
+    )
+    if amount == 0:
+        return None
+    elapsed = prorate(
+        previous["price_cents"], new_price, previous["period_start"], previous["period_end"], now
+    ).elapsed_fraction
+    what = "credit" if amount < 0 else "charge"
+    return {
+        "kind": "proration",
+        "amount_cents": amount,
+        "description": (
+            f"Plan change {previous['plan_key']} → {plan.key}: {what} for {elapsed:.1%} "
+            f"of the period at the previous price"
+        ),
+        "from_plan": previous["plan_key"],
+        "to_plan": plan.key,
+        "from_price_cents": previous["price_cents"],
+        "to_price_cents": new_price,
+        "created_at": now.isoformat(),
+    }

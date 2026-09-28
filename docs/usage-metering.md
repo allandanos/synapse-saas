@@ -68,5 +68,32 @@ hard-blocks a *metered* call unless the app uses `consume`.
 
 ## Idempotency
 
-Events may carry an `idempotency_key`; a unique partial index makes retries
-no-ops.
+Events may carry an `idempotency_key` (unique per organization). The key is
+reserved in `usage_idempotency_keys` *before* the event is written, so a retry
+— even a concurrent one — waits for the first request to commit and then gets
+the stored result back with `deduplicated: true` instead of counting again.
+(`usage_events` is range-partitioned, so a unique index there could never
+dedupe across the partition key; that was the old, broken design.) A `consume`
+that breaches rolls the reservation back with everything else, so the retry
+re-attempts and 402s again. Keys are purged after 90 days.
+
+## Batches
+
+`POST /usage/consume` takes exactly one event (two or more is a 422 — it used
+to silently drop the rest). `POST /usage/consume-batch` is all-or-nothing: the
+first breach 402s and nothing in the batch is counted. `POST /usage/events`
+records many events and never blocks.
+
+## Gauges
+
+`kind: gauge` metrics (`users`, `projects`, `storage_bytes`) are **levels**, not
+flows. They live in a fixed bucket that never resets with the month and are
+written through `POST /usage/gauge` with `{metric, value}` (set) or
+`{metric, delta}` (move, never below zero). `/usage/events` and
+`/usage/consume` reject gauge metrics with a 422. The framework keeps `users`
+in step with memberships (invites hold a seat) and `storage_bytes` in step with
+uploads and deletes; domain apps set their own (`projects`).
+
+A positive `delta` is capacity-checked in the same transaction (402 with
+upgrade hints when it would exceed the cap), so "add a project" is one call:
+`adjust_gauge(org, "projects", 1)`; deleting one is `adjust_gauge(…, -1)`.

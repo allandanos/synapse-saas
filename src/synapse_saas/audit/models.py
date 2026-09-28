@@ -91,6 +91,8 @@ class ProviderWebhookEvent(Base):
         DateTime(timezone=True), server_default=text("now()"), nullable=False
     )
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Non-retryable apply failures (state-machine rejections, bad payloads).
+    # Retryable failures never reach this row — the whole ingest rolls back.
     error: Mapped[str | None] = mapped_column(Text)
 
 

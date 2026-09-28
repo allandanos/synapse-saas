@@ -147,6 +147,24 @@ public class SynapseClient {
             return call("POST", "/v1/usage/consume",
                 Map.of("events", List.of(Map.of("metric", metric, "quantity", quantity))), null);
         }
+
+        /** All-or-nothing batch: the first breach throws LimitException and nothing is counted. */
+        public List<Map<String, Object>> consumeBatch(List<Map<String, Object>> events)
+                throws IOException, InterruptedException {
+            return callList("POST", "/v1/usage/consume-batch", Map.of("events", events));
+        }
+
+        /** Gauges are levels (seats, projects, bytes stored): set the absolute value. */
+        public Map<String, Object> setGauge(String metric, long value)
+                throws IOException, InterruptedException {
+            return call("POST", "/v1/usage/gauge", Map.of("metric", metric, "value", value), null);
+        }
+
+        /** Move a gauge by delta (never below zero). */
+        public Map<String, Object> adjustGauge(String metric, long delta)
+                throws IOException, InterruptedException {
+            return call("POST", "/v1/usage/gauge", Map.of("metric", metric, "delta", delta), null);
+        }
     }
 
     public final class Entitlements {

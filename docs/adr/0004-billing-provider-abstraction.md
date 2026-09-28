@@ -32,3 +32,21 @@ and enterprise contracts need no provider at all. Vendor SDKs (e.g.
   invoices, webhooks, plan sync) is small
 − Xendit/PayMongo recurring is thinner than Stripe's; capability flags keep
   that honest instead of pretending parity
+
+## Amendment (2026-09-28, P2 / WS-B)
+
+- **Plan changes go through the provider.** `POST /subscription/change` calls
+  `BillingService.change_plan`: a `recurring_hosted` provider is told (and must
+  already hold the subscription — otherwise 409 `checkout_required`); local
+  providers keep the period on paid→paid switches and queue an arrears
+  proration for the period invoice. The previous route bypassed the provider
+  entirely, so Stripe kept billing the old price.
+- **Renewals are capability-driven and in arrears.** `advance_recurring_billing`
+  covers every provider without `recurring_hosted` (not only Manual), claims
+  rows with `SKIP LOCKED`, and issues the ended period's invoice through the
+  invoicing engine instead of an inline `Invoice(...)`.
+- **`client_confirm` capability.** Only Manual carries it; checkout
+  confirmation is refused (409) for providers that verify payment themselves.
+- **Webhook apply failures are no longer swallowed.** Business rejections are
+  recorded on the ledger row (200); infrastructure failures roll the ledger
+  back (500) so the provider's retry re-processes.

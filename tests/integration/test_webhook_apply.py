@@ -184,3 +184,75 @@ class TestInvoiceUpsert:
         await send_stripe(client, body_invoice)
         invoices = (await client.get("/v1/billing/invoices", headers=headers)).json()
         assert len([i for i in invoices if i["total_cents"] == 49900]) == 1
+
+
+# ── H8: failures must not be swallowed ────────────────────────────────────────
+
+
+async def _ledger_row(event_id: str) -> dict | None:
+    from sqlalchemy import text
+
+    async with owner_session_factory()() as session:
+        row = (
+            await session.execute(
+                text("SELECT processed_at, error FROM provider_webhook_events WHERE provider_event_id = :id"),
+                {"id": event_id},
+            )
+        ).first()
+        return dict(row._mapping) if row else None
+
+
+class TestApplyFailureSemantics:
+    async def test_apply_failure_rolls_back_ledger_and_500s(
+        self, client: AsyncClient, org_and_tokens, stripe_env, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A transient error must NOT stamp the event processed — the provider retries and we re-apply."""
+        customer = await _ensure_customer(client, org_and_tokens)
+        from synapse_saas.billing import webhooks as wh
+
+        async def boom(self, *a, **k):  # type: ignore[no-untyped-def]
+            raise RuntimeError("db hiccup")
+
+        monkeypatch.setattr(wh.BillingWebhookService, "_apply_status", boom)
+        event = _sub_event("evt_flaky", "customer.subscription.updated", "past_due", customer=customer)
+        body = json.dumps(event).encode()
+        with pytest.raises(RuntimeError, match="db hiccup"):
+            await client.post(
+                "/v1/billing/webhooks/stripe",
+                headers={**sign(body), "Content-Type": "application/json"},
+                content=body,
+            )
+        assert await _ledger_row("evt_flaky") is None  # rolled back with the failed request
+
+        monkeypatch.undo()
+        replay = await send_stripe(client, event)  # the provider's retry
+        assert replay == {"status": "processed", "events_applied": 1, "events_rejected": 0}
+        sub = (await client.get("/v1/subscription", headers=org_headers(org_and_tokens))).json()[
+            "subscription"
+        ]
+        assert sub["status"] == "past_due"
+
+    async def test_business_rejection_is_recorded_not_retried(
+        self, client: AsyncClient, org_and_tokens, stripe_env
+    ) -> None:
+        """active → trialing is illegal: recorded on the ledger with the reason, answered 200, not retried."""
+        customer = await _ensure_customer(client, org_and_tokens)
+        await send_stripe(
+            client, _sub_event("evt_act9", "customer.subscription.updated", "active", customer=customer)
+        )
+        late = await send_stripe(
+            client, _sub_event("evt_late2", "customer.subscription.updated", "trialing", customer=customer)
+        )
+        assert late == {"status": "processed", "events_applied": 0, "events_rejected": 1}
+        row = await _ledger_row("evt_late2")
+        assert row is not None and row["processed_at"] is not None
+        assert "trialing" in (row["error"] or "")
+        sub = (await client.get("/v1/subscription", headers=org_headers(org_and_tokens))).json()[
+            "subscription"
+        ]
+        assert sub["status"] == "active"  # the rejected event changed nothing
+        # Recorded ⇒ a replay is a duplicate, not a second attempt
+        replay = await send_stripe(
+            client, _sub_event("evt_late2", "customer.subscription.updated", "trialing", customer=customer)
+        )
+        assert replay["status"] == "duplicate"

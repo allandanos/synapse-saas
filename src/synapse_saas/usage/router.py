@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, status
 
+from synapse_saas.core.errors import ValidationFailedError
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.tenancy.dependencies import TenantDep
 from synapse_saas.usage.schemas import (
+    GaugeIn,
     UsageBatchIn,
     UsageCheckOut,
     UsageResultOut,
@@ -40,7 +42,16 @@ async def record_events(
 async def consume(
     body: UsageBatchIn, tenant: TenantDep, session: SessionDep, user: CurrentUser
 ) -> UsageResultOut:
-    """Meter + enforce. 402 with upgrade hints on breach."""
+    """Meter + enforce ONE event. 402 with upgrade hints on breach.
+
+    More than one event is a 422 (it used to silently drop all but the first);
+    use `/usage/consume-batch` for all-or-nothing batches.
+    """
+    if len(body.events) != 1:
+        raise ValidationFailedError(
+            "consume takes exactly one event; use /usage/consume-batch for batches",
+            extras={"events": len(body.events), "batch_url": "/v1/usage/consume-batch"},
+        )
     event = body.events[0]
     result = await UsageService(session).consume(
         tenant.organization_id,
@@ -49,6 +60,37 @@ async def consume(
         idempotency_key=event.idempotency_key,
         properties=event.properties,
     )
+    return UsageResultOut(**result)
+
+
+@router.post("/consume-batch", response_model=list[UsageResultOut])
+async def consume_batch(
+    body: UsageBatchIn, tenant: TenantDep, session: SessionDep, user: CurrentUser
+) -> list[UsageResultOut]:
+    """Meter + enforce a batch atomically: the first breach 402s and NOTHING in
+    the batch is counted (the request transaction rolls back)."""
+    results = await UsageService(session).consume_many(
+        tenant.organization_id, [event.model_dump() for event in body.events]
+    )
+    return [UsageResultOut(**r) for r in results]
+
+
+@router.post("/gauge", response_model=UsageResultOut)
+async def set_gauge(
+    body: GaugeIn, tenant: TenantDep, session: SessionDep, user: CurrentUser
+) -> UsageResultOut:
+    """Set (`value`) or move (`delta`) a gauge metric — seats, projects, bytes.
+
+    Gauges are levels, not flows: they never reset with the billing period and
+    are never metered through /usage/events or /usage/consume. A positive
+    `delta` is capacity-checked: **402** with upgrade hints when it would
+    exceed the plan's cap, and the level is left untouched.
+    """
+    service = UsageService(session)
+    if body.value is not None:
+        result = await service.set_gauge(tenant.organization_id, body.metric, body.value)
+    else:
+        result = await service.adjust_gauge(tenant.organization_id, body.metric, body.delta or 0)
     return UsageResultOut(**result)
 
 

@@ -216,5 +216,8 @@ class TestAiMetering:
         overage = [line for line in invoice["lines"] if line["kind"] == "overage"]
         assert overage, f"expected token overage line, got {invoice['lines']}"
         assert overage[0]["metric"] == "ai_tokens"
-        assert overage[0]["quantity"] == 500_000  # 2.5M used - 2M included
-        assert overage[0]["amount_cents"] == 10_000  # 500k units at ₱0.20/1k = ₱100
+        # 2.5M used - 2M included = 500k units over, priced per 1,000 by the catalog:
+        # 500 blocks x ₱0.20 = ₱100, and the line reconciles (quantity x unit == amount)
+        assert overage[0]["quantity"] == 500
+        assert overage[0]["unit_amount_cents"] == 20
+        assert overage[0]["amount_cents"] == 10_000

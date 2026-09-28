@@ -193,3 +193,69 @@ class TestWebhookRetry:
         retried = await client.post(f"/v1/webhooks/deliveries/{delivery_id}/retry", headers=headers)
         assert retried.status_code == 200
         assert retried.json()["status"] == "pending"
+
+
+# ── H4: every provider WE bill renews; hosted providers renew themselves ──────
+
+
+class TestRecurringBilling:
+    async def _org_on_starter(self, client: AsyncClient, org_and_tokens, slug: str, provider: str) -> str:
+        auth = {"Authorization": f"Bearer {org_and_tokens['access_token']}"}
+        org = await client.post("/v1/orgs", headers=auth, json={"name": slug, "slug": slug})
+        org_id = org.json()["id"]
+        headers = {**auth, "X-Org-Id": org_id}
+        res = await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "starter"})
+        assert res.status_code == 200, res.text
+        from sqlalchemy import text
+
+        async with owner_session_factory()() as session:
+            await session.execute(
+                text(
+                    "UPDATE subscriptions SET provider = :provider, "
+                    "current_period_start = now() - interval '31 days', "
+                    "current_period_end = now() - interval '1 day' "
+                    "WHERE organization_id = :org"
+                ),
+                {"provider": provider, "org": org_id},
+            )
+            await session.commit()
+        return org_id
+
+    async def test_advance_recurring_bills_xendit_and_manual_not_stripe(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        manual = await self._org_on_starter(client, org_and_tokens, "renew-manual", "manual")
+        xendit = await self._org_on_starter(client, org_and_tokens, "renew-xendit", "xendit")
+        stripe = await self._org_on_starter(client, org_and_tokens, "renew-stripe", "stripe")
+
+        from synapse_saas.worker.jobs import advance_recurring_billing
+
+        assert await advance_recurring_billing({}) == 2
+        assert await advance_recurring_billing({}) == 0  # periods rolled: nothing due now
+
+        from sqlalchemy import text
+
+        async with owner_session_factory()() as session:
+            invoices = (
+                await session.execute(
+                    text(
+                        "SELECT organization_id::text AS org, number, status, total_cents "
+                        "FROM invoices WHERE provider = 'synapse' ORDER BY organization_id"
+                    )
+                )
+            ).all()
+            periods = (
+                await session.execute(
+                    text(
+                        "SELECT organization_id::text AS org, current_period_end > now() AS rolled "
+                        "FROM subscriptions"
+                    )
+                )
+            ).all()
+        by_org = {row.org: row for row in invoices}
+        assert set(by_org) == {manual, xendit}  # stripe renews on Stripe's side
+        for org in (manual, xendit):
+            assert by_org[org].status == "open" and by_org[org].number.startswith("INV-")
+            assert by_org[org].total_cents == 49900  # the ended period, through the invoicing engine
+        rolled = {row.org: row.rolled for row in periods}
+        assert rolled[manual] and rolled[xendit] and not rolled[stripe]

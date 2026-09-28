@@ -831,6 +831,43 @@
         "title": "ForgotPasswordRequest",
         "type": "object"
       },
+      "GaugeIn": {
+        "description": "Set a gauge to `value`, or move it by `delta` \u2014 exactly one of the two.",
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "metric"
+        ],
+        "title": "GaugeIn",
+        "type": "object"
+      },
       "GrantRequest": {
         "properties": {
           "duration_days": {
@@ -2467,6 +2504,11 @@
       },
       "UsageResultOut": {
         "properties": {
+          "deduplicated": {
+            "default": false,
+            "title": "Deduplicated",
+            "type": "boolean"
+          },
           "limit": {
             "anyOf": [
               {
@@ -4842,7 +4884,7 @@
     },
     "/v1/files/{file_id}": {
       "delete": {
-        "description": "Soft-delete the index row; quota accounting stops, bytes age out.",
+        "description": "Soft-delete the index row, remove the object, and give the bytes back to the quota.",
         "operationId": "delete_file_v1_files__file_id__delete",
         "parameters": [
           {
@@ -5782,7 +5824,7 @@
     },
     "/v1/usage/consume": {
       "post": {
-        "description": "Meter + enforce. 402 with upgrade hints on breach.",
+        "description": "Meter + enforce ONE event. 402 with upgrade hints on breach.\n\nMore than one event is a 422 (it used to silently drop all but the first);\nuse `/usage/consume-batch` for all-or-nothing batches.",
         "operationId": "consume_v1_usage_consume_post",
         "requestBody": {
           "content": {
@@ -5817,6 +5859,52 @@
           }
         },
         "summary": "Consume",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
+    "/v1/usage/consume-batch": {
+      "post": {
+        "description": "Meter + enforce a batch atomically: the first breach 402s and NOTHING in\nthe batch is counted (the request transaction rolls back).",
+        "operationId": "consume_batch_v1_usage_consume_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageBatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UsageResultOut"
+                  },
+                  "title": "Response Consume Batch V1 Usage Consume Batch Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Consume Batch",
         "tags": [
           "usage"
         ]
@@ -5863,6 +5951,48 @@
           }
         },
         "summary": "Record Events",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
+    "/v1/usage/gauge": {
+      "post": {
+        "description": "Set (`value`) or move (`delta`) a gauge metric \u2014 seats, projects, bytes.\n\nGauges are levels, not flows: they never reset with the billing period and\nare never metered through /usage/events or /usage/consume. A positive\n`delta` is capacity-checked: **402** with upgrade hints when it would\nexceed the plan's cap, and the level is left untouched.",
+        "operationId": "set_gauge_v1_usage_gauge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GaugeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Gauge",
         "tags": [
           "usage"
         ]

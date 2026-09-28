@@ -48,7 +48,7 @@ Conventions:
 | GET | `/plans` | public plans only |
 | GET | `/subscription` | subscription + entitlements + usage in one call |
 | POST | `/subscription/trial` | 409 if already trialing |
-| POST | `/subscription/change` | upgrades apply immediately |
+| POST | `/subscription/change` | through the billing provider: hosted providers need a purchased subscription (**409 `checkout_required`**), local providers prorate paid→paid changes |
 | POST | `/subscription/cancel` | `{at_period_end: true\|false}` |
 | POST | `/subscription/resume` | 404 if not scheduled to cancel |
 
@@ -72,8 +72,10 @@ Conventions:
 | GET | `/admin/orgs/{org_id}/entitlements` | **platform admin** — effective entitlements for any org |
 | POST | `/admin/orgs/{org_id}/entitlements/grants` | **platform admin** — sources: trial/addon/promo/beta/override/enterprise/grandfather. Tenants cannot grant themselves entitlements (ADR 0008) |
 | DELETE | `/admin/orgs/{org_id}/entitlements/grants/{grant_id}` | **platform admin** — revoke a grant |
-| POST | `/usage/events` | batch ≤100; metering never blocks |
-| POST | `/usage/consume` | atomic; **402** with `{metric, limit, used, upgrade_url}` on breach |
+| POST | `/usage/events` | batch ≤100; metering never blocks; `idempotency_key` dedupes (`deduplicated: true` on replay) |
+| POST | `/usage/consume` | exactly one event (422 otherwise); atomic; **402** with `{metric, limit, used, upgrade_url}` on breach |
+| POST | `/usage/consume-batch` | all-or-nothing batch ≤100; first breach 402s and nothing is counted |
+| POST | `/usage/gauge` | set (`value`) or move (`delta`) a gauge metric — seats, projects, bytes; a positive delta is capacity-checked (**402**) |
 | GET | `/usage/check?metric=` | pre-flight |
 | GET | `/usage/summary` | per-metric meters for the console |
 

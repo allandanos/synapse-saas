@@ -31,6 +31,15 @@ class FeatureDefinition(BaseModel):
     category: str | None = None
 
 
+class OverageDefinition(BaseModel):
+    """Price for usage beyond a limit: `price_cents` per `unit` units (ceil)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    unit: int = Field(1, ge=1)
+    price_cents: int = Field(ge=0)
+
+
 class MetricDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -39,6 +48,9 @@ class MetricDefinition(BaseModel):
     kind: Literal["counter", "gauge"]
     unit: str | None = None
     soft_limit_ratio: float | None = Field(None, ge=0, le=1)
+    # Default overage pricing for every plan that limits this metric. Omit ⇒
+    # usage past the limit is enforced (402) but never billed.
+    overage: OverageDefinition | None = None
 
 
 class PlanDefinition(BaseModel):
@@ -59,6 +71,8 @@ class PlanDefinition(BaseModel):
     features: list[str] = Field(default_factory=list)
     # value omitted or null ⇒ unlimited
     limits: dict[str, int | None] = Field(default_factory=dict)
+    # Per-plan overage override (metric ⇒ pricing); metrics must be limited here
+    overage: dict[str, OverageDefinition] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _price_xor(self) -> Self:
@@ -109,6 +123,11 @@ class PlanCatalog(BaseModel):
             unknown_metrics = set(plan.limits) - metric_set
             if unknown_metrics:
                 errors.append(f"plan {plan.key!r} limits unknown metrics: {sorted(unknown_metrics)}")
+            unpriced = set(plan.overage) - set(plan.limits)
+            if unpriced:
+                errors.append(
+                    f"plan {plan.key!r} prices overage for metrics it does not limit: {sorted(unpriced)}"
+                )
             if plan.is_public and plan.price_cents is None:
                 errors.append(f"public plan {plan.key!r} must have a concrete price_cents")
 
@@ -127,6 +146,14 @@ class PlanCatalog(BaseModel):
 
     def plan(self, key: str) -> PlanDefinition | None:
         return next((p for p in self.plans if p.key == key), None)
+
+    def overage_for(self, plan_key: str, metric: str) -> OverageDefinition | None:
+        """Effective overage pricing: the plan's override, else the metric's default."""
+        plan = self.plan(plan_key)
+        if plan is not None and metric in plan.overage:
+            return plan.overage[metric]
+        metric_def = next((m for m in self.metrics if m.key == metric), None)
+        return metric_def.overage if metric_def is not None else None
 
 
 def load_catalog(path: str | Path | None = None) -> PlanCatalog:

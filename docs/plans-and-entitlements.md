@@ -66,6 +66,25 @@ POST /v1/admin/orgs/{org_id}/entitlements/grants      # platform-admin bearer
 {"feature_key": "limit:api_requests", "source": "addon", "limit_value": 250000}
 ```
 
+### Overage pricing
+
+Usage past a limit is enforced (402) always, and *billed* only when the catalog
+prices it. A metric declares its default; a plan may override per metric:
+
+```yaml
+metrics:
+  - {key: ai_tokens, name: AI tokens, kind: counter, overage: {unit: 1000, price_cents: 20}}
+plans:
+  - key: pro
+    limits: {ai_tokens: 2000000}
+    overage: {ai_tokens: {unit: 1000, price_cents: 15}}   # pro pays less per block
+```
+
+Invoices bill `ceil(units_over / unit)` blocks at `price_cents`, so every
+overage line reconciles as `quantity × unit_amount == amount`. A
+`limit:<metric>` addon grant raises the cap; the plan (else the metric) still
+prices the overage. Metrics without a price are never billed past the cap.
+
 ## Using it
 
 Backend gate:

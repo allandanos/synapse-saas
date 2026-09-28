@@ -23,7 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from synapse_saas.core.db import Base
+from synapse_saas.core.db import Base, TenantMixin
 from synapse_saas.core.ids import uuid_v7
 
 
@@ -60,4 +60,25 @@ class UsageCounter(Base):
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()"), nullable=False
+    )
+
+
+class UsageIdempotencyKey(TenantMixin, Base):
+    """Dedupe ledger for `idempotency_key` (one row per org + key).
+
+    `usage_events` is range-partitioned by `occurred_at`, so a unique index there
+    must include the partition key and cannot dedupe retries. This table is not
+    partitioned: the primary key makes the second identical request wait for the
+    first to commit, then read the stored result back instead of re-counting.
+    """
+
+    __tablename__ = "usage_idempotency_keys"
+
+    idempotency_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    metric: Mapped[str] = mapped_column(String(100), nullable=False)
+    quantity: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    total_after: Mapped[int | None] = mapped_column(BigInteger)
+    event_id: Mapped[uuid.UUID | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), nullable=False
     )

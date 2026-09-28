@@ -6,6 +6,13 @@ Pipeline per event:
 3. translate to NormalizedBillingEvent list
 4. apply each idempotently (upserts keyed on provider ids + state machine)
 
+Failure semantics: a business rejection (DomainError — e.g. an illegal state
+transition from a late event) is recorded on the ledger row and the request
+still answers 200 (retrying cannot change the outcome). Any other failure
+propagates: the ledger row rolls back with the rest of the transaction and the
+provider's retry re-processes the event. A transient DB error can no longer
+permanently lose `invoice.paid` / `subscription.canceled`.
+
 Provider retries and out-of-order delivery are safe by construction.
 """
 
@@ -29,6 +36,7 @@ from synapse_saas.billing.protocol import (
 from synapse_saas.billing.registry import build_provider_by_name
 from synapse_saas.core import events as event_constants
 from synapse_saas.core.db import set_rls_tenant
+from synapse_saas.core.errors import DomainError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.core.outbox import append_outbox
 from synapse_saas.subscriptions.models import Subscription
@@ -68,27 +76,47 @@ class BillingWebhookService:
             )
             return {"status": "duplicate", "events_applied": 0}
 
-        normalized = provider.translate_webhook(verified)
+        from sqlalchemy import update
+
+        # A payload we cannot translate will not translate on retry either:
+        # record it on the ledger row and answer 200 so the provider stops.
+        try:
+            normalized = provider.translate_webhook(verified)
+        except Exception as exc:  # non-retryable by definition
+            logger.warning("webhook_translate_failed", provider=provider_name, error=str(exc))
+            await self.session.execute(
+                update(ProviderWebhookEvent)
+                .where(ProviderWebhookEvent.id == inserted)
+                .values(processed_at=datetime.now(UTC), error=f"translate: {exc}")
+            )
+            return {"status": "unprocessable", "events_applied": 0, "events_rejected": 1}
+
         applied = 0
+        rejected: list[str] = []
         for event in normalized:
             try:
-                await self._apply(provider_name, event)
+                async with self.session.begin_nested():
+                    await self._apply(provider_name, event)
                 applied += 1
-            except Exception as exc:
-                logger.warning(
-                    "webhook_event_apply_failed",
+            except DomainError as exc:
+                # Business rejection (illegal state transition, validation):
+                # deterministic, so retrying cannot help — record and move on.
+                rejected.append(f"{event.event_type}: {exc}")
+                logger.info(
+                    "webhook_event_rejected",
                     provider=provider_name,
                     event_type=event.event_type,
                     error=str(exc),
                 )
-
-        now = datetime.now(UTC)
-        from sqlalchemy import update
+            # Anything else (DB/infra) propagates: the request 500s, the ledger
+            # row rolls back with it, and the provider's retry re-processes.
 
         await self.session.execute(
-            update(ProviderWebhookEvent).where(ProviderWebhookEvent.id == inserted).values(processed_at=now)
+            update(ProviderWebhookEvent)
+            .where(ProviderWebhookEvent.id == inserted)
+            .values(processed_at=datetime.now(UTC), error="; ".join(rejected) or None)
         )
-        return {"status": "processed", "events_applied": applied}
+        return {"status": "processed", "events_applied": applied, "events_rejected": len(rejected)}
 
     # ── Application ─────────────────────────────────────────────────────────────
 

@@ -167,3 +167,67 @@ plans:
             load_catalog(path)
         errors = str(exc.value.extras.get("errors"))
         assert "ghost" in errors and "phantom" in errors and "duplicate plan" in errors
+
+
+# ── Overage pricing in the catalog ────────────────────────────────────────────
+
+
+def _catalog(**overrides: object) -> dict:
+    base: dict = {
+        "version": 1,
+        "features": [{"key": "f", "name": "F"}],
+        "metrics": [
+            {
+                "key": "ai_tokens",
+                "name": "AI",
+                "kind": "counter",
+                "overage": {"unit": 1000, "price_cents": 20},
+            },
+            {"key": "seats", "name": "Seats", "kind": "gauge"},
+        ],
+        "plans": [
+            {"key": "starter", "name": "S", "price_cents": 100, "limits": {"ai_tokens": 10}},
+            {
+                "key": "pro",
+                "name": "P",
+                "price_cents": 200,
+                "limits": {"ai_tokens": 100, "seats": 5},
+                "overage": {"ai_tokens": {"unit": 1000, "price_cents": 15}},
+            },
+        ],
+    }
+    base.update(overrides)
+    return base
+
+
+class TestOverageCatalog:
+    def test_plan_override_beats_metric_default(self) -> None:
+        from synapse_saas.subscriptions.catalog import PlanCatalog
+
+        catalog = PlanCatalog.model_validate(_catalog())
+        assert catalog.overage_for("starter", "ai_tokens").price_cents == 20  # type: ignore[union-attr]
+        assert catalog.overage_for("pro", "ai_tokens").price_cents == 15  # type: ignore[union-attr]
+        assert catalog.overage_for("pro", "seats") is None  # unpriced ⇒ enforced, never billed
+
+    def test_overage_for_an_unlimited_metric_is_rejected(self) -> None:
+        import pytest
+
+        from synapse_saas.core.errors import CatalogInvalidError
+        from synapse_saas.subscriptions.catalog import PlanCatalog
+
+        bad = _catalog()
+        bad["plans"][0]["overage"] = {"seats": {"unit": 1, "price_cents": 5}}  # starter never limits seats
+        with pytest.raises(CatalogInvalidError) as excinfo:
+            PlanCatalog.model_validate(bad)
+        assert "prices overage for metrics it does not limit" in str(excinfo.value.extras)
+
+    def test_unit_must_be_positive(self) -> None:
+        import pytest
+        from pydantic import ValidationError
+
+        from synapse_saas.subscriptions.catalog import PlanCatalog
+
+        bad = _catalog()
+        bad["metrics"][0]["overage"] = {"unit": 0, "price_cents": 20}
+        with pytest.raises(ValidationError):
+            PlanCatalog.model_validate(bad)

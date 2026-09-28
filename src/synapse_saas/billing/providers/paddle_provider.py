@@ -17,7 +17,10 @@ Marked less battle-tested than Stripe — see docs/billing-providers.md.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import re
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
@@ -159,10 +162,12 @@ class PaddleBillingProvider(BillingProvider):
     # ── Webhooks ────────────────────────────────────────────────────────────────
 
     async def verify_webhook(self, raw: WebhookRequest) -> VerifiedWebhook:
-        """Two supported modes:
-        1. Shared-secret header (Paddle classic / proxy-configured): the
-           `Paddle-Signature`-style `ts=…,h1=…` HMAC over ts.body.
-        2. Raw token compare via configured secret (webhook router filters).
+        """Paddle Billing notification signatures.
+
+        Header `Paddle-Signature: ts=<unix>;h1=<hex>` (semicolon-separated; a
+        comma is tolerated for proxies that rewrite it). The signed payload is
+        `<ts>:<raw body>` — colon, not the Stripe-style dot — HMAC-SHA256 with
+        the notification-destination secret key.
         """
         try:
             parsed = json.loads(raw.body)
@@ -171,7 +176,7 @@ class PaddleBillingProvider(BillingProvider):
 
         header = raw.headers.get("paddle-signature", "")
         if header:
-            parts = dict(p.split("=", 1) for p in header.split(",") if "=" in p)
+            parts = dict(p.strip().split("=", 1) for p in re.split(r"[;,]", header) if "=" in p)
             ts_str, h1 = parts.get("ts"), parts.get("h1")
             if ts_str and h1 and self._webhook_secret:
                 try:
@@ -180,9 +185,7 @@ class PaddleBillingProvider(BillingProvider):
                     raise WebhookSignatureInvalidError("Bad Paddle timestamp") from exc
                 if abs(time.time() - ts) > WEBHOOK_TOLERANCE_SECONDS:
                     raise WebhookSignatureInvalidError("Paddle webhook timestamp outside tolerance")
-                from synapse_saas.core.security import verify_signature
-
-                if verify_signature(raw.body, self._webhook_secret, timestamp=ts, signature=h1):
+                if _paddle_signature_matches(raw.body, self._webhook_secret, timestamp=ts, signature=h1):
                     event_id = str(parsed.get("event_id") or f"paddle_{secrets.token_hex(8)}")
                     return VerifiedWebhook(
                         provider_event_id=event_id,
@@ -191,7 +194,6 @@ class PaddleBillingProvider(BillingProvider):
                         received_at=datetime.now(UTC),
                     )
 
-        # Mode 2: passthrough token (ingest route-level guard)
         if not self._webhook_secret:
             raise WebhookSignatureInvalidError("Paddle webhook secret not configured")
         raise WebhookSignatureInvalidError("Paddle webhook signature mismatch")
@@ -231,3 +233,9 @@ class PaddleBillingProvider(BillingProvider):
                 raw=verified.parsed,
             )
         ]
+
+
+def _paddle_signature_matches(body: bytes, secret: str, *, timestamp: int, signature: str) -> bool:
+    """HMAC-SHA256(secret, f"{ts}:" + body) compared in constant time."""
+    expected = hmac.new(secret.encode("utf-8"), f"{timestamp}:".encode() + body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)

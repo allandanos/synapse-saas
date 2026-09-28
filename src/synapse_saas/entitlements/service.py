@@ -22,6 +22,7 @@ from synapse_saas.entitlements.resolver import (
     EntitlementGrant,
     EntitlementInputs,
     Limit,
+    Overage,
     resolve_effective,
 )
 
@@ -109,7 +110,8 @@ class EntitlementService:
             enabled=enabled,
             starts_at=now,
             ends_at=ends_at,
-            note=note if note is not None or limit_value is None else f"limit={limit_value}",
+            note=note,
+            limit_value=limit_value,
             created_by_user_id=created_by_user_id,
         )
         self.session.add(entitlement)
@@ -195,7 +197,7 @@ class EntitlementService:
                 starts_at=row.starts_at,
                 ends_at=row.ends_at,
                 revoked_at=row.revoked_at,
-                limit_value=_limit_value_from_note(row.note),
+                limit_value=row.limit_value,
             )
             for row in rows
         )
@@ -205,8 +207,23 @@ class EntitlementService:
             pl.metric: Limit(
                 value=pl.limit_value,
                 soft_limit_ratio=float(pl.soft_limit_ratio) if pl.soft_limit_ratio else None,
+                overage=(
+                    Overage(unit=pl.overage_unit, price_cents=pl.overage_price_cents)
+                    if pl.overage_unit is not None and pl.overage_price_cents is not None
+                    else None
+                ),
             )
             for pl in (plan.limits if plan else [])
+        }
+
+        from synapse_saas.subscriptions.models import Metric
+
+        metric_rows = (
+            await self.session.execute(select(Metric).where(Metric.overage_price_cents.is_not(None)))
+        ).scalars()
+        metric_overage = {
+            m.key: Overage(unit=m.overage_unit or 1, price_cents=int(m.overage_price_cents or 0))
+            for m in metric_rows
         }
 
         inputs = EntitlementInputs(
@@ -217,19 +234,10 @@ class EntitlementService:
             plan_features=plan_features,
             plan_limits=plan_limits,
             grants=grants,
+            metric_overage=metric_overage,
             grace_on_past_due=settings.grace_on_past_due,
         )
         return resolve_effective(inputs)
-
-
-def _limit_value_from_note(note: str | None) -> int | None:
-    """Limit-addon grants encode their value in the note field (`limit=123`)."""
-    if not note or not note.startswith("limit="):
-        return None
-    try:
-        return int(note.removeprefix("limit="))
-    except ValueError:
-        return None
 
 
 def _serialize(effective: EffectiveEntitlements) -> str:
@@ -240,7 +248,15 @@ def _serialize(effective: EffectiveEntitlements) -> str:
             "subscription_status": effective.subscription_status,
             "features": sorted(effective.features),
             "limits": {
-                metric: {"value": lim.value, "soft_limit_ratio": lim.soft_limit_ratio}
+                metric: {
+                    "value": lim.value,
+                    "soft_limit_ratio": lim.soft_limit_ratio,
+                    "overage": (
+                        {"unit": lim.overage.unit, "price_cents": lim.overage.price_cents}
+                        if lim.overage is not None
+                        else None
+                    ),
+                }
                 for metric, lim in effective.limits.items()
             },
         }
@@ -255,7 +271,15 @@ def _deserialize(raw: str) -> EffectiveEntitlements:
         subscription_status=data["subscription_status"],
         features=frozenset(data["features"]),
         limits={
-            metric: Limit(value=lim["value"], soft_limit_ratio=lim.get("soft_limit_ratio"))
+            metric: Limit(
+                value=lim["value"],
+                soft_limit_ratio=lim.get("soft_limit_ratio"),
+                overage=(
+                    Overage(unit=int(lim["overage"]["unit"]), price_cents=int(lim["overage"]["price_cents"]))
+                    if lim.get("overage")
+                    else None
+                ),
+            )
             for metric, lim in data["limits"].items()
         },
     )

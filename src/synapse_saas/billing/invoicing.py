@@ -19,11 +19,10 @@ their shape is the provider's; ours is ours.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, String, Text, func, select
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, String, Text, func, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -40,11 +39,6 @@ from synapse_saas.subscriptions.state_machine import OCCUPYING_STATUSES
 from synapse_saas.usage.models import UsageCounter
 
 logger = get_logger(__name__)
-
-# ₱0.20 per 1,000 units — the prompt §5 example rate. Extension point:
-# per-metric rates via plan metadata; single default keeps v1 honest.
-OVERAGE_PHP_PER_1K = 20
-OVERAGE_METRICS = ("ai_tokens", "ai_requests")
 
 INVOICE_TRANSITIONS: dict[str, frozenset[str]] = {
     "draft": frozenset({"open", "void"}),
@@ -141,23 +135,28 @@ class InvoicingService:
                 }
             )
 
-        # 2 — Overage lines: usage beyond each metric's included amount
-        for metric in OVERAGE_METRICS:
-            overage = await self._overage_cents(organization_id, metric, period_start)
-            if overage[0] > 0:
-                units, cents = overage
-                lines.append(
-                    {
-                        "kind": "overage",
-                        "description": f"{metric} overage — {units:,} units over plan",
-                        "quantity": units,
-                        "unit_amount_cents": _per_unit_cents(),
-                        "amount_cents": cents,
-                        "metric": metric,
-                    }
-                )
+        # 2 — Overage lines: usage beyond each metric's included amount, priced
+        #     by the catalog (per metric, per-plan override). quantity x unit
+        #     price == amount, always — the line reconciles on its own.
+        lines.extend(await self._overage_lines(organization_id, period_start))
+
+        # 3 — Prorated adjustments queued by mid-period plan changes
+        lines.extend(_adjustment_lines(sub.pending_adjustments))
+        sub.pending_adjustments = []
 
         subtotal = sum(line["amount_cents"] for line in lines)
+        if subtotal < 0:
+            # Nothing to collect; carry the remaining credit into the next draft.
+            carry = -subtotal
+            sub.pending_adjustments = [
+                {
+                    "kind": "credit_carryover",
+                    "amount_cents": -carry,
+                    "description": "Credit carried forward from the previous invoice",
+                    "created_at": datetime.now(UTC).isoformat(),
+                }
+            ]
+            subtotal = 0
         invoice = Invoice(
             organization_id=organization_id,
             provider="synapse",
@@ -195,6 +194,11 @@ class InvoicingService:
     async def finalize(self, invoice_id: UUID, organization_id: UUID) -> Invoice:
         invoice = await self._get_scoped(invoice_id, organization_id)
         _assert_invoice_transition(invoice.status, "open")
+        # Serialize numbering per org: two finalizes racing would otherwise
+        # count the same prior invoices and collide on uq_invoices_org_number.
+        await self.session.execute(
+            text("SELECT id FROM organizations WHERE id = :org FOR UPDATE"), {"org": str(organization_id)}
+        )
         invoice.status = "open"
         invoice.number = await self._next_number(organization_id)
         invoice.issued_at = datetime.now(UTC)
@@ -333,36 +337,48 @@ class InvoicingService:
             raise ValidationFailedError("Organization has no active subscription to bill")
         return sub
 
-    async def _overage_cents(self, organization_id: UUID, metric: str, period: date) -> tuple[int, int]:
-        """(units over the included amount, cents for those units)."""
-        used = (
-            await self.session.execute(
-                select(func.coalesce(func.sum(UsageCounter.quantity_total), 0)).where(
-                    UsageCounter.organization_id == organization_id,
-                    UsageCounter.metric == metric,
-                    UsageCounter.period_start == period,
-                )
-            )
-        ).scalar_one()
-
-        # The included amount comes from the ENTITLEMENTS RESOLVER — not the
-        # plan table — so addon grants (limit:<metric>) and overrides shape
-        # billing exactly like they shape enforcement. One source of truth.
+    async def _overage_lines(self, organization_id: UUID, period: date) -> list[dict[str, Any]]:
+        """One line per metric whose usage exceeded its included amount AND has a price."""
+        # The included amount AND the price come from the ENTITLEMENTS RESOLVER —
+        # not the plan table — so addon grants (limit:<metric>) and overrides
+        # shape billing exactly like they shape enforcement. One source of truth.
         from synapse_saas.entitlements.service import EntitlementService
 
         entitlements = await EntitlementService(self.session).effective_for_org(organization_id)
-        resolved_limit = entitlements.limit(metric)
-        limit = resolved_limit.value if resolved_limit else None
-
-        if limit is None or used <= limit:
-            return 0, 0
-        units_over = int(used - limit)
-        cents = int(
-            (Decimal(units_over) / Decimal(1000) * Decimal(OVERAGE_PHP_PER_1K)).quantize(
-                Decimal(1), rounding=ROUND_HALF_UP
+        lines: list[dict[str, Any]] = []
+        for metric, limit in sorted(entitlements.limits.items()):
+            if limit.value is None or limit.overage is None:
+                continue
+            used = (
+                await self.session.execute(
+                    select(func.coalesce(func.sum(UsageCounter.quantity_total), 0)).where(
+                        UsageCounter.organization_id == organization_id,
+                        UsageCounter.metric == metric,
+                        UsageCounter.period_start == period,
+                    )
+                )
+            ).scalar_one()
+            units_over = int(used) - limit.value
+            if units_over <= 0:
+                continue
+            quantity, cents = limit.overage.bill(units_over)
+            per = f" (per {limit.overage.unit:,})" if limit.overage.unit > 1 else ""
+            lines.append(
+                {
+                    "kind": "overage",
+                    "description": f"{metric} overage — {units_over:,} units over plan{per}",
+                    "quantity": quantity,
+                    "unit_amount_cents": limit.overage.price_cents,
+                    "amount_cents": cents,
+                    "metric": metric,
+                    "properties": {
+                        "units_over": units_over,
+                        "included": limit.value,
+                        "overage_unit": limit.overage.unit,
+                    },
+                }
             )
-        )
-        return units_over, cents
+        return lines
 
     async def _next_number(self, organization_id: UUID) -> str:
         """INV-YYYYMM-#### scoped per org (count of prior finals + 1).
@@ -388,6 +404,21 @@ def _month_bucket(now: datetime | None = None) -> date:
     return (now or datetime.now(UTC)).date().replace(day=1)
 
 
-def _per_unit_cents() -> int:
-    """Minor units per single unit — stored per line for auditability."""
-    return OVERAGE_PHP_PER_1K  # per 1k; per-unit price shown as the 1k rate
+def _adjustment_lines(adjustments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Pending proration/credit entries → invoice lines (credit when negative)."""
+    lines: list[dict[str, Any]] = []
+    for adj in adjustments:
+        amount = int(adj.get("amount_cents") or 0)
+        if amount == 0:
+            continue
+        lines.append(
+            {
+                "kind": "credit" if amount < 0 else "custom",
+                "description": str(adj.get("description") or adj.get("kind", "adjustment")),
+                "quantity": 1,
+                "unit_amount_cents": amount,
+                "amount_cents": amount,
+                "properties": {k: v for k, v in adj.items() if k not in {"description", "amount_cents"}},
+            }
+        )
+    return lines

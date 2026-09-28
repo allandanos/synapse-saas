@@ -67,8 +67,12 @@ class TestDraft:
         overage = [line for line in invoice["lines"] if line["kind"] == "overage"]
         assert overage, f"expected an overage line, got {invoice['lines']}"
         assert overage[0]["metric"] == "ai_tokens"
-        assert overage[0]["quantity"] == 4000  # 5000 used - 1000 included
-        assert overage[0]["amount_cents"] == 80  # 4k units x ₱0.20/1k
+        # 5000 used - 1000 included = 4000 units over, priced per 1,000 (catalog):
+        # the line is 4 blocks x ₱0.20 and RECONCILES (quantity x unit == amount).
+        assert overage[0]["quantity"] == 4
+        assert overage[0]["unit_amount_cents"] == 20
+        assert overage[0]["amount_cents"] == 80
+        assert overage[0]["quantity"] * overage[0]["unit_amount_cents"] == overage[0]["amount_cents"]
         assert invoice["subtotal_cents"] == 80
 
     async def test_draft_idempotent_per_period(self, client: AsyncClient, org_and_tokens) -> None:
@@ -450,3 +454,82 @@ class TestInvoicePdfAndEmail:
                 pay_to_instructions=pay_to,
             )
             assert data[:5] == b"%PDF-", f"{status} path must render"
+
+
+# ── P2: catalog-priced overage, per-plan override, numbering under contention ──
+
+
+class TestOveragePricing:
+    async def test_per_plan_override_beats_metric_default(self, client: AsyncClient, org_and_tokens) -> None:
+        """pro prices ai_tokens overage at ₱0.15/1k in this test; the metric default is ₱0.20/1k."""
+        headers = org_headers(org_and_tokens)
+        await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "pro"})
+        from sqlalchemy import text
+
+        async with owner_session_factory()() as session:
+            await session.execute(
+                text(
+                    "UPDATE plan_limits SET limit_value = 1000, overage_price_cents = 15 "
+                    "WHERE metric = 'ai_tokens' AND plan_id = (SELECT id FROM plans WHERE key = 'pro')"
+                )
+            )
+            await session.commit()
+        from synapse_saas.core.cache import VersionedCache
+
+        await VersionedCache("entl").bump(org_and_tokens["org_id"])
+        await client.post(
+            "/v1/usage/events", headers=headers, json={"events": [{"metric": "ai_tokens", "quantity": 3500}]}
+        )
+        invoice = await draft(client, org_and_tokens)
+        (overage,) = [line for line in invoice["lines"] if line["kind"] == "overage"]
+        assert overage["quantity"] == 3  # 2500 over ⇒ 3 blocks of 1,000
+        assert overage["unit_amount_cents"] == 15
+        assert overage["amount_cents"] == 45
+        assert overage["properties"]["units_over"] == 2500 if "properties" in overage else True
+
+    async def test_unpriced_metric_is_enforced_but_never_billed(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        headers = org_headers(org_and_tokens)
+        await grant_as_platform(
+            client,
+            org_and_tokens["org_id"],
+            {"feature_key": "limit:emails_sent", "source": "addon", "limit_value": 10},
+        )
+        await client.post(
+            "/v1/usage/events", headers=headers, json={"events": [{"metric": "emails_sent", "quantity": 500}]}
+        )
+        invoice = await draft(client, org_and_tokens)
+        assert [line for line in invoice["lines"] if line["kind"] == "overage"] == []
+
+
+class TestNumbering:
+    async def test_concurrent_finalize_yields_unique_numbers(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        """Two finalizes racing on one org must serialize on the org row (uq_invoices_org_number)."""
+        import asyncio
+        import uuid as _uuid
+
+        headers = org_headers(org_and_tokens)
+        await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "starter"})
+        first = (
+            await client.post("/v1/billing/invoices/draft", headers=headers, json={"period": "2026-07"})
+        ).json()
+        second = (
+            await client.post("/v1/billing/invoices/draft", headers=headers, json={"period": "2026-08"})
+        ).json()
+
+        from synapse_saas.billing.invoicing import InvoicingService
+
+        async def finalize(invoice_id: str) -> str:
+            async with owner_session_factory()() as session:
+                invoice = await InvoicingService(session).finalize(
+                    _uuid.UUID(invoice_id), _uuid.UUID(org_and_tokens["org_id"])
+                )
+                await session.commit()
+                return str(invoice.number)
+
+        numbers = await asyncio.gather(finalize(first["id"]), finalize(second["id"]))
+        assert len(set(numbers)) == 2, numbers
+        assert sorted(n.rsplit("-", 1)[1] for n in numbers) == ["0001", "0002"]

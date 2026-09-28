@@ -97,3 +97,26 @@ def build_provider(name: str | None = None) -> BillingProvider:
 def build_provider_by_name(name: str) -> BillingProvider:
     """For webhook ingest: build the provider the event claims to come from."""
     return build_provider(name)
+
+
+def locally_billed_provider_names() -> tuple[str, ...]:
+    """Providers whose recurring charges WE issue (no `recurring_hosted` capability).
+
+    The worker's renewal job bills exactly these; hosted providers renew on
+    their side and tell us through webhooks.
+    """
+    from synapse_saas.billing.protocol import BillingCapability
+    from synapse_saas.billing.providers.manual_provider import ManualBillingProvider
+    from synapse_saas.billing.providers.paddle_provider import PaddleBillingProvider
+    from synapse_saas.billing.providers.paymongo_provider import PayMongoBillingProvider
+    from synapse_saas.billing.providers.stripe_provider import StripeBillingProvider
+    from synapse_saas.billing.providers.xendit_provider import XenditBillingProvider
+
+    providers = (
+        ManualBillingProvider,
+        StripeBillingProvider,
+        PaddleBillingProvider,
+        XenditBillingProvider,
+        PayMongoBillingProvider,
+    )
+    return tuple(p.name for p in providers if BillingCapability.RECURRING_HOSTED not in p.supports)

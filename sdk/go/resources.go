@@ -129,6 +129,43 @@ func (r *UsageResource) Consume(ctx context.Context, metric string, quantity int
 	return out, firstErr(decode(raw, &out), err)
 }
 
+// UsageEvent is one metered event for ConsumeBatch. IdempotencyKey is optional.
+type UsageEvent struct {
+	Metric         string `json:"metric"`
+	Quantity       int    `json:"quantity"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+}
+
+// ConsumeBatch is all-or-nothing: the first breach returns a LimitError and nothing is counted.
+func (r *UsageResource) ConsumeBatch(ctx context.Context, events []UsageEvent) ([]jsonMap, error) {
+	var out []jsonMap
+	raw, err := r.c.do(ctx, request{
+		method: "POST", path: "/v1/usage/consume-batch",
+		body: map[string]any{"events": events},
+	})
+	return out, firstErr(decode(raw, &out), err)
+}
+
+// SetGauge sets a gauge metric (seats, projects, bytes stored) to an absolute level.
+func (r *UsageResource) SetGauge(ctx context.Context, metric string, value int) (jsonMap, error) {
+	var out jsonMap
+	raw, err := r.c.do(ctx, request{
+		method: "POST", path: "/v1/usage/gauge",
+		body: map[string]any{"metric": metric, "value": value},
+	})
+	return out, firstErr(decode(raw, &out), err)
+}
+
+// AdjustGauge moves a gauge by delta (never below zero).
+func (r *UsageResource) AdjustGauge(ctx context.Context, metric string, delta int) (jsonMap, error) {
+	var out jsonMap
+	raw, err := r.c.do(ctx, request{
+		method: "POST", path: "/v1/usage/gauge",
+		body: map[string]any{"metric": metric, "delta": delta},
+	})
+	return out, firstErr(decode(raw, &out), err)
+}
+
 type EntitlementsResource struct{ c *Client }
 
 func (r *EntitlementsResource) Effective(ctx context.Context) (jsonMap, error) {

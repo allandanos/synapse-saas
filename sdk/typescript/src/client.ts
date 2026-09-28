@@ -65,10 +65,29 @@ export class SynapseClient {
       this.call("GET", "/v1/usage/summary", { params: { period } }),
     check: (metric: string, quantity = 1): Promise<Json> =>
       this.call("GET", "/v1/usage/check", { params: { metric, quantity } }),
-    consume: (metric: string, quantity = 1): Promise<Json> =>
+    consume: (metric: string, quantity = 1, opts: { idempotencyKey?: string } = {}): Promise<Json> =>
       this.call("POST", "/v1/usage/consume", {
-        body: { events: [{ metric, quantity }] },
+        body: { events: [{ metric, quantity, idempotency_key: opts.idempotencyKey }] },
       }),
+    /** All-or-nothing: the first breach 402s and nothing in the batch is counted. */
+    consumeBatch: (
+      events: { metric: string; quantity?: number; idempotencyKey?: string }[],
+    ): Promise<Json> =>
+      this.call("POST", "/v1/usage/consume-batch", {
+        body: {
+          events: events.map((e) => ({
+            metric: e.metric,
+            quantity: e.quantity ?? 1,
+            idempotency_key: e.idempotencyKey,
+          })),
+        },
+      }),
+    /** Gauges are levels (seats, projects, bytes): set an absolute value. */
+    setGauge: (metric: string, value: number): Promise<Json> =>
+      this.call("POST", "/v1/usage/gauge", { body: { metric, value } }),
+    /** Move a gauge by delta (never below zero). */
+    adjustGauge: (metric: string, delta: number): Promise<Json> =>
+      this.call("POST", "/v1/usage/gauge", { body: { metric, delta } }),
   };
 
   readonly entitlements = {

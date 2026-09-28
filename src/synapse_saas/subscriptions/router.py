@@ -84,9 +84,11 @@ async def change_plan(
     body: PlanChangeRequest, tenant: TenantDep, session: SessionDep, user: CurrentUser
 ) -> SubscriptionRead:
     await require_permission("billing:manage", user, session, tenant)
-    subscription = await SubscriptionService(session).change_plan(
-        tenant.organization_id, plan_key=body.plan_key
-    )
+    # Through the billing service: a hosted provider must be told, and a local
+    # provider prorates the difference (ADR 0004).
+    from synapse_saas.billing.service import BillingService
+
+    subscription = await BillingService(session).change_plan(tenant.organization_id, body.plan_key)
     return SubscriptionRead.model_validate(subscription)
 
 

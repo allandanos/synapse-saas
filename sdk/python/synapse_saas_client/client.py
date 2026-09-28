@@ -168,10 +168,23 @@ class UsageResource(_Resource):
     def check(self, metric: str, quantity: int = 1) -> dict:
         return self._call("GET", "/v1/usage/check", params={"metric": metric, "quantity": quantity})
 
-    def consume(self, metric: str, quantity: int = 1) -> dict:
-        return self._call(
-            "POST", "/v1/usage/consume", json={"events": [{"metric": metric, "quantity": quantity}]}
-        )
+    def consume(self, metric: str, quantity: int = 1, *, idempotency_key: str | None = None) -> dict:
+        event: dict[str, Any] = {"metric": metric, "quantity": quantity}
+        if idempotency_key is not None:
+            event["idempotency_key"] = idempotency_key
+        return self._call("POST", "/v1/usage/consume", json={"events": [event]})
+
+    def consume_batch(self, events: list[dict[str, Any]]) -> list[dict]:
+        """All-or-nothing: the first breach raises SynapseLimitError and nothing is counted."""
+        return self._call("POST", "/v1/usage/consume-batch", json={"events": events})
+
+    def set_gauge(self, metric: str, value: int) -> dict:
+        """Gauges are levels (seats, projects, bytes): set the absolute value."""
+        return self._call("POST", "/v1/usage/gauge", json={"metric": metric, "value": value})
+
+    def adjust_gauge(self, metric: str, delta: int) -> dict:
+        """Move a gauge by `delta` (never below zero)."""
+        return self._call("POST", "/v1/usage/gauge", json={"metric": metric, "delta": delta})
 
 
 class EntitlementsResource(_Resource):

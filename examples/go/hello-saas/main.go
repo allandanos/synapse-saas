@@ -42,10 +42,11 @@ func main() {
 		}
 	}
 
-	// Create projects until the plan says stop
+	// Create projects until the plan says stop. `projects` is a gauge (a level):
+	// moving it up is capacity-checked, so the plan wall is the same 402.
 	created := 0
 	for i := 1; i <= 10; i++ {
-		if _, err := client.Usage().Consume(ctx, "projects", 1); err != nil {
+		if _, err := client.Usage().AdjustGauge(ctx, "projects", 1); err != nil {
 			var limitErr *synapse.LimitError
 			if errors.As(err, &limitErr) {
 				fmt.Printf("project %d: blocked — %s=%v (upgrade prompt)\n",
@@ -55,7 +56,7 @@ func main() {
 			log.Fatal(err)
 		}
 		created++
-		fmt.Printf("project %d: created (+1 gauge meter)\n", i)
+		fmt.Printf("project %d: created (gauge +1)\n", i)
 	}
 
 	// Meters

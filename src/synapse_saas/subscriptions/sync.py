@@ -54,10 +54,23 @@ async def sync_plans(session: AsyncSession, catalog: PlanCatalog) -> SyncResult:
     # ── Metrics registry ────────────────────────────────────────────────────────
     existing_metrics = {m.key: m for m in (await session.execute(select(Metric))).scalars()}
     for metric_def in catalog.metrics:
+        overage_unit = metric_def.overage.unit if metric_def.overage else None
+        overage_price = metric_def.overage.price_cents if metric_def.overage else None
         if metric_def.key in existing_metrics:
+            # The catalog is the source of truth for a metric's shape too
+            m = existing_metrics[metric_def.key]
+            m.name, m.kind, m.unit = metric_def.name, metric_def.kind, metric_def.unit
+            m.overage_unit, m.overage_price_cents = overage_unit, overage_price
             continue
         session.add(
-            Metric(key=metric_def.key, name=metric_def.name, kind=metric_def.kind, unit=metric_def.unit)
+            Metric(
+                key=metric_def.key,
+                name=metric_def.name,
+                kind=metric_def.kind,
+                unit=metric_def.unit,
+                overage_unit=overage_unit,
+                overage_price_cents=overage_price,
+            )
         )
         result.metrics_added += 1
     await session.flush()
@@ -98,7 +111,7 @@ async def sync_plans(session: AsyncSession, catalog: PlanCatalog) -> SyncResult:
         await session.flush()
 
         await _sync_plan_features(session, plan.id, plan_def.features)
-        await _sync_plan_limits(session, plan.id, plan_def.limits, catalog)
+        await _sync_plan_limits(session, plan.id, plan_def.key, plan_def.limits, catalog)
 
     # ── Archive plans removed from the catalog ─────────────────────────────────
     catalog_keys = {p.key for p in catalog.plans}
@@ -126,20 +139,34 @@ async def _sync_plan_features(session: AsyncSession, plan_id: uuid.UUID, feature
 
 
 async def _sync_plan_limits(
-    session: AsyncSession, plan_id: uuid.UUID, limits: dict[str, int | None], catalog: PlanCatalog
+    session: AsyncSession,
+    plan_id: uuid.UUID,
+    plan_key: str,
+    limits: dict[str, int | None],
+    catalog: PlanCatalog,
 ) -> None:
     existing = {
         pl.metric: pl
         for pl in (await session.execute(select(PlanLimit).where(PlanLimit.plan_id == plan_id))).scalars()
     }
     metric_defs = {m.key: m for m in catalog.metrics}
+    plan_def = next((pd for pd in catalog.plans if pd.key == plan_key), None)
 
     for metric, value in limits.items():
+        # A metric's own ratio wins; otherwise the catalog default (soft limits
+        # were silently disabled before this fallback existed).
         soft = metric_defs[metric].soft_limit_ratio if metric in metric_defs else None
+        if soft is None:
+            soft = catalog.defaults.soft_limit_ratio
+        overage = catalog.overage_for(plan_key, metric) if plan_def is not None else None
+        overage_unit = overage.unit if overage is not None else None
+        overage_price = overage.price_cents if overage is not None else None
         if metric in existing:
             pl = existing[metric]
             pl.limit_value = value
             pl.soft_limit_ratio = soft
+            pl.overage_unit = overage_unit
+            pl.overage_price_cents = overage_price
         else:
             session.add(
                 PlanLimit(
@@ -147,6 +174,8 @@ async def _sync_plan_limits(
                     metric=metric,
                     limit_value=value,
                     soft_limit_ratio=soft,
+                    overage_unit=overage_unit,
+                    overage_price_cents=overage_price,
                 )
             )
     for metric, pl in existing.items():

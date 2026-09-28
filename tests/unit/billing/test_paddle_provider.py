@@ -21,10 +21,13 @@ def provider() -> PaddleBillingProvider:
     return PaddleBillingProvider(httpx.AsyncClient(), secret_key="pk_test", webhook_secret=SECRET)
 
 
-def signed(body: bytes, secret: str = SECRET, *, timestamp: int | None = None) -> dict[str, str]:
+def signed(
+    body: bytes, secret: str = SECRET, *, timestamp: int | None = None, sep: str = ";"
+) -> dict[str, str]:
+    """Exactly what Paddle Billing sends: `ts=<unix>;h1=<hex>` over `<ts>:<body>`."""
     ts = timestamp or int(time.time())
-    sig = hmac.new(secret.encode(), f"{ts}.".encode() + body, hashlib.sha256).hexdigest()
-    return {"paddle-signature": f"ts={ts},h1={sig}"}
+    sig = hmac.new(secret.encode(), f"{ts}:".encode() + body, hashlib.sha256).hexdigest()
+    return {"paddle-signature": f"ts={ts}{sep}h1={sig}"}
 
 
 class TestVerification:
@@ -32,6 +35,26 @@ class TestVerification:
         body = json.dumps({"event_id": "evt_1", "event_type": "transaction.completed"}).encode()
         verified = await provider().verify_webhook(WebhookRequest(signed(body), body))
         assert verified.provider_event_id == "evt_1"
+
+    async def test_real_paddle_header_format(self) -> None:
+        """Regression: the verifier used to split on ',' and sign 'ts.body' — every live event 400'd."""
+        body = json.dumps({"event_id": "evt_fmt", "event_type": "transaction.completed"}).encode()
+        headers = signed(body)
+        assert ";" in headers["paddle-signature"] and "," not in headers["paddle-signature"]
+        verified = await provider().verify_webhook(WebhookRequest(headers, body))
+        assert verified.provider_event_id == "evt_fmt"
+
+    async def test_comma_separator_tolerated(self) -> None:
+        body = json.dumps({"event_id": "evt_comma"}).encode()
+        verified = await provider().verify_webhook(WebhookRequest(signed(body, sep=","), body))
+        assert verified.provider_event_id == "evt_comma"
+
+    async def test_stripe_style_dot_payload_rejected(self) -> None:
+        body = json.dumps({"event_id": "evt_dot"}).encode()
+        ts = int(time.time())
+        wrong = hmac.new(SECRET.encode(), f"{ts}.".encode() + body, hashlib.sha256).hexdigest()
+        with pytest.raises(WebhookSignatureInvalidError):
+            await provider().verify_webhook(WebhookRequest({"paddle-signature": f"ts={ts};h1={wrong}"}, body))
 
     async def test_tampered_body(self) -> None:
         body = json.dumps({"event_id": "evt_2", "event_type": "transaction.completed"}).encode()

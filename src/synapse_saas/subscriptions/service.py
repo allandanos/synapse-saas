@@ -178,8 +178,14 @@ class SubscriptionService:
         plan_key: str,
         provider: str | None = None,
         provider_subscription_id: str | None = None,
+        keep_period: bool = False,
     ) -> Subscription:
-        """Switch the occupying subscription to a new plan immediately (upgrade path)."""
+        """Switch the occupying subscription to a new plan immediately.
+
+        `keep_period=True` (mid-period change): the current billing period is
+        kept so the caller can prorate the difference; the period only resets
+        when there is no active period to keep (trial, lapsed, new).
+        """
         plan = await self.plan_by_key(plan_key)
         existing = await self.current_for_org(organization_id)
         now = datetime.now(UTC)
@@ -198,8 +204,10 @@ class SubscriptionService:
         existing.status = "active" if existing.status != "active" else existing.status
         existing.plan_id = plan.id
         existing.plan_snapshot = _snapshot(plan)
-        existing.current_period_start = now
-        existing.current_period_end = now + interval_delta
+        period_is_live = existing.status == "active" and existing.current_period_end > now
+        if not (keep_period and period_is_live):
+            existing.current_period_start = now
+            existing.current_period_end = now + interval_delta
         existing.cancel_at_period_end = False
         existing.canceled_at = None
         if provider is not None:
@@ -333,4 +341,9 @@ def _snapshot(plan: Plan) -> dict[str, Any]:
         "interval": plan.interval,
         "features": [pf.feature_key for pf in plan.features if pf.enabled],
         "limits": {pl.metric: pl.limit_value for pl in plan.limits},
+        "overage": {
+            pl.metric: {"unit": pl.overage_unit, "price_cents": pl.overage_price_cents}
+            for pl in plan.limits
+            if pl.overage_unit is not None and pl.overage_price_cents is not None
+        },
     }

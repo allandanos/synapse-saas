@@ -3,6 +3,8 @@
 # price_cents: integer minor units (₱49900 = ₱499.00). Omit for custom/POA plans.
 # limits: null / omitted value = unlimited. Keys must exist in `metrics` below.
 # features: keys must exist in `features` registry below.
+# metrics: kind counter (flows, reset per period) or gauge (levels — seats,
+#   projects, bytes stored — set via /usage/gauge, never reset).
 version: 1
 
 defaults:
@@ -28,9 +30,12 @@ metrics:
   - {key: users,               name: Seat count,          kind: gauge}
   - {key: projects,            name: Projects,            kind: gauge}
   - {key: api_requests,        name: API requests,        kind: counter}
-  - {key: storage_bytes,       name: Storage,             kind: counter, unit: bytes}
-  - {key: ai_tokens,           name: AI tokens,           kind: counter}
-  - {key: ai_requests,         name: AI requests,         kind: counter}
+  - {key: storage_bytes,       name: Storage,             kind: gauge,   unit: bytes}
+  # overage: usage past the plan limit is billed at price_cents per `unit`
+  # units (rounded up). Per-plan `overage:` blocks override these defaults.
+  # Metrics without overage are enforced (402) but never billed past the cap.
+  - {key: ai_tokens,           name: AI tokens,           kind: counter, overage: {unit: 1000, price_cents: 20}}
+  - {key: ai_requests,         name: AI requests,         kind: counter, overage: {unit: 1000, price_cents: 20}}
   - {key: tool_calls,          name: Tool calls,          kind: counter}
   - {key: agent_executions,    name: Agent executions,    kind: counter}
   - {key: emails_sent,         name: Emails sent,         kind: counter}
