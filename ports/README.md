@@ -13,7 +13,7 @@ shape, and in which order to build.
 | Artifact | What it pins | How a port is checked |
 |---|---|---|
 | `contracts/openapi-v1.json` | 85 client operations + probes, schemas, status codes | `scripts/export_openapi.py --check` here; the port's own OpenAPI must list the same operations |
-| `contracts/problems.json` | every problem type (`type`, `status`, class) | `tests/conformance` asserts shapes; the port raises the same `type` URIs |
+| `contracts/problems.json` | every problem title with its `status` and the exception `classes` that render it | `tests/conformance` asserts shapes; the port raises the same `type` URIs |
 | `contracts/events.json` | public webhook events vs internal outbox events | payload keys are documented in `docs/webhooks.md`; internal events never fan out |
 | `contracts/schema-v1.sql` | the schema at migration head (`pg_dump --schema-only`) | becomes `V1__baseline.sql` / `001_baseline.sql` |
 | `tests/conformance` | black-box journeys per route family | `SYNAPSE_CONFORMANCE_API_URL=http://localhost:8080 uv run pytest tests/conformance -m "" --no-cov` |

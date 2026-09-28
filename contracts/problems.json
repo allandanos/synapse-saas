@@ -1,174 +1,265 @@
 {
   "api_key_not_found": {
     "status": 404,
-    "class": "ApiKeyNotFoundError"
+    "classes": [
+      "ApiKeyNotFoundError"
+    ]
   },
   "billing_provider_error": {
     "status": 502,
-    "class": "BillingProviderError"
+    "classes": [
+      "BillingProviderError"
+    ]
   },
   "billing_provider_not_configured": {
     "status": 409,
-    "class": "BillingProviderNotConfiguredError"
+    "classes": [
+      "BillingProviderNotConfiguredError"
+    ]
   },
   "checkout_confirm_not_allowed": {
     "status": 409,
-    "class": "CheckoutConfirmNotAllowedError"
+    "classes": [
+      "CheckoutConfirmNotAllowedError"
+    ]
   },
   "checkout_required": {
     "status": 409,
-    "class": "CheckoutRequiredError"
+    "classes": [
+      "CheckoutRequiredError"
+    ]
   },
   "conflict": {
     "status": 409,
-    "class": "ConflictError"
+    "classes": [
+      "ConflictError"
+    ]
   },
   "email_already_registered": {
     "status": 409,
-    "class": "EmailAlreadyRegisteredError"
+    "classes": [
+      "EmailAlreadyRegisteredError"
+    ]
   },
   "entitlement_not_found": {
     "status": 404,
-    "class": "EntitlementNotFoundError"
+    "classes": [
+      "EntitlementNotFoundError"
+    ]
   },
   "feature_flag_not_found": {
     "status": 404,
-    "class": "FeatureFlagNotFoundError"
+    "classes": [
+      "FeatureFlagNotFoundError"
+    ]
   },
   "feature_not_entitled": {
     "status": 403,
-    "class": "FeatureNotEntitledError"
+    "classes": [
+      "FeatureNotEntitledError"
+    ]
   },
   "http_error": {
     "status": 400,
-    "class": "HttpError"
+    "classes": [
+      "HttpError"
+    ]
   },
   "invalid_credentials": {
     "status": 401,
-    "class": "InvalidCredentialsError"
+    "classes": [
+      "InvalidCredentialsError"
+    ]
   },
   "invalid_subscription_transition": {
     "status": 409,
-    "class": "SubscriptionStateError"
+    "classes": [
+      "SubscriptionStateError"
+    ]
   },
   "invite_already_used": {
     "status": 409,
-    "class": "InviteAlreadyUsedError"
+    "classes": [
+      "InviteAlreadyUsedError"
+    ]
   },
   "invite_not_found": {
     "status": 404,
-    "class": "InviteNotFoundError"
+    "classes": [
+      "InviteNotFoundError"
+    ]
   },
   "invoice_not_found": {
     "status": 404,
-    "class": "InvoiceNotFoundError"
+    "classes": [
+      "InvoiceNotFoundError"
+    ]
   },
   "method_not_allowed": {
     "status": 405,
-    "class": "MethodNotAllowedError"
+    "classes": [
+      "MethodNotAllowedError"
+    ]
   },
   "not_found": {
     "status": 404,
-    "class": "TenantNotResolvedError"
+    "classes": [
+      "NotAMemberError",
+      "NotFoundError",
+      "OrganizationNotFoundError",
+      "TenantNotResolvedError"
+    ]
   },
   "organization_suspended": {
     "status": 403,
-    "class": "OrganizationSuspendedError"
+    "classes": [
+      "OrganizationSuspendedError"
+    ]
   },
   "permission_denied": {
     "status": 403,
-    "class": "PermissionDeniedError"
+    "classes": [
+      "PermissionDeniedError"
+    ]
   },
   "plan_catalog_invalid": {
     "status": 400,
-    "class": "CatalogInvalidError"
+    "classes": [
+      "CatalogInvalidError"
+    ]
   },
   "plan_not_found": {
     "status": 404,
-    "class": "PlanNotPublicError"
+    "classes": [
+      "PlanNotFoundError",
+      "PlanNotPublicError"
+    ]
   },
   "presign_unsupported": {
     "status": 409,
-    "class": "PresignUnsupportedError"
+    "classes": [
+      "PresignUnsupportedError"
+    ]
   },
   "rate_limited": {
     "status": 429,
-    "class": "RateLimitedError"
+    "classes": [
+      "RateLimitedError"
+    ]
   },
   "role_not_found": {
     "status": 404,
-    "class": "RoleNotFoundError"
+    "classes": [
+      "RoleNotFoundError"
+    ]
   },
   "slug_unavailable": {
     "status": 409,
-    "class": "SlugUnavailableError"
+    "classes": [
+      "SlugUnavailableError"
+    ]
   },
   "storage_error": {
     "status": 400,
-    "class": "StorageError"
+    "classes": [
+      "StorageError"
+    ]
   },
   "subscription_not_found": {
     "status": 404,
-    "class": "SubscriptionNotFoundError"
+    "classes": [
+      "SubscriptionNotFoundError"
+    ]
   },
   "system_role_immutable": {
     "status": 409,
-    "class": "SystemRoleImmutableError"
+    "classes": [
+      "SystemRoleImmutableError"
+    ]
   },
   "tenant_context_missing": {
     "status": 400,
-    "class": "TenantContextMissingError"
+    "classes": [
+      "TenantContextMissingError"
+    ]
   },
   "tenant_violation": {
     "status": 403,
-    "class": "TenantViolationError"
+    "classes": [
+      "TenantViolationError"
+    ]
   },
   "token_reuse_detected": {
     "status": 401,
-    "class": "TokenReuseError"
+    "classes": [
+      "TokenReuseError"
+    ]
   },
   "trial_not_allowed": {
     "status": 409,
-    "class": "TrialNotAllowedError"
+    "classes": [
+      "TrialNotAllowedError"
+    ]
   },
   "unauthorized": {
     "status": 401,
-    "class": "AuthenticationError"
+    "classes": [
+      "AuthenticationError"
+    ]
   },
   "unknown_metric": {
     "status": 422,
-    "class": "UnknownMetricError"
+    "classes": [
+      "UnknownMetricError"
+    ]
   },
   "upload_incomplete": {
     "status": 409,
-    "class": "UploadIncompleteError"
+    "classes": [
+      "UploadIncompleteError"
+    ]
   },
   "usage_limit_exceeded": {
     "status": 402,
-    "class": "UsageLimitExceededError"
+    "classes": [
+      "MembershipLimitReachedError",
+      "UsageLimitExceededError"
+    ]
   },
   "user_not_found": {
     "status": 404,
-    "class": "UserNotFoundError"
+    "classes": [
+      "UserNotFoundError"
+    ]
   },
   "validation_failed": {
     "status": 422,
-    "class": "ValidationFailedError"
+    "classes": [
+      "ValidationFailedError"
+    ]
   },
   "weak_password": {
     "status": 400,
-    "class": "WeakPasswordError"
+    "classes": [
+      "WeakPasswordError"
+    ]
   },
   "webhook_delivery_not_found": {
     "status": 404,
-    "class": "WebhookDeliveryNotFoundError"
+    "classes": [
+      "WebhookDeliveryNotFoundError"
+    ]
   },
   "webhook_endpoint_not_found": {
     "status": 404,
-    "class": "WebhookEndpointNotFoundError"
+    "classes": [
+      "WebhookEndpointNotFoundError"
+    ]
   },
   "webhook_signature_invalid": {
     "status": 400,
-    "class": "WebhookSignatureInvalidError"
+    "classes": [
+      "WebhookSignatureInvalidError"
+    ]
   }
 }

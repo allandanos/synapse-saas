@@ -5,6 +5,14 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
+### Findings from the ports' milestone 3 (P7)
+
+- `contracts/problems.json` entries now carry `classes` (every exception
+  class that renders the title) instead of a single `class`, and the exporter
+  refuses two classes with one title but different statuses. Statuses and
+  titles are unchanged; `plan_not_found` for example lists both
+  `PlanNotFoundError` and `PlanNotPublicError`.
+
 ### Findings from the Node port's milestone 2 (P7)
 
 Implementing the contract a second time exposed places where the document, the

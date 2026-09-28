@@ -36,10 +36,23 @@ def render_problems() -> str:
 
     from synapse_saas.core import errors
 
+    # Keyed by problem `title` (what clients see); several exception classes may
+    # share one title, so every class is listed and their statuses must agree.
     registry: dict[str, dict[str, object]] = {}
     for name, cls in inspect.getmembers(errors, inspect.isclass):
         if issubclass(cls, errors.DomainError) and cls is not errors.DomainError:
-            registry[cls.title] = {"status": cls.status, "class": name}
+            entry = registry.setdefault(cls.title, {"status": cls.status, "classes": []})
+            if entry["status"] != cls.status:
+                raise SystemExit(
+                    f"problem {cls.title!r}: {name} has status {cls.status}, registry says {entry['status']}"
+                )
+            classes = entry["classes"]
+            assert isinstance(classes, list)
+            classes.append(name)
+    for entry in registry.values():
+        classes = entry["classes"]
+        assert isinstance(classes, list)
+        classes.sort()
     return json.dumps(dict(sorted(registry.items())), indent=2) + "\n"
 
 
