@@ -281,6 +281,8 @@ class OrganizationService:
             )
         if "status" in diff:
             await self._sync_seat_gauge(membership.organization_id)
+            # suspended members keep no tuples; reactivated ones get them back
+            await self._invalidate_perms(membership)
         return membership
 
     async def remove_member(self, membership_id: UUID) -> None:
@@ -297,9 +299,14 @@ class OrganizationService:
             diff={"email": membership.invited_email or str(membership.user_id)},
         )
         org_id = membership.organization_id
+        removed_user_id = membership.user_id
         await self.session.delete(membership)
         await self.session.flush()
         await self._sync_seat_gauge(org_id)
+        # OpenFGA (when active): the removed member's tuples must go
+        from synapse_saas.authorization.sync import queue_tuple_sync
+
+        queue_tuple_sync(self.session, organization_id=org_id, user_id=removed_user_id)
 
     # ── Internals ───────────────────────────────────────────────────────────────
 
@@ -328,6 +335,7 @@ class OrganizationService:
             payload={"email": membership.invited_email},
         )
         await self._sync_seat_gauge(membership.organization_id)
+        await self._invalidate_perms(membership)
         return membership
 
     async def _bootstrap_subscription(self, org: Organization) -> None:

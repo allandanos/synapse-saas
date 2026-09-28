@@ -84,6 +84,13 @@ EMAILS = Counter(
     registry=REGISTRY,
 )
 
+FGA_CHECKS = Counter(
+    "synapse_fga_checks_total",
+    "OpenFGA permission checks by outcome",
+    labelnames=("outcome",),  # allowed | denied | error
+    registry=REGISTRY,
+)
+
 OUTBOX_DEAD = Counter(
     "synapse_outbox_dead_lettered_total",
     "Outbox events that exhausted their retries and left the dispatch loop",

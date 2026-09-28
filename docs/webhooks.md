@@ -152,6 +152,7 @@ _Generated from `core/events.py` by `scripts/check_docs.py --fix`; do not edit b
 
 **Internal** — consumed in-process only (email handlers); never delivered to a webhook:
 
+- `authz.tuples_changed`
 - `invoice.email`
 - `member.invite_email`
 - `user.password_reset_link`

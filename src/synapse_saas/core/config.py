@@ -129,6 +129,17 @@ class Settings(BaseSettings):
     # ── Retention ───────────────────────────────────────────────────────────────
     audit_retention_days: int = 365
 
+    # ── Authorization backend ───────────────────────────────────────────────────
+    # rbac: Postgres role→permission tables (the default, always the source of truth)
+    # openfga: permission checks ask OpenFGA (tuples synced from RBAC, ADR 0009)
+    authz_backend: Literal["rbac", "openfga"] = "rbac"
+    openfga_url: str = ""  # e.g. http://localhost:8081
+    openfga_store_id: str = ""
+    openfga_model_id: str = ""  # empty ⇒ the store's latest model
+    openfga_api_token: str = ""
+    # When OpenFGA is unreachable: closed ⇒ deny (production default), rbac ⇒ fall back to RBAC
+    openfga_fail_mode: Literal["closed", "rbac"] = "closed"
+
     # ── Rate limiting ───────────────────────────────────────────────────────────
     # Auth endpoints: attempts per window per IP and per target identity.
     auth_rate_limit_per_ip: int = 20

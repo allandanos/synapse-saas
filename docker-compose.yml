@@ -162,6 +162,17 @@ services:
     volumes:
       - ./infrastructure/keycloak:/opt/keycloak/data/import:ro
 
+  # Fine-grained authorization backend (ADR 0009): SYNAPSE_AUTHZ_BACKEND=openfga
+  #   SYNAPSE_OPENFGA_URL=http://localhost:8081, then `synapse-cli authz fga write-model`
+  openfga:
+    image: openfga/openfga:latest
+    profiles: [extras]
+    command: ["run"]  # in-memory datastore: fine for dev, wiped on restart
+    ports:
+      - "8081:8080"  # HTTP API
+      - "8082:8081"  # gRPC
+      - "3001:3000"  # playground
+
   minio:
     image: minio/minio:latest
     profiles: [extras]

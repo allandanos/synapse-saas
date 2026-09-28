@@ -119,8 +119,9 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
   "pg: integration tests requiring PostgreSQL (deselect with -m 'not pg')",
+  "fga: integration tests requiring a live OpenFGA (SYNAPSE_OPENFGA_URL)",
 ]
-addopts = "-m 'not pg' --cov=src/synapse_saas --cov-report=term-missing --no-cov-on-fail"
+addopts = "-m 'not pg and not fga' --cov=src/synapse_saas --cov-report=term-missing --no-cov-on-fail"
 filterwarnings = ["error::DeprecationWarning"]
 
 [tool.coverage.run]

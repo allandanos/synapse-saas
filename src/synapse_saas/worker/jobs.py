@@ -148,15 +148,23 @@ async def _dispatch_outbox_impl(ctx: dict[str, Any]) -> int:
 
         await session.commit()
 
-    # Emails only after the events are durably published: a crash or retry
-    # cannot send the same invite/invoice twice. Delivery failure is logged.
+    # In-process consumers run only after the events are durably published: a
+    # crash or retry cannot send the same invite/invoice twice. Failures are
+    # logged; the authz sync additionally re-queues itself on the next change.
+    from synapse_saas.authorization import sync as authz_sync
     from synapse_saas.notifications.handlers import handle_event
 
     for event_type, payload in to_email:
-        try:
-            await handle_event(event_type, payload)
-        except Exception as exc:
-            logger.warning("email_handler_failed", error=str(exc), event_type=event_type)
+        for consumer in (handle_event, authz_sync.handle_event):
+            try:
+                await consumer(event_type, payload)
+            except Exception as exc:
+                logger.warning(
+                    "internal_consumer_failed",
+                    consumer=consumer.__module__,
+                    error=str(exc),
+                    event_type=event_type,
+                )
     return dispatched
 
 

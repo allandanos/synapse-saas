@@ -194,6 +194,97 @@ def new_project(
 
 
 @cli.group()
+def authz() -> None:
+    """Fine-grained authorization (OpenFGA) — model bootstrap, tuple sync, checks."""
+
+
+@authz.group()
+def fga() -> None:
+    """OpenFGA store operations (SYNAPSE_OPENFGA_URL)."""
+
+
+@fga.command("write-model")
+@click.option("--create-store", "store_name", default=None, help="Create a store with this name first")
+@click.option("--dsl", is_flag=True, help="Print the model as DSL instead of writing it")
+def fga_write_model(store_name: str | None, dsl: bool) -> None:
+    """Write the catalog-generated authorization model to the store."""
+    from synapse_saas.authorization.fga_model import build_model, render_dsl
+
+    if dsl:
+        click.echo(render_dsl())
+        return
+
+    async def _run() -> tuple[str, str]:
+        from synapse_saas.authorization.fga import FgaClient
+
+        client = FgaClient()
+        if store_name:
+            client.store_id = await client.create_store(store_name)
+        model_id = await client.write_model(build_model())
+        return client.store_id, model_id
+
+    store_id, model_id = asyncio.run(_run())
+    click.echo(f"store_id={store_id}")
+    click.echo(f"authorization_model_id={model_id}")
+    click.echo("Set SYNAPSE_OPENFGA_STORE_ID / SYNAPSE_OPENFGA_MODEL_ID accordingly.")
+
+
+@fga.command("sync")
+@click.option("--all", "sync_all", is_flag=True, help="Every active membership")
+@click.option("--org", "org_id", default=None, help="Only this organization id")
+def fga_sync(sync_all: bool, org_id: str | None) -> None:
+    """Converge OpenFGA tuples to the RBAC state (backfill or repair)."""
+    if not sync_all and not org_id:
+        raise click.UsageError("Pass --all or --org <id>")
+
+    async def _run() -> int:
+        from sqlalchemy import select
+
+        from synapse_saas.authorization.sync import apply_tuple_sync
+        from synapse_saas.core.db import dispose_engine, get_owner_session_factory
+        from synapse_saas.tenancy.models import Membership
+
+        try:
+            async with get_owner_session_factory()() as session:
+                stmt = select(Membership.organization_id, Membership.user_id).where(
+                    Membership.user_id.is_not(None)
+                )
+                if org_id:
+                    stmt = stmt.where(Membership.organization_id == org_id)
+                pairs = (await session.execute(stmt)).all()
+            count = 0
+            for organization_id, user_id in pairs:
+                await apply_tuple_sync({"organization_id": str(organization_id), "user_id": str(user_id)})
+                count += 1
+            return count
+        finally:
+            await dispose_engine()
+
+    click.echo(f"synced {asyncio.run(_run())} membership(s)")
+
+
+@fga.command("check")
+@click.argument("user_id")
+@click.argument("organization_id")
+@click.argument("permission")
+def fga_check(user_id: str, organization_id: str, permission: str) -> None:
+    """Ask the store: may USER exercise PERMISSION in ORGANIZATION?"""
+
+    async def _run() -> bool:
+        from synapse_saas.authorization.fga import FgaClient
+        from synapse_saas.authorization.fga_model import relation_for
+
+        return await FgaClient().check(
+            f"user:{user_id}", relation_for(permission), f"organization:{organization_id}"
+        )
+
+    allowed = asyncio.run(_run())
+    click.echo("allowed" if allowed else "denied")
+    if not allowed:
+        raise SystemExit(1)
+
+
+@cli.group()
 def plans() -> None:
     """Plan catalog operations."""
 

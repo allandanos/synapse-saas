@@ -82,8 +82,10 @@ async def require_permission(
         return
 
     authz = AuthorizationService(session)
+    # UserContext always carries the RBAC keys (audit, API-key bounding);
+    # the DECISION goes through user_can, which is RBAC or OpenFGA (ADR 0009).
     keys = await authz.permission_keys_for(user.id, tenant.organization_id)
-    if permission not in keys:
+    if not await authz.user_can(user.id, tenant.organization_id, permission):
         from synapse_saas.core.errors import PermissionDeniedError
 
         raise PermissionDeniedError(

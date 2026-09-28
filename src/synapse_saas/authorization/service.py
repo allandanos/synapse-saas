@@ -13,9 +13,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from synapse_saas.authorization.fga import FgaClient, FgaError
+from synapse_saas.authorization.fga_model import relation_for
 from synapse_saas.authorization.models import AuthorizationRole, MembershipRole, Permission, RolePermission
 from synapse_saas.authorization.permissions import PERMISSION_KEYS
+from synapse_saas.authorization.sync import org_object, queue_tuple_sync, user_object
 from synapse_saas.core.cache import VersionedCache, defer_bump
+from synapse_saas.core.config import get_settings
 from synapse_saas.core.errors import PermissionDeniedError, RoleNotFoundError, SystemRoleImmutableError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.tenancy.models import Membership
@@ -23,6 +27,16 @@ from synapse_saas.tenancy.models import Membership
 logger = get_logger(__name__)
 
 _perm_cache = VersionedCache("perm", ttl=30)
+_fga_cache = VersionedCache("fga", ttl=30)
+
+
+def _inc_fga(outcome: str) -> None:
+    import contextlib
+
+    with contextlib.suppress(Exception):  # metrics must never fail a check
+        from synapse_saas.core import metrics
+
+        metrics.FGA_CHECKS.labels(outcome=outcome).inc()
 
 
 class AuthorizationService:
@@ -56,8 +70,49 @@ class AuthorizationService:
         return keys
 
     async def user_can(self, user_id: UUID, organization_id: UUID, permission: str) -> bool:
+        """The org-level permission check every route asks.
+
+        rbac: the member's denormalized permission set. openfga: ask the store
+        (`user:<id>` `can_<perm>` `organization:<id>`), cached briefly and
+        invalidated with the permission cache; on an outage the configured
+        fail mode decides (closed ⇒ deny, rbac ⇒ fall back).
+        """
+        if get_settings().authz_backend == "openfga":
+            return await self._fga_allowed(user_id, permission, org_object(organization_id))
         keys = await self.permission_keys_for(user_id, organization_id)
         return permission in keys
+
+    async def user_can_on(
+        self, user_id: UUID, permission: str, object_type: str, object_id: UUID | str
+    ) -> bool:
+        """Resource-level check (`project:manage` on project X). The RBAC backend
+        answers at org level: the object's organization must be resolvable by
+        the caller; pass organization ids as object_type="organization"."""
+        if get_settings().authz_backend == "openfga":
+            return await self._fga_allowed(user_id, permission, f"{object_type}:{object_id}")
+        if object_type != "organization":
+            raise NotImplementedError("resource-level checks need the openfga backend; check the org instead")
+        return await self.user_can(user_id, UUID(str(object_id)), permission)
+
+    async def _fga_allowed(self, user_id: UUID, permission: str, obj: str) -> bool:
+        settings = get_settings()
+        scope = f"{user_id}:{obj}"
+        cached, token = await _fga_cache.get_scoped(f"{scope}:{permission}", scope)
+        if cached is not None:
+            return cached == "1"
+        try:
+            allowed = await FgaClient().check(user_object(user_id), relation_for(permission), obj)
+        except FgaError as exc:
+            _inc_fga("error")
+            if settings.openfga_fail_mode == "rbac" and obj.startswith("organization:"):
+                logger.warning("fga_check_failed_falling_back_to_rbac", error=str(exc), permission=permission)
+                keys = await self.permission_keys_for(user_id, UUID(obj.split(":", 1)[1]))
+                return permission in keys
+            logger.exception("fga_check_failed_closed", error=str(exc), permission=permission, object=obj)
+            return False
+        _inc_fga("allowed" if allowed else "denied")
+        await _fga_cache.set_scoped(f"{scope}:{permission}", "1" if allowed else "0", token)
+        return allowed
 
     async def require(self, user_id: UUID, organization_id: UUID, permission: str) -> None:
         if not await self.user_can(user_id, organization_id, permission):
@@ -198,6 +253,8 @@ class AuthorizationService:
         )
         for membership in memberships:
             await self.recompute_membership_permissions(membership)
+            if membership.user_id is not None:
+                await self.invalidate_user_perms(membership.user_id, membership.organization_id)
 
     async def recompute_membership_permissions(self, membership: Membership) -> None:
         roles = (
@@ -221,6 +278,10 @@ class AuthorizationService:
         """
         await _perm_cache.bump(f"{user_id}:{organization_id}")
         defer_bump(self.session, _perm_cache, f"{user_id}:{organization_id}")  # again once durable
+        # OpenFGA: drop cached decisions for this member and resync their tuples
+        await _fga_cache.bump(f"{user_id}:{org_object(organization_id)}")
+        defer_bump(self.session, _fga_cache, f"{user_id}:{org_object(organization_id)}")
+        queue_tuple_sync(self.session, organization_id=organization_id, user_id=user_id)
 
     async def invalidate_org_perms(self, organization_id: UUID) -> None:
         """Invalidate every member of an org (role edits, custom-role changes)."""

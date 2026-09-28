@@ -42,7 +42,7 @@ their own package; only `api`/`worker` compose everything.
 | `core` | config, tenant/user contextvars, DB engine + TenantRepository, caches, errors, security |
 | `identity` | users, JWT access tokens, refresh rotation, Keycloak OIDC login (code flow + PKCE) |
 | `tenancy` | organizations, memberships, invites, tenant resolution |
-| `authorization` | roles, permissions, `require_permission` (OpenFGA seam) |
+| `authorization` | roles, permissions, `require_permission`; OpenFGA backend with a catalog-generated model and outbox tuple sync (ADR 0009) |
 | `subscriptions` | plans, catalog YAML, sync, subscription state machine |
 | `entitlements` | grant table + pure resolver → effective features/limits |
 | `usage` | events (partitioned), counters, atomic limit enforcement |

@@ -80,8 +80,12 @@ AGENT_DISABLED = "agent.disabled"
 MEMBER_INVITE_EMAIL = "member.invite_email"
 USER_PASSWORD_RESET_LINK = "user.password_reset_link"
 INVOICE_EMAIL = "invoice.email"
+# Fine-grained authz: a member's role set changed ⇒ resync their OpenFGA tuples (ADR 0009)
+AUTHZ_TUPLES_CHANGED = "authz.tuples_changed"
 
-INTERNAL_EVENTS: frozenset[str] = frozenset({MEMBER_INVITE_EMAIL, USER_PASSWORD_RESET_LINK, INVOICE_EMAIL})
+INTERNAL_EVENTS: frozenset[str] = frozenset(
+    {MEMBER_INVITE_EMAIL, USER_PASSWORD_RESET_LINK, INVOICE_EMAIL, AUTHZ_TUPLES_CHANGED}
+)
 
 AUDIENCE_PUBLIC = "public"
 AUDIENCE_INTERNAL = "internal"
