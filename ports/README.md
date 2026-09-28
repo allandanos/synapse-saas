@@ -23,7 +23,10 @@ shape, and in which order to build.
 Platform-operator journeys need an operator account in the port:
 `SYNAPSE_CONFORMANCE_ADMIN_EMAIL` / `SYNAPSE_CONFORMANCE_ADMIN_PASSWORD`.
 
-Regenerate the baseline after every migration:
+Regenerate the baseline after every migration. Keep pg_dump's
+`SET check_function_bodies = false;` line: `synapse_org_for_invite_token` is a
+SQL-language function declared before `memberships`, so a runner that validates
+bodies would fail (both ports set it per file).
 
 ```bash
 make test-pg   # scratch DB at migration head

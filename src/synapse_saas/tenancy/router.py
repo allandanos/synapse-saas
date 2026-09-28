@@ -126,12 +126,14 @@ async def invite_member(
     seat_limit = entitlements.limit_value("users")
 
     service = OrganizationService(session)
+    org = await service.get_organization(tenant.organization_id)
     membership = await service.invite_member(
         organization_id=tenant.organization_id,
         invited_email=str(body.email),
         invited_by_user_id=user.id,
         role_keys=body.role_keys,
         seat_limit=seat_limit,
+        org_name=org.name,  # the invite email names the org, not "your organization"
     )
     return _to_membership_read(membership)
 

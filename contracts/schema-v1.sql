@@ -3,6 +3,10 @@
 -- file (Flyway V1__baseline.sql / raw 001_baseline.sql) and mirror later
 -- Alembic migrations as SQL (ADR 0012). Regenerate after every migration; see
 -- ports/README.md. Monthly usage_events partitions reflect the dump date.
+-- SQL-language functions are declared before the tables they reference, so a
+-- runner must keep check_function_bodies off while applying this file.
+
+SET check_function_bodies = false;
 
 --
 -- PostgreSQL database dump

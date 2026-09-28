@@ -31,6 +31,16 @@ _membership_cache = VersionedCache("member", ttl=60)
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
+def _is_ip_literal(host: str) -> bool:
+    import ipaddress
+
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return False
+    return True
+
+
 async def _resolve_org_reference(request: Request, user: CurrentUser) -> UUID | str | None:
     org_id = request.headers.get("X-Org-Id")
     if org_id:
@@ -43,9 +53,11 @@ async def _resolve_org_reference(request: Request, user: CurrentUser) -> UUID | 
     if org_slug:
         return org_slug
 
-    # Subdomain: acme.localhost / acme.app.example.com (skip www, api, app)
+    # Subdomain: acme.localhost / acme.app.example.com (skip www, api, app).
+    # An IP literal (127.0.0.1) or bare localhost is not a tenant slug: fall
+    # through to the JWT claim instead of answering 404 for "127".
     host = request.headers.get("host", "").split(":")[0].lower()
-    if "." in host and host.split(".")[0] not in {"www", "api", "app"}:
+    if "." in host and not _is_ip_literal(host) and host.split(".")[0] not in {"www", "api", "app"}:
         return host.split(".")[0]
 
     # JWT org claim (set at token mint when an org is active)

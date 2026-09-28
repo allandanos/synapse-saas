@@ -1,6 +1,30 @@
 {
   "components": {
     "schemas": {
+      "AccessTokenResponse": {
+        "description": "An org-scoped access token; the rotated refresh token travels in the cookie.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "token_type": {
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in"
+        ],
+        "title": "AccessTokenResponse",
+        "type": "object"
+      },
       "AgentCreate": {
         "properties": {
           "config": {
@@ -4209,7 +4233,7 @@
     },
     "/v1/auth/switch-org": {
       "post": {
-        "description": "Record the active org; the next refresh mints an org-scoped token pair.",
+        "description": "Mint an org-scoped access token now (the `org` claim drives tenant resolution\nwhen no header is sent); the rotated refresh token goes into the cookie.",
         "operationId": "switch_org_v1_auth_switch_org_post",
         "requestBody": {
           "content": {
@@ -4222,7 +4246,14 @@
           "required": true
         },
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessTokenResponse"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {

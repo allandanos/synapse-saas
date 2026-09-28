@@ -80,6 +80,14 @@ class SwitchOrgRequest(BaseModel):
     organization_id: uuid.UUID
 
 
+class AccessTokenResponse(BaseModel):
+    """An org-scoped access token; the rotated refresh token travels in the cookie."""
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 

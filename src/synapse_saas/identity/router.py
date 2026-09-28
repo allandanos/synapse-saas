@@ -16,6 +16,7 @@ from synapse_saas.core.config import get_settings
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.identity.provider import get_identity_provider
 from synapse_saas.identity.schemas import (
+    AccessTokenResponse,
     AuthResponse,
     ForgotPasswordRequest,
     InviteAcceptRequest,
@@ -208,27 +209,22 @@ async def me(user: CurrentUser, session: SessionDep) -> UserWithOrgs:
     return read
 
 
-@router.post("/switch-org", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/switch-org", response_model=AccessTokenResponse)
 async def switch_org(
     body: SwitchOrgRequest, user: CurrentUser, session: SessionDep, response: Response
-) -> None:
-    """Record the active org; the next refresh mints an org-scoped token pair."""
+) -> AccessTokenResponse:
+    """Mint an org-scoped access token now (the `org` claim drives tenant resolution
+    when no header is sent); the rotated refresh token goes into the cookie."""
     membership = await MembershipRepository(session).get_active(body.organization_id, user.id)
     if membership is None:
         from synapse_saas.core.errors import TenantNotResolvedError
 
         raise TenantNotResolvedError("Organization not found")
 
-    # Mint a fresh pair immediately scoped to the org
     service = IdentityService(session)
     tokens = await service.issue_tokens(user, organization_id=body.organization_id)
-    response.status_code = 200
     _set_refresh_cookie(response, tokens.refresh_token)
-    from fastapi.responses import JSONResponse
-
-    return JSONResponse(  # type: ignore[return-value]
-        content={"access_token": tokens.access_token, "token_type": "bearer", "expires_in": tokens.expires_in}
-    )
+    return AccessTokenResponse(access_token=tokens.access_token, expires_in=tokens.expires_in)
 
 
 @router.post("/accept-invite", status_code=status.HTTP_200_OK)

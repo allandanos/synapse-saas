@@ -39,6 +39,10 @@
     "status": 403,
     "class": "FeatureNotEntitledError"
   },
+  "http_error": {
+    "status": 400,
+    "class": "HttpError"
+  },
   "invalid_credentials": {
     "status": 401,
     "class": "InvalidCredentialsError"
@@ -58,6 +62,10 @@
   "invoice_not_found": {
     "status": 404,
     "class": "InvoiceNotFoundError"
+  },
+  "method_not_allowed": {
+    "status": 405,
+    "class": "MethodNotAllowedError"
   },
   "not_found": {
     "status": 404,

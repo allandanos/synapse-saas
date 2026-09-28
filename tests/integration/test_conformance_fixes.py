@@ -92,3 +92,66 @@ class TestPresignDownloadOnLocalDisk:
         assert up.status_code == 201, up.text
         res = await client.post(f"/v1/files/{up.json()['id']}/presign", headers=headers)
         assert res.status_code == 409 and res.json()["title"] == "presign unsupported"
+
+
+class TestPortFindings:
+    """Defects the Node port surfaced while implementing milestone 2 against the reference."""
+
+    async def test_ip_literal_host_is_not_a_tenant_slug(self, client: AsyncClient, org_and_tokens) -> None:
+        switched = await client.post(
+            "/v1/auth/switch-org",
+            headers={"Authorization": f"Bearer {org_and_tokens['access_token']}"},
+            json={"organization_id": org_and_tokens["org_id"]},
+        )
+        assert switched.status_code == 200, switched.text
+        scoped = {"Authorization": f"Bearer {switched.json()['access_token']}", "Host": "127.0.0.1:8000"}
+        res = await client.get("/v1/orgs/current", headers=scoped)  # no X-Org-Id: claim must win over "127"
+        assert res.status_code == 200, res.text
+
+    async def test_invite_email_event_names_the_org(self, client: AsyncClient, org_and_tokens) -> None:
+        from sqlalchemy import select
+
+        from synapse_saas.audit.models import OutboxEvent
+        from synapse_saas.testing.fixtures import owner_session_factory
+
+        res = await client.post(
+            "/v1/orgs/current/members/invite",
+            headers=org_headers(org_and_tokens),
+            json={"email": "named@example.com", "role_keys": ["developer"]},
+        )
+        assert res.status_code == 201 and res.json()["role_keys"] == ["developer"], res.text
+        async with owner_session_factory()() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(OutboxEvent).where(OutboxEvent.event_type == "member.invite_email")
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert rows and rows[-1].payload["org_name"] == "Test Org"
+
+    async def test_duplicate_invite_and_role_key_are_409(self, client: AsyncClient, org_and_tokens) -> None:
+        headers = org_headers(org_and_tokens)
+        body = {"email": "twice@example.com", "role_keys": ["member"]}
+        assert (
+            await client.post("/v1/orgs/current/members/invite", headers=headers, json=body)
+        ).status_code == 201
+        again = await client.post("/v1/orgs/current/members/invite", headers=headers, json=body)
+        assert again.status_code == 409 and again.json()["membership_status"] == "invited", again.text
+
+        role = {"key": "dup_role", "name": "Dup", "permissions": ["org:read"]}
+        assert (await client.post("/v1/roles", headers=headers, json=role)).status_code == 201
+        dup = await client.post("/v1/roles", headers=headers, json=role)
+        assert dup.status_code == 409 and dup.json()["key"] == "dup_role", dup.text
+
+    async def test_framework_http_errors_are_problems(self, client: AsyncClient) -> None:
+        missing = await client.get("/v1/nope")
+        assert (
+            missing.status_code == 404
+            and missing.json()["title"] == "not found"
+            and missing.json()["request_id"]
+        )
+        wrong = await client.delete("/v1/meta")
+        assert wrong.status_code == 405 and wrong.json()["title"] == "method not allowed"

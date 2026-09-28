@@ -310,6 +310,20 @@ class ConflictError(DomainError):
     title = "conflict"
 
 
+class MethodNotAllowedError(DomainError):
+    """Routing-level 405, rendered as a problem document like every other error."""
+
+    status = 405
+    title = "method_not_allowed"
+
+
+class HttpError(DomainError):
+    """Any other framework-level HTTP error (rare); the handler sets the real status."""
+
+    status = 400
+    title = "http_error"
+
+
 class RateLimitedError(DomainError):
     status = 429
     title = "rate_limited"

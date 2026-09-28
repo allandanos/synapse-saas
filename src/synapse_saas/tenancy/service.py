@@ -23,6 +23,7 @@ from synapse_saas.authorization.permissions import SYSTEM_ROLE_OWNER
 from synapse_saas.core import events
 from synapse_saas.core.db import set_rls_tenant
 from synapse_saas.core.errors import (
+    ConflictError,
     InviteNotFoundError,
     MembershipLimitReachedError,
     NotAMemberError,
@@ -164,6 +165,19 @@ class OrganizationService:
         org_name: str = "your organization",
     ) -> Membership:
         """Invite by email. Enforces the `users` gauge limit when provided."""
+        existing = (
+            await self.session.execute(
+                select(Membership).where(
+                    Membership.organization_id == organization_id,
+                    Membership.invited_email == invited_email,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:  # the unique constraint would 500; say why instead
+            raise ConflictError(
+                "This email is already invited to (or a member of) the organization",
+                extras={"email": invited_email, "membership_status": existing.status},
+            )
         active = await self.members.count_active_members(organization_id)
         pending = await self._count_pending_invites(organization_id)
         if seat_limit is not None and active + pending + 1 > seat_limit:
@@ -187,6 +201,7 @@ class OrganizationService:
 
         for key in role_keys or ["member"]:
             await self._attach_role(membership, key)
+        await self.session.flush()  # the role rows must be in the DB before the refresh reads them
 
         # roles relationship isn't populated on new objects; load it for the response
         await self.session.refresh(membership, attribute_names=["roles", "user"])

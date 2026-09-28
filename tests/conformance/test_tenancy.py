@@ -20,7 +20,11 @@ async def test_org_lifecycle(api: AsyncClient, tenant: Tenant) -> None:
     switched = await api.post(
         "/v1/auth/switch-org", headers=tenant.bearer, json={"organization_id": tenant["org_id"]}
     )
-    assert switched.status_code in (200, 204), switched.text
+    assert switched.status_code == 200, switched.text
+    assert {"access_token", "token_type", "expires_in"} <= set(switched.json())
+    # The org claim now resolves the tenant without any header
+    scoped = {"Authorization": f"Bearer {switched.json()['access_token']}"}
+    assert (await api.get("/v1/orgs/current", headers=scoped)).json()["id"] == tenant["org_id"]
 
 
 async def test_current_org_needs_a_tenant(api: AsyncClient, tenant: Tenant) -> None:
@@ -44,7 +48,15 @@ async def test_membership_lifecycle(api: AsyncClient, tenant: Tenant) -> None:
     assert invited.status_code == 201, invited.text
     membership_id = invited.json()["id"]
     assert invited.json()["status"] == "invited"
+    assert invited.json()["role_keys"] == ["member"]
     assert "invite_token" not in invited.text, "invite tokens travel by email only"
+
+    again = await api.post(
+        "/v1/orgs/current/members/invite",
+        headers=tenant.headers,
+        json={"email": email, "role_keys": ["member"]},
+    )
+    assert_problem(again, 409, title="conflict")
 
     promoted = await api.patch(
         f"/v1/memberships/{membership_id}", headers=tenant.headers, json={"role_keys": ["developer"]}

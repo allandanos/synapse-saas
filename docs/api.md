@@ -32,7 +32,7 @@ body stays a plain JSON array; the total number of rows rides the
 | GET | `/auth/oidc/callback?code&state` | SSO return: verifies the id_token, links/creates the user, sets the refresh cookie, 302 to the console's `/auth/callback` |
 | POST | `/auth/logout` | 204 |
 | GET | `/auth/me` | user + orgs + role keys |
-| POST | `/auth/switch-org` | re-scopes the session to one org |
+| POST | `/auth/switch-org` | 200 `{access_token, token_type, expires_in}` scoped to the org (`org` claim resolves the tenant when no header is sent); rotated refresh token in the cookie |
 | POST | `/auth/forgot-password` | 202, opaque response |
 | POST | `/auth/reset-password` | tokens + new password |
 
@@ -43,7 +43,7 @@ body stays a plain JSON array; the total number of rows rides the
 | GET/POST | `/orgs` | — |
 | GET/PATCH | `/orgs/current` | `org:read` / `org:update` |
 | GET | `/orgs/current/members` | `member:read` |
-| POST | `/orgs/current/members/invite` | `member:invite` (seat limit enforced) |
+| POST | `/orgs/current/members/invite` | `member:invite` (seat limit enforced); 409 `conflict` when the email is already invited or a member |
 | PATCH/DELETE | `/memberships/{id}` | `member:update` / `member:remove` |
 | POST/DELETE | `/orgs/{id}/suspend` | platform admin; while suspended every member gets **403** `organization_suspended`, API keys 401 |
 
@@ -51,7 +51,7 @@ body stays a plain JSON array; the total number of rows rides the
 
 | Method | Path | Permission |
 |---|---|---|
-| GET/POST | `/roles` | `member:read` / `role:manage` |
+| GET/POST | `/roles` | `member:read` / `role:manage`; unknown permission → 403 `permission_denied` (`unknown[]`), duplicate key → 409 `conflict` |
 | PATCH/DELETE | `/roles/{id}` | `role:manage` (system roles immutable) |
 | GET | `/permissions` | catalog |
 

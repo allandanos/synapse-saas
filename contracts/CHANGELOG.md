@@ -5,6 +5,28 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
+### Findings from the Node port's milestone 2 (P7)
+
+Implementing the contract a second time exposed places where the document, the
+reference and the conformance suite disagreed. The reference wins; the others
+were corrected.
+
+- `POST /v1/auth/switch-org` is **200** with `{access_token, token_type,
+  expires_in}` (the document said 204/no body; the server always answered 200).
+- Unknown routes and wrong methods are problem documents (`not_found`,
+  `method_not_allowed`) instead of Starlette's bare `{"detail": ...}`.
+- `POST /v1/orgs/current/members/invite` answers **409** `conflict` for an email
+  already invited or a member (was a 500 from the unique constraint), and the
+  response now carries the assigned `role_keys` (was `[]`).
+- `POST /v1/roles` answers **409** `conflict` for a duplicate key (was a 500);
+  the conformance test for an unknown permission now asserts the reference's
+  **403** `permission_denied` (it previously passed only because its fixture
+  name was too short).
+- Tenant resolution ignores IP-literal hosts (`127.0.0.1` no longer resolves
+  the slug `127`); the JWT `org` claim is used instead.
+- The invite email event carries the real organization name.
+- `contracts/schema-v1.sql` keeps `SET check_function_bodies = false`.
+
 ### Contract v1 freeze (P6 WS-K)
 
 No path changes. Behaviour pinned by the new black-box suite

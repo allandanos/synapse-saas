@@ -20,7 +20,12 @@ from synapse_saas.authorization.permissions import PERMISSION_KEYS
 from synapse_saas.authorization.sync import org_object, queue_tuple_sync, user_object
 from synapse_saas.core.cache import VersionedCache, defer_bump
 from synapse_saas.core.config import get_settings
-from synapse_saas.core.errors import PermissionDeniedError, RoleNotFoundError, SystemRoleImmutableError
+from synapse_saas.core.errors import (
+    ConflictError,
+    PermissionDeniedError,
+    RoleNotFoundError,
+    SystemRoleImmutableError,
+)
 from synapse_saas.core.logging import get_logger
 from synapse_saas.tenancy.models import Membership
 
@@ -149,6 +154,15 @@ class AuthorizationService:
             raise PermissionDeniedError(
                 f"Unknown permissions: {sorted(unknown)}", extras={"unknown": sorted(unknown)}
             )
+        taken = (
+            await self.session.execute(
+                select(AuthorizationRole.id).where(
+                    AuthorizationRole.organization_id == organization_id, AuthorizationRole.key == key
+                )
+            )
+        ).scalar_one_or_none()
+        if taken is not None:  # the unique constraint would 500; say why instead
+            raise ConflictError(f"Role key {key!r} already exists in this organization", extras={"key": key})
         role = AuthorizationRole(
             organization_id=organization_id,
             key=key,

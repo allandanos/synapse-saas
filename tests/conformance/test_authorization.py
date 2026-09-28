@@ -42,9 +42,22 @@ async def test_custom_role_crud(api: AsyncClient, tenant: Tenant) -> None:
     unknown_permission = await api.post(
         "/v1/roles",
         headers=tenant.headers,
-        json={"key": f"x_{uid()}", "name": "X", "permissions": ["nope:nope"]},
+        json={"key": f"x_{uid()}", "name": "Unknown", "permissions": ["nope:nope"]},
     )
-    assert_problem(unknown_permission, 422)
+    doc = assert_problem(unknown_permission, 403, title="permission denied")
+    assert doc["unknown"] == ["nope:nope"]
+
+    bad_key = await api.post(
+        "/v1/roles",
+        headers=tenant.headers,
+        json={"key": "Not Valid", "name": "Bad", "permissions": ["org:read"]},
+    )
+    assert_problem(bad_key, 422, title="validation failed")
+
+    duplicate = await api.post(
+        "/v1/roles", headers=tenant.headers, json={"key": key, "name": "Again", "permissions": ["org:read"]}
+    )
+    assert_problem(duplicate, 409, title="conflict")
 
     assert (await api.delete(f"/v1/roles/{role_id}", headers=tenant.headers)).status_code == 204
     assert_problem(await api.delete(f"/v1/roles/{role_id}", headers=tenant.headers), 404)

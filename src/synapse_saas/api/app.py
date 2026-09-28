@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST
 from sqlalchemy import text
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from synapse_saas.api.v1 import api_v1
 from synapse_saas.audit.middleware import RequestContextMiddleware
@@ -19,7 +20,7 @@ from synapse_saas.core import context
 from synapse_saas.core.commit_before_send import CommitBeforeSendMiddleware
 from synapse_saas.core.config import get_settings
 from synapse_saas.core.db import assert_role_matches_isolation, dispose_engine, get_session_factory
-from synapse_saas.core.errors import DomainError
+from synapse_saas.core.errors import DomainError, HttpError, MethodNotAllowedError, NotFoundError
 from synapse_saas.core.logging import configure_logging, get_logger
 from synapse_saas.core.redis import close_redis
 from synapse_saas.identity.rate_limit import AuthRateLimitMiddleware
@@ -73,37 +74,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await close_http_client()
 
 
-def create_app() -> FastAPI:
-    settings = get_settings()
-    app = FastAPI(
-        title="Synapse SaaS Framework",
-        version="0.1.0",
-        description="Multi-tenant SaaS framework: tenancy, plans, entitlements, usage, billing.",
-        lifespan=lifespan,
-        docs_url="/docs",
-        openapi_url="/openapi.json",
-    )
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["X-Request-Id", "Retry-After", "Content-Disposition", "X-Total-Count"],
-    )
-    app.add_middleware(AuthRateLimitMiddleware)
-    app.add_middleware(RequestContextMiddleware)
-    # Innermost: session commits land before the first response byte —
-    # a follow-up request on the same connection can never read pre-commit
-    # state (see core/commit_before_send.py).
-    app.add_middleware(CommitBeforeSendMiddleware)
+def _install_problem_handlers(app: FastAPI) -> None:
+    """Every error leaves as an RFC 7807 problem document (contract v1)."""
 
     @app.exception_handler(DomainError)
     async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status,
             content=exc.to_problem(
+                instance=str(request.url.path),
+                request_id=context.current_request_id() or request.headers.get("X-Request-Id") or _trace_id(),
+            ),
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        """Unknown routes and wrong methods are problem documents too (contract v1:
+        every error body is RFC 7807), not Starlette's bare `{"detail": ...}`."""
+        detail = str(exc.detail) if exc.detail else ""
+        error: DomainError
+        if exc.status_code == 404:
+            error = NotFoundError(detail or "Not found")
+        elif exc.status_code == 405:
+            error = MethodNotAllowedError(detail or "Method not allowed")
+        else:
+            error = HttpError(detail or "Request rejected")
+            error.status = exc.status_code
+        return JSONResponse(
+            status_code=exc.status_code,
+            headers=dict(exc.headers or {}),
+            content=error.to_problem(
                 instance=str(request.url.path),
                 request_id=context.current_request_id() or request.headers.get("X-Request-Id") or _trace_id(),
             ),
@@ -151,6 +151,35 @@ def create_app() -> FastAPI:
                 "request_id": context.current_request_id() or request.headers.get("X-Request-Id"),
             },
         )
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title="Synapse SaaS Framework",
+        version="0.1.0",
+        description="Multi-tenant SaaS framework: tenancy, plans, entitlements, usage, billing.",
+        lifespan=lifespan,
+        docs_url="/docs",
+        openapi_url="/openapi.json",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["X-Request-Id", "Retry-After", "Content-Disposition", "X-Total-Count"],
+    )
+    app.add_middleware(AuthRateLimitMiddleware)
+    app.add_middleware(RequestContextMiddleware)
+    # Innermost: session commits land before the first response byte —
+    # a follow-up request on the same connection can never read pre-commit
+    # state (see core/commit_before_send.py).
+    app.add_middleware(CommitBeforeSendMiddleware)
+
+    _install_problem_handlers(app)
 
     @app.get("/healthz", tags=["health"])
     async def healthz() -> dict[str, str]:
