@@ -1,7 +1,9 @@
 # Porting guide — Java (Spring Boot) and TypeScript (NestJS)
 
-The reference implementation is Python. The ports (`../synapse-saas-java`,
-`../synapse-saas-ts`) implement the **same contract** — see
+The reference implementation is Python. The ports
+([`synapse-saas-java`](https://github.com/allandanos/synapse-saas-java),
+[`synapse-saas-node`](https://github.com/allandanos/synapse-saas-node), checked
+out as siblings of this repo) implement the **same contract** — see
 [ADR 0012](../docs/adr/0012-polyglot-ports-contract-first.md) for the rules.
 This page is the working map: what each Python module becomes, what changes
 shape, and in which order to build.
@@ -80,13 +82,15 @@ tests rather than from its source.
 
 ## Naming and coordinates
 
-Decided in this session, pending the owner's confirmation:
+Decided by the owner (2026-09-28). All three live under `allandanos` for now;
+the planned move to a `98labs` organization is the owner's call.
 
-| | Reference | Java | TypeScript |
+| | Reference | Java | Node |
 |---|---|---|---|
-| Repository | `synapse-saas` | `synapse-saas-java` | `synapse-saas-ts` (alt. `synapse-saas-node`) |
+| Repository | `allandanos/synapse-saas` | `allandanos/synapse-saas-java` | `allandanos/synapse-saas-node` |
 | Package | PyPI `synapse-saas` | Maven `dev.synapse:synapse-saas` | npm `@synapse-saas/server` |
 | Client SDK | `synapse-saas-client` | `dev.synapse:synapse-saas-client` (this repo) | `@synapse-saas/client` (this repo) |
 
-Moving the three repositories under a `98labs` GitHub organization changes the
-Go SDK module path — do it once, before external dependents exist.
+Moving the repositories to another organization changes the Go SDK module path
+(`github.com/allandanos/synapse-saas/sdk/go`) — do it once, before external
+dependents exist, and bump the Go module major if a tag has already shipped.

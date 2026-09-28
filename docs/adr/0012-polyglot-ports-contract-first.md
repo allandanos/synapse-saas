@@ -28,12 +28,15 @@ SDK suites, and the console's Playwright journeys.
 1. **One contract, N implementations.** `contracts/` in this repository is the
    single source of truth. A port never changes it; a behaviour a port needs is
    first added here (with its conformance test), then implemented there.
-2. **Sibling repositories, not subdirectories:** `synapse-saas-java`
-   (Spring Boot 3.4 / Java 21) and `synapse-saas-ts` (NestJS 11 / TypeScript),
-   each with its own release cadence and package coordinates
-   (`dev.synapse:synapse-saas`, `@synapse-saas/server`). The reference stays
-   `synapse-saas` on PyPI. (`synapse-saas-node` is the alternative name for the
-   Node port if the maintainers prefer runtime over language in the name.)
+2. **Sibling repositories, not subdirectories:**
+   [`allandanos/synapse-saas-java`](https://github.com/allandanos/synapse-saas-java)
+   (Spring Boot 3.4 / Java 21) and
+   [`allandanos/synapse-saas-node`](https://github.com/allandanos/synapse-saas-node)
+   (NestJS 11 / TypeScript), each with its own release cadence and package
+   coordinates (`dev.synapse:synapse-saas`, `@synapse-saas/server`). The
+   reference stays `synapse-saas` on PyPI. Names chosen by the owner on
+   2026-09-28; all three sit under the `allandanos` account until they move to
+   a dedicated organization together.
 3. **Acceptance is the conformance suite, not code review of a translation.**
    A route family is *done* in a port when
    `SYNAPSE_CONFORMANCE_API_URL=<port> pytest tests/conformance` passes for it,
