@@ -7,6 +7,9 @@ language ports code against. Every change to it is listed here with intent.
 
 ### Findings from the ports' milestone 3 (P7)
 
+- `GET /v1/usage/summary?period=` and `POST /v1/billing/invoices/draft`
+  `{period}` validate the month (`^\d{4}-(0[1-9]|1[0-2])$`); `2026-13` answers
+  422 `validation_failed` instead of a 500 from the date parser.
 - `contracts/problems.json` entries now carry `classes` (every exception
   class that renders the title) instead of a single `class`, and the exporter
   refuses two classes with one title but different statuses. Statuses and

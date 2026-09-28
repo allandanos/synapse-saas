@@ -111,7 +111,7 @@ async def usage_summary(
     tenant: TenantDep,
     session: SessionDep,
     user: CurrentUser,
-    period: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    period: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
 ) -> UsageSummaryOut:
     service = UsageService(session)
     from datetime import datetime

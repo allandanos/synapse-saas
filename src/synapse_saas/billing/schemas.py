@@ -57,7 +57,7 @@ class InvoiceDetailRead(InvoiceRead):
 
 
 class InvoiceDraftRequest(BaseModel):
-    period: str | None = Field(None, pattern=r"^\d{4}-\d{2}$")
+    period: str | None = Field(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
 class PaymentRecordRequest(BaseModel):

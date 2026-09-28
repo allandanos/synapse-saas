@@ -208,3 +208,14 @@ class TestJavaPortFindings:
         members = await client.get("/v1/orgs/current/members", headers=owner)
         holder_row = next(m for m in members.json()["data"] if m["email"] == "holder@example.com")
         assert holder_row["role_keys"] == []
+
+    async def test_impossible_month_is_422_not_500(self, client: AsyncClient, org_and_tokens) -> None:
+        """`2026-13` used to pass the YYYY-MM pattern and crash in strptime."""
+        headers = org_headers(org_and_tokens)
+        res = await client.get("/v1/usage/summary", headers=headers, params={"period": "2026-13"})
+        assert res.status_code == 422 and res.json()["title"] == "validation failed", res.text
+        draft = await client.post("/v1/billing/invoices/draft", headers=headers, json={"period": "2026-00"})
+        assert draft.status_code == 422, draft.text
+        assert (
+            await client.get("/v1/usage/summary", headers=headers, params={"period": "2026-12"})
+        ).status_code == 200
