@@ -8,6 +8,8 @@ from typing import Any
 import pytest
 from httpx import AsyncClient, Response
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -126,9 +128,7 @@ class TestEntitlementExpiry:
         # Backdate the grant so the expiry job sees it lapsed
         from sqlalchemy import text
 
-        from synapse_saas.core.db import get_session_factory
-
-        async with get_session_factory()() as session:
+        async with owner_session_factory()() as session:
             await session.execute(text("UPDATE entitlements SET ends_at = now() - interval '1 hour'"))
             await session.commit()
 

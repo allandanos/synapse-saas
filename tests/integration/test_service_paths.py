@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -38,10 +40,9 @@ class TestPasswordReset:
         )
         await client.post("/v1/auth/forgot-password", json={"email": "reset@example.com"})
 
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.identity.models import PasswordResetToken
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             from sqlalchemy import select
 

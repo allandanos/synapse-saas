@@ -7,6 +7,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -190,9 +192,8 @@ class TestPermissionDenied:
 
         # Accept the invite out-of-band (the service path the email link drives)
         org_id = uuid.UUID(org_and_tokens["org_id"])
-        from synapse_saas.core.db import get_session_factory
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as accept_session:
             await OrganizationService(accept_session).accept_invite_by_email(org_id, "plainmember@x.example")
             await accept_session.commit()

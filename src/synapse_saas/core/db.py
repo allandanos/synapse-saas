@@ -37,18 +37,40 @@ metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+_owner_engine: AsyncEngine | None = None
+_owner_session_factory: async_sessionmaker[AsyncSession] | None = None
+
+
+def _make_engine(url: str) -> AsyncEngine:
+    return create_async_engine(
+        url,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+    )
 
 
 def get_engine() -> AsyncEngine:
+    """The request engine: connects as SYNAPSE_DATABASE_URL (RLS-subject role when RLS is on)."""
     global _engine
     if _engine is None:
-        _engine = create_async_engine(
-            get_settings().database_url,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-        )
+        _engine = _make_engine(get_settings().database_url)
     return _engine
+
+
+def get_owner_engine() -> AsyncEngine:
+    """The schema-owner engine for the worker, CLI, and migrations (bypasses RLS).
+
+    Falls back to the request engine when SYNAPSE_WORKER_DATABASE_URL is unset,
+    so single-role deployments keep one pool.
+    """
+    global _owner_engine
+    settings = get_settings()
+    if not settings.worker_database_url:
+        return get_engine()
+    if _owner_engine is None:
+        _owner_engine = _make_engine(settings.worker_database_url)
+    return _owner_engine
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -62,12 +84,30 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+def get_owner_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Sessions that must see every tenant: worker jobs, seeds, CLI. Never used by the API."""
+    global _owner_session_factory
+    if not get_settings().worker_database_url:
+        return get_session_factory()
+    if _owner_session_factory is None:
+        _owner_session_factory = async_sessionmaker(
+            get_owner_engine(),
+            expire_on_commit=False,
+            autoflush=False,
+        )
+    return _owner_session_factory
+
+
 async def dispose_engine() -> None:
-    global _engine, _session_factory
+    global _engine, _session_factory, _owner_engine, _owner_session_factory
     if _engine is not None:
         await _engine.dispose()
+    if _owner_engine is not None:
+        await _owner_engine.dispose()
     _engine = None
     _session_factory = None
+    _owner_engine = None
+    _owner_session_factory = None
 
 
 class Base(DeclarativeBase):
@@ -104,17 +144,137 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-async def set_rls_tenant(session: AsyncSession, organization_id: UUID) -> None:
-    """Set the transaction-local RLS tenant when SYNAPSE_TENANT_ISOLATION=app_and_rls.
+# ── Row-level security GUCs ────────────────────────────────────────────────────
+# Policies (migration 0013) admit a row when ANY of these hold:
+#   organization_id = app.current_tenant      (set after tenant resolution)
+#   app.rls_platform = 'on'                   (platform-admin surfaces)
+#   user_id = app.current_user                (memberships/overrides: pre-tenant
+#                                              reads of a user's own rows)
+#   organization_id IS NULL                   (platform-scope rows, where allowed)
+# All three are transaction-local (`set_config(..., true)`) so pooled
+# connections never leak a tenant between requests. Every helper is a no-op
+# unless SYNAPSE_TENANT_ISOLATION=app_and_rls.
 
-    Must be called inside the active transaction. No-op otherwise.
-    """
+
+async def _set_guc(session: AsyncSession, name: str, value: str) -> None:
+    await session.execute(text("SELECT set_config(:name, :value, true)"), {"name": name, "value": value})
+
+
+async def set_rls_tenant(session: AsyncSession, organization_id: UUID) -> None:
+    """Bind the request transaction to one tenant. Call before the first tenant-scoped query."""
     if not get_settings().rls_enabled:
         return
-    await session.execute(
-        text("SELECT set_config('app.current_tenant', :org_id, true)"),
-        {"org_id": str(organization_id)},
-    )
+    await _set_guc(session, "app.current_tenant", str(organization_id))
+
+
+async def set_rls_user(session: AsyncSession, user_id: UUID) -> None:
+    """Bind the authenticated user so their own memberships/overrides are readable pre-tenant."""
+    if not get_settings().rls_enabled:
+        return
+    await _set_guc(session, "app.current_user", str(user_id))
+
+
+async def set_rls_platform(session: AsyncSession) -> None:
+    """Platform-admin scope: policies admit every row for this transaction."""
+    if not get_settings().rls_enabled:
+        return
+    await _set_guc(session, "app.rls_platform", "on")
+
+
+# Credential tables looked up by secret hash BEFORE any tenant context exists;
+# the hash is the authorization. Everything else with organization_id is policed
+# (tests/integration/test_rls_enforcement.py asserts pg_policies matches).
+RLS_EXCLUDED_TABLES: frozenset[str] = frozenset({"api_keys", "refresh_tokens"})
+
+APP_ROLE_NAME_RE = r"^[a-z_][a-z0-9_]{0,62}$"
+
+
+async def provision_app_role(engine: AsyncEngine, role: str, password: str) -> None:
+    """Create or refresh the RLS-subject login role the API connects as.
+
+    Must run as the schema owner. The role is LOGIN NOBYPASSRLS NOINHERIT, owns
+    nothing, gets DML on every current table/sequence, and default privileges
+    for tables created by future migrations.
+    """
+    import re
+
+    if not re.match(APP_ROLE_NAME_RE, role):
+        raise ValueError(f"role must match {APP_ROLE_NAME_RE}, got {role!r}")
+    async with engine.begin() as conn:
+        # DDL takes no bind params: carry the password in a transaction-local
+        # GUC and quote it with format(%L) inside the DO block.
+        await conn.execute(text("SELECT set_config('synapse.provision_pw', :pw, true)"), {"pw": password})
+        await conn.execute(
+            text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
+                        EXECUTE format('CREATE ROLE {role} LOGIN NOBYPASSRLS NOINHERIT PASSWORD %L',
+                                       current_setting('synapse.provision_pw'));
+                    ELSE
+                        EXECUTE format('ALTER ROLE {role} LOGIN NOBYPASSRLS NOINHERIT PASSWORD %L',
+                                       current_setting('synapse.provision_pw'));
+                    END IF;
+                END $$
+                """  # noqa: S608 — `role` is validated against APP_ROLE_NAME_RE above
+            )
+        )
+        for stmt in (
+            f"GRANT USAGE ON SCHEMA public TO {role}",
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {role}",
+            f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {role}",
+            f"ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {role}",
+            f"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO {role}",
+        ):
+            await conn.execute(text(stmt))
+
+
+class RoleIsolationMismatchError(RuntimeError):
+    """The connected DB role and SYNAPSE_TENANT_ISOLATION contradict each other."""
+
+
+async def assert_role_matches_isolation() -> None:
+    """Fail fast when RLS would be a lie (bypassing role) or a lockout (subject role, RLS off).
+
+    - app_and_rls + superuser/BYPASSRLS/table-owner role ⇒ policies never apply;
+      the deployment believes it has defense-in-depth and does not.
+    - app + a role that is subject to policies ⇒ every tenant query returns
+      zero rows because no GUC is ever set.
+    """
+    settings = get_settings()
+    async with get_engine().connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    """
+                    SELECT r.rolsuper,
+                           r.rolbypassrls,
+                           COALESCE(
+                               (SELECT bool_and(t.tableowner = current_user)
+                                FROM pg_tables t WHERE t.schemaname = 'public'),
+                               true
+                           ) AS owns_tables,
+                           current_user AS role_name
+                    FROM pg_roles r
+                    WHERE r.rolname = current_user
+                    """
+                )
+            )
+        ).one()
+    bypasses = bool(row.rolsuper or row.rolbypassrls or row.owns_tables)
+    if settings.rls_enabled and bypasses:
+        raise RoleIsolationMismatchError(
+            f"SYNAPSE_TENANT_ISOLATION=app_and_rls but DB role {row.role_name!r} bypasses RLS "
+            "(superuser, BYPASSRLS, or table owner). Connect the API as a subject role: "
+            "synapse-cli db provision-app-role"
+        )
+    if not settings.rls_enabled and not bypasses:
+        raise RoleIsolationMismatchError(
+            f"SYNAPSE_TENANT_ISOLATION=app but DB role {row.role_name!r} is subject to RLS policies; "
+            "every tenant query would return zero rows. Set app_and_rls or connect as the owner."
+        )
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:

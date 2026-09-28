@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from synapse_saas.core import context
 from synapse_saas.core.context import UserContext
-from synapse_saas.core.db import get_session
+from synapse_saas.core.db import get_session, set_rls_tenant, set_rls_user
 from synapse_saas.core.errors import AuthenticationError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.core.security import decode_access_token
@@ -87,6 +87,9 @@ async def get_current_user(request: Request, session: SessionDep) -> User:
         if org is None or org.deleted_at is not None or org.status != "active":
             raise AuthenticationError("Invalid API key")
         bind_api_key_context(key, org)
+        # The key IS its org's credential: bind the RLS tenant before any
+        # tenant-scoped write (metering below inserts usage_events).
+        await set_rls_tenant(session, key.organization_id)
         from synapse_saas.api_keys.dependencies import meter_api_key_request
 
         await meter_api_key_request(session, key.organization_id)
@@ -116,6 +119,10 @@ async def get_current_user(request: Request, session: SessionDep) -> User:
     user = await session.get(User, parsed_id)
     if user is None or not user.is_active:
         raise AuthenticationError("User not found or inactive")
+
+    # RLS: a user's own memberships/overrides are readable before a tenant is
+    # resolved (/auth/me, org listing, invite acceptance).
+    await set_rls_user(session, user.id)
 
     # Bind user context for services/audit on this request
     context.set_user(

@@ -16,7 +16,7 @@ from synapse_saas.api.v1 import api_v1
 from synapse_saas.audit.middleware import RequestContextMiddleware
 from synapse_saas.core.commit_before_send import CommitBeforeSendMiddleware
 from synapse_saas.core.config import get_settings
-from synapse_saas.core.db import dispose_engine, get_session_factory
+from synapse_saas.core.db import assert_role_matches_isolation, dispose_engine, get_session_factory
 from synapse_saas.core.errors import DomainError
 from synapse_saas.core.logging import configure_logging, get_logger
 from synapse_saas.core.redis import close_redis
@@ -32,6 +32,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from synapse_saas.core.tracing import configure_tracing
 
     configure_tracing()
+
+    # RLS posture must match the connected role, or the deployment is either
+    # unprotected (bypassing role) or locked out (subject role, RLS off).
+    try:
+        await assert_role_matches_isolation()
+    except Exception as exc:
+        logger.exception("db_role_isolation_check_failed", error=str(exc))
+        if settings.is_production or "RoleIsolationMismatch" in type(exc).__name__:
+            raise
 
     if settings.auto_sync_plans:
         try:

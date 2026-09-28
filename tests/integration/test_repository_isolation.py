@@ -10,6 +10,8 @@ import uuid
 
 import pytest
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -31,12 +33,11 @@ async def test_membership_rows_are_tenant_scoped(clean_db) -> None:
     from sqlalchemy import select
 
     from synapse_saas.core.context import TenantContext, TenantScope
-    from synapse_saas.core.db import get_session_factory
     from synapse_saas.identity.models import User
     from synapse_saas.tenancy.models import Membership, Organization
     from synapse_saas.tenancy.repository import MembershipRepository
 
-    factory = get_session_factory()
+    factory = owner_session_factory()
     async with factory() as session:
         owner = User(email=f"repo-{uuid.uuid4().hex[:8]}@example.com", password_hash="x", display_name="R")
         session.add(owner)
@@ -66,13 +67,12 @@ async def test_membership_rows_are_tenant_scoped(clean_db) -> None:
 async def test_cross_tenant_add_raises(clean_db) -> None:
     """Attaching an object stamped with another org raises TenantViolationError."""
     from synapse_saas.core.context import TenantContext, TenantScope
-    from synapse_saas.core.db import get_session_factory
     from synapse_saas.core.errors import TenantViolationError
     from synapse_saas.identity.models import User
     from synapse_saas.tenancy.models import Membership, Organization
     from synapse_saas.tenancy.repository import MembershipRepository
 
-    factory = get_session_factory()
+    factory = owner_session_factory()
     async with factory() as session:
         owner = User(email=f"x-{uuid.uuid4().hex[:8]}@example.com", password_hash="x", display_name="X")
         session.add(owner)
@@ -92,12 +92,11 @@ async def test_cross_tenant_add_raises(clean_db) -> None:
 async def test_add_stamps_tenant(clean_db) -> None:
     """add() injects the active tenant when the object is unstamped."""
     from synapse_saas.core.context import TenantContext, TenantScope
-    from synapse_saas.core.db import get_session_factory
     from synapse_saas.identity.models import User
     from synapse_saas.tenancy.models import Membership, Organization
     from synapse_saas.tenancy.repository import MembershipRepository
 
-    factory = get_session_factory()
+    factory = owner_session_factory()
     async with factory() as session:
         owner = User(email=f"s-{uuid.uuid4().hex[:8]}@example.com", password_hash="x", display_name="S")
         session.add(owner)
@@ -116,11 +115,10 @@ async def test_add_stamps_tenant(clean_db) -> None:
 async def test_platform_scope_requires_explicit_tenant(clean_db) -> None:
     """Platform contexts must pass tenant_id explicitly — no ambient guessing."""
     from synapse_saas.core.context import TenantContext, TenantScope
-    from synapse_saas.core.db import get_session_factory
     from synapse_saas.core.errors import TenantViolationError
     from synapse_saas.tenancy.repository import MembershipRepository
 
-    factory = get_session_factory()
+    factory = owner_session_factory()
     async with factory() as session:
         with TenantScope(TenantContext(organization_id=uuid.uuid4(), slug="platform", is_platform=True)):
             repo = MembershipRepository(session)
@@ -129,11 +127,10 @@ async def test_platform_scope_requires_explicit_tenant(clean_db) -> None:
 
 
 async def test_no_context_requires_explicit_tenant(clean_db) -> None:
-    from synapse_saas.core.db import get_session_factory
     from synapse_saas.core.errors import TenantViolationError
     from synapse_saas.tenancy.repository import MembershipRepository
 
-    factory = get_session_factory()
+    factory = owner_session_factory()
     async with factory() as session:
         repo = MembershipRepository(session)
         with pytest.raises(TenantViolationError):

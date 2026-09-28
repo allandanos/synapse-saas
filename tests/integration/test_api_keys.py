@@ -7,6 +7,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -150,9 +152,7 @@ class TestKeyAuth:
         # Backdate past expiry
         from sqlalchemy import text
 
-        from synapse_saas.core.db import get_session_factory
-
-        async with get_session_factory()() as session:
+        async with owner_session_factory()() as session:
             await session.execute(text("UPDATE api_keys SET expires_at = now() - interval '1 hour'"))
             await session.commit()
 

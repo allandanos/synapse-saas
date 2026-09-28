@@ -1,4 +1,9 @@
-.PHONY: install dev dev-local api web worker test test-pg test-all lint typecheck lint-imports migrate seed plans-sync seed-dev docker-down docker-prune coverage
+.PHONY: install dev dev-local api web worker test test-pg test-rls test-all lint typecheck lint-imports migrate seed plans-sync seed-dev docker-down docker-prune coverage
+
+# Scratch test database (compose profile: test). Owner = superuser created by the image;
+# app = the RLS-subject role provisioned by `synapse-cli db provision-app-role`.
+TEST_OWNER_URL ?= postgresql+asyncpg://synapse:synapse@localhost:5434/synapse_test
+TEST_APP_URL   ?= postgresql+asyncpg://synapse_app:synapse_app@localhost:5434/synapse_test
 
 install: ## Install dependencies with uv
 	uv sync --all-groups
@@ -25,12 +30,20 @@ test: ## Fast unit tests (no database)
 
 test-pg: ## Integration tests against the scratch test database (compose profile: test)
 	docker compose --profile test up -d --wait postgres-test
-	SYNAPSE_DATABASE_URL="postgresql+asyncpg://synapse:synapse@localhost:5434/synapse_test" \
+	SYNAPSE_DATABASE_URL="$(TEST_OWNER_URL)" \
 		uv run pytest -m pg --no-cov
+
+test-rls: ## Whole integration suite as the RLS-subject DB role with SYNAPSE_TENANT_ISOLATION=app_and_rls
+	docker compose --profile test up -d --wait postgres-test
+	SYNAPSE_DATABASE_URL="$(TEST_OWNER_URL)" uv run synapse-cli migrate
+	SYNAPSE_DATABASE_URL="$(TEST_OWNER_URL)" SYNAPSE_APP_ROLE_PASSWORD=synapse_app \
+		uv run synapse-cli db provision-app-role --role synapse_app
+	SYNAPSE_DATABASE_URL="$(TEST_APP_URL)" SYNAPSE_WORKER_DATABASE_URL="$(TEST_OWNER_URL)" \
+		SYNAPSE_TENANT_ISOLATION=app_and_rls uv run pytest -m pg --no-cov
 
 test-all: ## Everything, with coverage gate (scratch test database)
 	docker compose --profile test up -d --wait postgres-test
-	SYNAPSE_DATABASE_URL="postgresql+asyncpg://synapse:synapse@localhost:5434/synapse_test" \
+	SYNAPSE_DATABASE_URL="$(TEST_OWNER_URL)" \
 		uv run pytest -m "" --cov=src/synapse_saas --cov-fail-under=80
 
 lint: ## Ruff + import-linter

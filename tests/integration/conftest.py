@@ -66,14 +66,57 @@ async def db_session(migrated_db) -> AsyncIterator[object]:
         await session.rollback()
 
 
+def _owner_database_url() -> str:
+    """Schema-owner DSN: migrations, TRUNCATE, and direct-DB test helpers.
+
+    Equals the app DSN in the default suite (superuser). Under `make test-rls`
+    the app connects as the RLS-subject role and this stays the owner.
+    """
+    import os
+
+    return os.environ.get("SYNAPSE_WORKER_DATABASE_URL") or _database_url()
+
+
+_owner_engine = None
+
+
+def owner_engine():  # type: ignore[no-untyped-def]
+    """Engine bound to the owner DSN (bypasses RLS). Lazily built, shared per session."""
+    global _owner_engine
+    if _owner_engine is None:
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        _owner_engine = create_async_engine(_owner_database_url(), pool_pre_ping=True)
+    return _owner_engine
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _dispose_owner_engine() -> AsyncIterator[None]:
+    """Every test runs on its own event loop; asyncpg connections are loop-bound.
+
+    The app's global engine survives because the API lifespan disposes it per
+    test. The owner engine has no such hook, so drop its pool after each test.
+    """
+    global _owner_engine
+    yield
+    if _owner_engine is not None:
+        await _owner_engine.dispose()
+        _owner_engine = None
+
+
+def owner_session_factory():  # type: ignore[no-untyped-def]
+    """Session factory on the owner engine — for tests that poke the DB directly."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    return async_sessionmaker(owner_engine(), expire_on_commit=False, autoflush=False)
+
+
 @pytest_asyncio.fixture
 async def clean_db(migrated_db) -> AsyncIterator[None]:
     """Truncate all tables between tests (order-independent via CASCADE)."""
     from sqlalchemy import text
 
-    from synapse_saas.core.db import get_engine
-
-    engine = get_engine()
+    engine = owner_engine()
     async with engine.begin() as conn:
         await conn.execute(
             text(

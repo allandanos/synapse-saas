@@ -31,6 +31,6 @@ These invariants have dedicated test suites; changes touching them require extra
 
 - [ ] `SYNAPSE_SECRET_KEY` rotated from the default (Fernet key material for webhook secrets)
 - [ ] `SYNAPSE_MANUAL_WEBHOOK_TOKEN` set if the manual billing provider is exposed
-- [ ] `SYNAPSE_TENANT_ISOLATION=app_and_rls` considered for production defense-in-depth
+- [ ] `SYNAPSE_TENANT_ISOLATION=app_and_rls` in production, API connecting as the RLS-subject role (`synapse-cli db provision-app-role`), worker/CLI on the owner DSN
 - [ ] TLS terminated in front of the API
 - [ ] Provider webhook secrets configured per provider in use

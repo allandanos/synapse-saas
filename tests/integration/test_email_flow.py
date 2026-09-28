@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -36,9 +38,7 @@ class TestInviteEmail:
 
         from sqlalchemy import text
 
-        from synapse_saas.core.db import get_session_factory
-
-        async with get_session_factory()() as session:
+        async with owner_session_factory()() as session:
             row = (
                 await session.execute(
                     text(
@@ -171,9 +171,7 @@ class TestAcceptInviteEndpoint:
         # Pull the token from the outbox (what the worker emails)
         from sqlalchemy import text
 
-        from synapse_saas.core.db import get_session_factory
-
-        async with get_session_factory()() as session:
+        async with owner_session_factory()() as session:
             row = (
                 await session.execute(
                     text(

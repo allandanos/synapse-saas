@@ -9,7 +9,7 @@ import click
 
 @click.group()
 def cli() -> None:
-    """Synapse SaaS Framework management commands."""
+    """Synapse SaaS Framework management commands (run as the schema owner)."""
 
 
 @cli.command()
@@ -32,7 +32,7 @@ def seed(dev: bool) -> None:
 
 async def _seed(dev: bool) -> None:
     from synapse_saas.core.config import get_settings
-    from synapse_saas.core.db import get_session_factory
+    from synapse_saas.core.db import get_owner_session_factory
     from synapse_saas.core.logging import configure_logging
     from synapse_saas.seeds import seed_dev, seed_system
     from synapse_saas.seeds.dev_seed import DEV_PASSWORD
@@ -42,7 +42,7 @@ async def _seed(dev: bool) -> None:
     configure_logging()
     settings = get_settings()
 
-    factory = get_session_factory()
+    factory = get_owner_session_factory()
     async with factory() as session:
         counts = await seed_system(session)
         catalog = load_catalog()
@@ -62,6 +62,37 @@ async def _seed(dev: bool) -> None:
 
 
 @cli.group()
+def db() -> None:
+    """Database role operations."""
+
+
+@db.command("provision-app-role")
+@click.option(
+    "--role", default="synapse_app", show_default=True, help="Subject (non-owner) login role for the API"
+)
+@click.option(
+    "--password",
+    envvar="SYNAPSE_APP_ROLE_PASSWORD",
+    required=True,
+    help="Password for the role (or set SYNAPSE_APP_ROLE_PASSWORD)",
+)
+def provision_app_role(role: str, password: str) -> None:
+    """Create/refresh the RLS-subject role the API connects as.
+
+    Run as the schema owner (worker/CLI DSN). Point SYNAPSE_DATABASE_URL at the
+    new role and set SYNAPSE_TENANT_ISOLATION=app_and_rls; keep
+    SYNAPSE_WORKER_DATABASE_URL on the owner for the worker, CLI, and migrations.
+    """
+    from synapse_saas.core import db as core_db
+
+    try:
+        asyncio.run(core_db.provision_app_role(core_db.get_owner_engine(), role, password))
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--role") from exc
+    click.echo(f"Role {role!r} provisioned: LOGIN NOBYPASSRLS, DML on public schema, default privileges set.")
+
+
+@cli.group()
 def plans() -> None:
     """Plan catalog operations."""
 
@@ -76,11 +107,11 @@ def sync(provider: str | None, apply: bool) -> None:
 
 async def _sync_plans(provider: str | None, apply: bool) -> None:
 
-    from synapse_saas.core.db import get_session_factory
+    from synapse_saas.core.db import get_owner_session_factory
     from synapse_saas.subscriptions.catalog import load_catalog
     from synapse_saas.subscriptions.sync import sync_plans
 
-    factory = get_session_factory()
+    factory = get_owner_session_factory()
     catalog = load_catalog()
     async with factory() as session:
         result = await sync_plans(session, catalog)
@@ -97,11 +128,11 @@ async def _sync_plans(provider: str | None, apply: bool) -> None:
 async def _push_provider_catalog(provider_name: str, apply: bool) -> None:
     from sqlalchemy import select
 
-    from synapse_saas.core.db import get_session_factory
+    from synapse_saas.core.db import get_owner_session_factory
     from synapse_saas.subscriptions.catalog import load_catalog
     from synapse_saas.subscriptions.models import Plan
 
-    factory = get_session_factory()
+    factory = get_owner_session_factory()
     async with factory() as session:
         catalog = load_catalog()
         for plan_def in catalog.plans:

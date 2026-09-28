@@ -7,6 +7,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -79,10 +81,9 @@ class TestTenantResolutionVariants:
         """X-Org-Slug resolves the same tenant as X-Org-Id."""
         from sqlalchemy import select
 
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.tenancy.models import Organization
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             org = (
                 await session.execute(

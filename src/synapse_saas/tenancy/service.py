@@ -14,13 +14,14 @@ from hashlib import sha256
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from synapse_saas.authorization.models import AuthorizationRole, MembershipRole
 from synapse_saas.authorization.permissions import SYSTEM_ROLE_OWNER
 from synapse_saas.core import events
+from synapse_saas.core.db import set_rls_tenant
 from synapse_saas.core.errors import (
     InviteNotFoundError,
     MembershipLimitReachedError,
@@ -66,6 +67,9 @@ class OrganizationService:
         org = Organization(slug=final_slug, name=name, owner_user_id=owner.id)
         self.session.add(org)
         await self.session.flush()
+        # This request has no tenant yet (POST /v1/orgs is user-scoped). Bind the
+        # new org so the membership/subscription/audit/outbox writes below pass RLS.
+        await set_rls_tenant(self.session, org.id)
 
         # Owner membership + role
         membership = Membership(
@@ -206,6 +210,7 @@ class OrganizationService:
         return membership
 
     async def accept_invite_by_email(self, org_id: UUID, email: str) -> Membership:
+        await set_rls_tenant(self.session, org_id)
         membership = await self.members.find_pending_invite(org_id, email)
         if membership is None:
             raise InviteNotFoundError("No pending invite for this email")
@@ -214,10 +219,20 @@ class OrganizationService:
         return await self._accept(membership, user)
 
     async def accept_invite_by_token(self, token: str, user: User) -> Membership:
+        token_hash = _hash(token)
+        # An invited membership has no user_id, and no tenant is bound yet: resolve
+        # the org through the SECURITY DEFINER lookup (migration 0013), bind it,
+        # then read the row under policy.
+        org_id = (
+            await self.session.execute(text("SELECT synapse_org_for_invite_token(:h)"), {"h": token_hash})
+        ).scalar_one_or_none()
+        if org_id is None:
+            raise InviteNotFoundError("Invite not found or already used")
+        await set_rls_tenant(self.session, org_id)
         membership = (
             await self.session.execute(
                 select(Membership).where(
-                    Membership.invite_token_hash == _hash(token),
+                    Membership.invite_token_hash == token_hash,
                     Membership.status == "invited",
                 )
             )

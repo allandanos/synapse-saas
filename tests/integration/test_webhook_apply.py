@@ -10,6 +10,8 @@ import time
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 STRIPE_SECRET = "whsec_itest_apply"
@@ -82,9 +84,8 @@ async def _ensure_customer(client: AsyncClient, fixture: dict[str, str]) -> str:
     assert res.status_code == 200, res.text
 
     from synapse_saas.billing.models import BillingCustomer
-    from synapse_saas.core.db import get_session_factory
 
-    factory = get_session_factory()
+    factory = owner_session_factory()
     async with factory() as session:
         row = (
             await session.execute(

@@ -7,6 +7,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -102,9 +104,7 @@ class TestFinalizeAndPay:
         # Outbox carried invoice.paid (webhooks/email ride it)
         from sqlalchemy import text as sql_text
 
-        from synapse_saas.core.db import get_session_factory
-
-        async with get_session_factory()() as session:
+        async with owner_session_factory()() as session:
             row = (
                 await session.execute(
                     sql_text(
@@ -240,9 +240,7 @@ class TestDetailAndIsolation:
 async def _invite_token(fixture: dict[str, str]) -> str:
     from sqlalchemy import text
 
-    from synapse_saas.core.db import get_session_factory
-
-    async with get_session_factory()() as session:
+    async with owner_session_factory()() as session:
         row = (
             await session.execute(
                 text(
@@ -293,10 +291,9 @@ class TestReporting:
     async def test_revenue_summary_for_platform_admin(self, client: AsyncClient, org_and_tokens) -> None:
         from sqlalchemy import select
 
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.identity.models import User
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             user = (await session.execute(select(User).where(User.email == "owner@example.com"))).scalar_one()
             user.is_platform_admin = True
@@ -385,10 +382,9 @@ class TestInvoicePdfAndEmail:
         await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "pro"})
 
         # Give the org a billing email (recipient resolution)
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.tenancy.models import Organization
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             org = await session.get(Organization, uuid.UUID(org_and_tokens["org_id"]))
             org.settings = {**org.settings, "billing_email": "ap@example.com"}

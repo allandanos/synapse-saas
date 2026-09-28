@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     secret_key: str = "dev-only-secret-key-change-me-32-bytes-minimum!"
     database_url: str = "postgresql+asyncpg://synapse:synapse@localhost:5433/synapse"
     redis_url: str = "redis://localhost:6380/0"
+    # Owner-role DSN for processes that must bypass row-level security
+    # (worker, CLI, migrations). Empty ⇒ same as database_url. When RLS is on,
+    # database_url should be a NOBYPASSRLS, non-owner role and this the owner.
+    worker_database_url: str = ""
     web_origin: str = "http://localhost:3000"
     # app | app_and_rls
     tenant_isolation: str = "app"

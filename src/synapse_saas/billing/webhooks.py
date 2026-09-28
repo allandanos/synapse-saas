@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +28,7 @@ from synapse_saas.billing.protocol import (
 )
 from synapse_saas.billing.registry import build_provider_by_name
 from synapse_saas.core import events as event_constants
+from synapse_saas.core.db import set_rls_tenant
 from synapse_saas.core.logging import get_logger
 from synapse_saas.core.outbox import append_outbox
 from synapse_saas.subscriptions.models import Subscription
@@ -92,12 +93,19 @@ class BillingWebhookService:
     # ── Application ─────────────────────────────────────────────────────────────
 
     async def _apply(self, provider_name: str, event: NormalizedBillingEvent) -> None:
-        org_id = await self._org_for_customer(event.provider_customer_id)
-        if org_id is None and event.provider_subscription_id:
-            org_id = await self._org_for_subscription(event.provider_subscription_id)
+        # Webhooks arrive unauthenticated: the org is known only through the
+        # provider's ids. Resolve via the SECURITY DEFINER lookup (migration 0013)
+        # so the query is not empty under RLS, then bind the tenant for the writes.
+        org_id = (
+            await self.session.execute(
+                text("SELECT synapse_org_for_provider_ref(:c, :s)"),
+                {"c": event.provider_customer_id, "s": event.provider_subscription_id},
+            )
+        ).scalar_one_or_none()
         if org_id is None:
             logger.debug("webhook_event_no_org", event_type=event.event_type)
             return
+        await set_rls_tenant(self.session, org_id)
 
         match event.event_type:
             case (

@@ -94,12 +94,12 @@ async def _send_invoice_email(invoice_id: str) -> None:
     from synapse_saas.billing.invoice_pdf import render_invoice_pdf
     from synapse_saas.billing.invoicing import InvoiceLine
     from synapse_saas.billing.models import BillingCustomer, Invoice
-    from synapse_saas.core.db import get_session_factory
+    from synapse_saas.core.db import get_owner_session_factory
     from synapse_saas.notifications.smtp import Attachment
     from synapse_saas.tenancy.models import Organization
 
     async def _compose() -> tuple[str, str, Attachment, str] | None:
-        factory = get_session_factory()
+        factory = get_owner_session_factory()
         async with factory() as session:
             invoice = (
                 await session.execute(select(Invoice).where(Invoice.id == invoice_id))

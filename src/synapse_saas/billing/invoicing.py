@@ -70,6 +70,11 @@ class InvoiceLine(Base, TimestampMixin):
     invoice_id: Mapped[UUID] = mapped_column(
         ForeignKey("invoices.id", ondelete="CASCADE"), index=True, nullable=False
     )
+    # Denormalized from the invoice so row-level security can police lines
+    # directly (migration 0013) instead of through a subquery policy.
+    organization_id: Mapped[UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     quantity: Mapped[int] = mapped_column(BigInteger, default=1, nullable=False)
@@ -172,7 +177,7 @@ class InvoicingService:
         await self.session.flush()
 
         for line in lines:
-            self.session.add(InvoiceLine(invoice_id=invoice.id, **line))
+            self.session.add(InvoiceLine(invoice_id=invoice.id, organization_id=organization_id, **line))
         await self.session.flush()
 
         AuditService(self.session).log(

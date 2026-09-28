@@ -1,5 +1,8 @@
 """arq worker jobs.
 
+Jobs run as the schema owner (`get_owner_session_factory`): they must see every
+tenant and are never subject to row-level security.
+
 Every job re-establishes TenantContext from explicit payload — contextvars do
 not cross process/task boundaries by design.
 """
@@ -13,7 +16,7 @@ from typing import Any
 
 from sqlalchemy import text
 
-from synapse_saas.core.db import get_session_factory
+from synapse_saas.core.db import get_owner_session_factory
 from synapse_saas.core.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -58,7 +61,7 @@ async def _dispatch_outbox_impl(ctx: dict[str, Any]) -> int:
     from synapse_saas.audit.models import OutboxEvent
     from synapse_saas.webhooks.models import WebhookDelivery
 
-    factory = get_session_factory()
+    factory = get_owner_session_factory()
     async with factory() as session:
         rows = (
             (
@@ -140,7 +143,7 @@ async def deliver_webhooks(ctx: dict[str, Any]) -> int:
     """Attempt pending deliveries whose backoff has elapsed."""
     from synapse_saas.webhooks.service import WebhookService
 
-    factory = get_session_factory()
+    factory = get_owner_session_factory()
     async with factory() as session:
         due = (
             (
@@ -173,7 +176,7 @@ async def deliver_webhooks(ctx: dict[str, Any]) -> int:
 
 async def rollup_usage(ctx: dict[str, Any]) -> int:
     """Hourly drift correction: rebuild current-period counters from events."""
-    factory = get_session_factory()
+    factory = get_owner_session_factory()
     async with factory() as session:
         await session.execute(
             text(
@@ -201,7 +204,7 @@ async def expire_entitlements(ctx: dict[str, Any]) -> int:
     from synapse_saas.core import events
     from synapse_saas.entitlements.models import Entitlement
 
-    factory = get_session_factory()
+    factory = get_owner_session_factory()
     async with factory() as session:
         rows = (
             await session.execute(
@@ -240,7 +243,7 @@ async def advance_manual_billing(ctx: dict[str, Any]) -> int:
     from synapse_saas.core import events as ev
     from synapse_saas.subscriptions.models import Subscription
 
-    factory = get_session_factory()
+    factory = get_owner_session_factory()
     async with factory() as session:
         rows = (
             (
@@ -298,7 +301,7 @@ async def advance_manual_billing(ctx: dict[str, Any]) -> int:
 
 async def ensure_partitions(ctx: dict[str, Any]) -> int:
     """Pre-create next month's usage_events partition."""
-    factory = get_session_factory()
+    factory = get_owner_session_factory()
     async with factory() as session:
         await session.execute(
             text(
@@ -323,7 +326,7 @@ async def ensure_partitions(ctx: dict[str, Any]) -> int:
 async def purge_expired(ctx: dict[str, Any]) -> int:
     """Retention: old webhook deliveries (30d)."""
 
-    factory = get_session_factory()
+    factory = get_owner_session_factory()
     async with factory() as session:
         await session.execute(
             text("DELETE FROM webhook_deliveries WHERE created_at < now() - interval '30 days'")

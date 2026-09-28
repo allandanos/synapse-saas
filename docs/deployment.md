@@ -50,7 +50,7 @@ Full flow (per-deploy, worker scheduling options) in that directory's README.
 - [ ] Billing provider configured and its webhook secrets set
 - [ ] `SYNAPSE_MANUAL_WEBHOOK_TOKEN` set if the manual provider is reachable
 - [ ] Auth rate limits sized for real traffic (`_PER_IP` defaults to 20/min)
-- [ ] Consider `SYNAPSE_TENANT_ISOLATION=app_and_rls` for RLS defense-in-depth
+- [ ] `SYNAPSE_TENANT_ISOLATION=app_and_rls` with the API on a `synapse-cli db provision-app-role` role and the worker on the owner DSN (`SYNAPSE_WORKER_DATABASE_URL`) — the API refuses to start if they disagree
 
 ### High availability
 

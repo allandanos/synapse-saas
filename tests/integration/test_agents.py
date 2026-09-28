@@ -10,6 +10,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -152,9 +154,8 @@ class TestAgentEvents:
         from sqlalchemy import select
 
         from synapse_saas.audit.models import OutboxEvent
-        from synapse_saas.core.db import get_session_factory
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             rows = (
                 (

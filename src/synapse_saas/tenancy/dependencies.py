@@ -1,8 +1,9 @@
 """Tenant resolution dependency.
 
-Order: X-Org-Id / X-Org-Slug header → JWT `org` claim → subdomain.
-Then a membership check (Redis-cached). Failure is 404 — never 403 — so the
-API doesn't leak which organizations exist.
+Order: X-Org-Id / X-Org-Slug header → subdomain → JWT `org` claim.
+Then a membership check. Failure is 404 — never 403 — so the API doesn't
+leak which organizations exist. When RLS is on, the tenant GUC is bound here
+so every later query in the request transaction is policed by Postgres too.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from synapse_saas.core.cache import VersionedCache
 from synapse_saas.core.context import TenantContext, current_tenant, set_tenant
-from synapse_saas.core.db import get_session
+from synapse_saas.core.db import get_session, set_rls_platform, set_rls_tenant
 from synapse_saas.core.errors import AuthenticationError, TenantNotResolvedError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.core.security import decode_access_token
@@ -83,6 +84,10 @@ async def resolve_tenant(request: Request, user: CurrentUser, session: SessionDe
     if org is None or org.deleted_at is not None:
         raise TenantNotResolvedError("Organization not found")
 
+    # RLS: bind the tenant BEFORE the membership query — under policies that
+    # query would otherwise be empty for every non-owner role.
+    await set_rls_tenant(session, org.id)
+
     membership = await members.get_active(org.id, user.id)
     if membership is None and not user.is_platform_admin:
         raise TenantNotResolvedError("Organization not found")  # identical response: no existence leak
@@ -96,10 +101,12 @@ async def resolve_tenant(request: Request, user: CurrentUser, session: SessionDe
 TenantDep = Annotated[TenantContext, Depends(resolve_tenant)]
 
 
-async def require_platform_admin(user: CurrentUser) -> TenantContext:
+async def require_platform_admin(user: CurrentUser, session: SessionDep) -> TenantContext:
     """Platform-scope dependency for admin surfaces (no tenant filtering)."""
     if not user.is_platform_admin:
         raise TenantNotResolvedError("Not found")
+    # RLS: platform surfaces read across tenants for this transaction only.
+    await set_rls_platform(session)
     return TenantContext(organization_id=UUID(int=0), slug="platform", is_platform=True)
 
 

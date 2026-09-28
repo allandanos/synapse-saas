@@ -7,6 +7,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -29,10 +31,9 @@ async def _fresh_engine(clean_db):
 async def _make_platform_admin(email: str) -> None:
     from sqlalchemy import select
 
-    from synapse_saas.core.db import get_session_factory
     from synapse_saas.identity.models import User
 
-    factory = get_session_factory()
+    factory = owner_session_factory()
     async with factory() as session:
         user = (await session.execute(select(User).where(User.email == email))).scalar_one()
         user.is_platform_admin = True
@@ -106,9 +107,8 @@ class TestCheckoutCompletedWebhook:
         from sqlalchemy import select
 
         from synapse_saas.billing.models import BillingCustomer
-        from synapse_saas.core.db import get_session_factory
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             customer = (
                 await session.execute(
@@ -177,9 +177,8 @@ class TestEntitlementExpiryJobPath:
         from sqlalchemy import text
 
         from synapse_saas.core.cache import VersionedCache
-        from synapse_saas.core.db import get_session_factory
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             # Backdate, run job, then revoke through the service path
             await session.execute(text("UPDATE entitlements SET ends_at = now() - interval '1 second'"))

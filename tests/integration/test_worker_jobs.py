@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -33,9 +35,7 @@ class TestManualBillingRoll:
         # Backdate the period so the job sees it due
         from sqlalchemy import text
 
-        from synapse_saas.core.db import get_session_factory
-
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             await session.execute(
                 text("UPDATE subscriptions SET current_period_end = now() - interval '1 day'")
@@ -64,10 +64,9 @@ class TestManualBillingRoll:
 
         from sqlalchemy import text
 
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.worker.jobs import advance_manual_billing
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             await session.execute(
                 text("UPDATE subscriptions SET current_period_end = now() - interval '1 day'")
@@ -79,12 +78,11 @@ class TestManualBillingRoll:
 
 class TestPartitionJob:
     async def test_ensure_partitions_creates_next_month(self) -> None:
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.worker.jobs import ensure_partitions
 
         assert await ensure_partitions({}) == 1
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             from sqlalchemy import text
 
@@ -103,10 +101,9 @@ class TestPurgeJob:
     async def test_purge_removes_old_deliveries(self) -> None:
         from sqlalchemy import text
 
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.worker.jobs import purge_expired
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             # Real parent rows to satisfy the FKs
             await session.execute(

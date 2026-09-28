@@ -39,7 +39,10 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
-    memberships: Mapped[list[Membership]] = relationship(back_populates="organization", lazy="selectin")
+    # lazy="raise": loading an Organization must never fan out to every
+    # membership → user → roles → permissions (it did, on every request).
+    # Load the collection explicitly with selectinload where it is rendered.
+    memberships: Mapped[list[Membership]] = relationship(back_populates="organization", lazy="raise")
 
     @property
     def is_active(self) -> bool:

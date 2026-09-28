@@ -8,6 +8,8 @@ import sys
 
 import pytest
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -57,11 +59,11 @@ class TestSeed:
 
         from sqlalchemy import select
 
-        from synapse_saas.core.db import dispose_engine, get_session_factory
+        from synapse_saas.core.db import dispose_engine
         from synapse_saas.identity.models import User  # noqa: F401 — completes the mapper registry
         from synapse_saas.tenancy.models import Membership, Organization
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
 
         async def check() -> tuple[str | None, dict[str, str]]:
             async with factory() as session:

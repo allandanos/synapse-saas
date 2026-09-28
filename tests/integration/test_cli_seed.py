@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -19,13 +21,12 @@ async def _fresh_engine(clean_db):
 class TestSeed:
     async def test_seed_is_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from synapse_saas.core.config import get_settings
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.seeds import seed_system
         from synapse_saas.subscriptions.catalog import load_catalog
         from synapse_saas.subscriptions.sync import sync_plans
 
         get_settings.cache_clear()
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             first = await seed_system(session)
             await sync_plans(session, load_catalog("config/plans.yaml"))
@@ -45,12 +46,11 @@ class TestSeed:
         """A YAML price change flows to the plan row but not to snapshots."""
         from sqlalchemy import select
 
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.subscriptions.catalog import load_catalog
         from synapse_saas.subscriptions.models import Plan
         from synapse_saas.subscriptions.sync import sync_plans
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         catalog = load_catalog("config/plans.yaml")
         async with factory() as session:
             await sync_plans(session, catalog)

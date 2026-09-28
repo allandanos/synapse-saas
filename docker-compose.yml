@@ -7,7 +7,9 @@ x-api-base: &api-base
   environment: &api-env
     SYNAPSE_ENV: development
     SYNAPSE_SECRET_KEY: ${SYNAPSE_SECRET_KEY:-dev-only-secret-key-change-me}
-    SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@postgres:5432/synapse
+    SYNAPSE_DATABASE_URL: ${SYNAPSE_DATABASE_URL_IN_STACK:-postgresql+asyncpg://synapse:synapse@postgres:5432/synapse}
+    SYNAPSE_WORKER_DATABASE_URL: ${SYNAPSE_WORKER_DATABASE_URL_IN_STACK:-}
+    SYNAPSE_TENANT_ISOLATION: ${SYNAPSE_TENANT_ISOLATION:-app}
     SYNAPSE_REDIS_URL: redis://redis:6379/0
     SYNAPSE_BILLING_PROVIDER: ${SYNAPSE_BILLING_PROVIDER:-manual}
     SYNAPSE_BILLING_CURRENCY: ${SYNAPSE_BILLING_CURRENCY:-PHP}

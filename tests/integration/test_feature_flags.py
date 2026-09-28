@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import owner_session_factory
+
 pytestmark = pytest.mark.pg
 
 
@@ -32,10 +34,9 @@ def org_headers(fixture: dict[str, str]) -> dict[str, str]:
 async def make_platform_admin(client: AsyncClient, email: str) -> None:
     from sqlalchemy import select
 
-    from synapse_saas.core.db import get_session_factory
     from synapse_saas.identity.models import User
 
-    factory = get_session_factory()
+    factory = owner_session_factory()
     async with factory() as session:
         user = (await session.execute(select(User).where(User.email == email))).scalar_one()
         user.is_platform_admin = True
@@ -145,7 +146,6 @@ class TestEvaluation:
     async def test_user_override_beats_org_override(self, client: AsyncClient, org_and_tokens) -> None:
         from sqlalchemy import select
 
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.identity.models import User
 
         await make_platform_admin(client, "owner@example.com")
@@ -155,7 +155,7 @@ class TestEvaluation:
             headers=admin,
             json={"key": "layered", "name": "Layered", "enabled": False},
         )
-        async with get_session_factory()() as session:
+        async with owner_session_factory()() as session:
             user = (await session.execute(select(User).where(User.email == "owner@example.com"))).scalar_one()
             user_id = user.id
 
@@ -248,13 +248,12 @@ class TestRequireFlagGate:
         """require_flag resolves through the same service the check endpoint uses:
         off for unknown flags, on after an org override — no dynamic routes needed."""
         from synapse_saas.core import context
-        from synapse_saas.core.db import get_session_factory
         from synapse_saas.core.errors import PermissionDeniedError
         from synapse_saas.feature_flags.dependencies import require_flag_dependency
         from synapse_saas.identity.dependencies import get_current_user
         from synapse_saas.tenancy.dependencies import resolve_tenant
 
-        factory = get_session_factory()
+        factory = owner_session_factory()
         async with factory() as session:
             user = await get_current_user(
                 _FakeRequest(org_id=org_and_tokens["org_id"], token=org_and_tokens["access_token"]),

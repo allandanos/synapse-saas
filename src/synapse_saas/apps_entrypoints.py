@@ -17,7 +17,7 @@ def run_api() -> None:
 
 
 def run_worker() -> None:
-    """synapse-worker — arq worker launcher."""
+    """synapse-worker — arq worker launcher (jobs use the owner session factory)."""
     from arq import run_worker
 
     from synapse_saas.worker.jobs import WorkerSettings

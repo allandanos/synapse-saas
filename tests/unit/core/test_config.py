@@ -8,6 +8,9 @@ from pydantic import ValidationError
 from synapse_saas.core.config import Settings
 
 PROD_KEY = "x" * 48
+# The class default; passed explicitly so CI environments that export a real
+# SYNAPSE_SECRET_KEY still exercise the guard.
+DEV_DEFAULT_KEY = "dev-only-secret-key-change-me-32-bytes-minimum!"
 
 
 class TestProductionGuardrails:
@@ -25,7 +28,12 @@ class TestProductionGuardrails:
 
     def test_prod_rejects_dev_default_secret(self) -> None:
         with pytest.raises(ValidationError, match="dev default"):
-            Settings(env="production", auth_rate_limit_per_ip=20, auth_rate_limit_per_identity=5)
+            Settings(
+                env="production",
+                secret_key=DEV_DEFAULT_KEY,
+                auth_rate_limit_per_ip=20,
+                auth_rate_limit_per_identity=5,
+            )
 
     def test_prod_accepts_hardened_values(self) -> None:
         s = Settings(
@@ -38,7 +46,12 @@ class TestProductionGuardrails:
 
     def test_prod_reports_every_problem_at_once(self) -> None:
         with pytest.raises(ValidationError) as excinfo:
-            Settings(env="production", auth_rate_limit_per_ip=1000, auth_rate_limit_per_identity=100)
+            Settings(
+                env="production",
+                secret_key=DEV_DEFAULT_KEY,
+                auth_rate_limit_per_ip=1000,
+                auth_rate_limit_per_identity=100,
+            )
         message = str(excinfo.value)
         assert "PER_IP" in message
         assert "PER_IDENTITY" in message
