@@ -4,10 +4,12 @@ Single pydantic-settings entrypoint; every environment variable is `SYNAPSE_`-pr
 Loaded once via `get_settings()` (cached) and importable anywhere below the api/worker layer.
 """
 
+import os
 from functools import lru_cache
 from pathlib import Path
+from typing import ClassVar
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -17,7 +19,9 @@ DEFAULT_PLANS_FILE = REPO_ROOT / "config" / "plans.yaml"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SYNAPSE_",
-        env_file=".env",
+        # Dev convenience only. Images never contain .env (see .dockerignore);
+        # set SYNAPSE_ENV_FILE="" to disable file loading entirely.
+        env_file=os.environ.get("SYNAPSE_ENV_FILE", ".env") or None,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -117,6 +121,32 @@ class Settings(BaseSettings):
             msg = f"billing_provider must be one of {sorted(allowed)}, got {v!r}"
             raise ValueError(msg)
         return v
+
+    # Hard ceilings for production. Dev/e2e raise these to register many users
+    # from one IP; a baked .env or a copy-pasted override must not reach prod.
+    PRODUCTION_MAX_AUTH_PER_IP: ClassVar[int] = 100
+    PRODUCTION_MAX_AUTH_PER_IDENTITY: ClassVar[int] = 20
+
+    @model_validator(mode="after")
+    def _production_guardrails(self) -> "Settings":
+        if not self.is_production:
+            return self
+        problems: list[str] = []
+        if self.auth_rate_limit_per_ip > self.PRODUCTION_MAX_AUTH_PER_IP:
+            problems.append(
+                f"SYNAPSE_AUTH_RATE_LIMIT_PER_IP={self.auth_rate_limit_per_ip} exceeds the "
+                f"production ceiling of {self.PRODUCTION_MAX_AUTH_PER_IP}"
+            )
+        if self.auth_rate_limit_per_identity > self.PRODUCTION_MAX_AUTH_PER_IDENTITY:
+            problems.append(
+                f"SYNAPSE_AUTH_RATE_LIMIT_PER_IDENTITY={self.auth_rate_limit_per_identity} exceeds "
+                f"the production ceiling of {self.PRODUCTION_MAX_AUTH_PER_IDENTITY}"
+            )
+        if self.secret_key.startswith("dev-only-"):
+            problems.append("SYNAPSE_SECRET_KEY is the dev default")
+        if problems:
+            raise ValueError("Refusing to start in production: " + "; ".join(problems))
+        return self
 
     @property
     def is_production(self) -> bool:

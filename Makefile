@@ -34,15 +34,15 @@ test-all: ## Everything, with coverage gate (scratch test database)
 		uv run pytest -m "" --cov=src/synapse_saas --cov-fail-under=80
 
 lint: ## Ruff + import-linter
-	uv run ruff check src tests
-	uv run ruff format --check src tests
+	uv run ruff check src tests scripts
+	uv run ruff format --check src tests scripts
 	uv run lint-imports
 
 typecheck: ## mypy strict
 	uv run mypy src
 
 migrate: ## Apply Alembic migrations
-	uv run alembic upgrade head
+	uv run alembic -c database/alembic.ini upgrade head
 
 seed: ## Seed permissions, system roles, and sync plan catalog
 	uv run synapse-cli seed

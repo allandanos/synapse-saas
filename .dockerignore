@@ -1,0 +1,35 @@
+# Safety net for EVERY build whose context is the repo root.
+# Per-image ignores live beside each Dockerfile (<Dockerfile>.dockerignore, BuildKit).
+# Secrets and local state must never reach an image layer.
+.env
+.env.*
+!.env.example
+apps/web/.env
+apps/web/.env.*
+!apps/web/.env.example
+.git
+.github
+.venv
+**/.venv
+**/node_modules
+**/__pycache__
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+**/.import_linter_cache
+.coverage
+coverage.xml
+htmlcov
+.storage
+.idea
+.vscode
+.DS_Store
+*.txt
+!prompt.txt
+apps/web/test-results
+apps/web/playwright-report
+apps/web/.next
+sdk/typescript/dist
+sdk/java/target
+examples/**/target
+examples/**/dist

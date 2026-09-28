@@ -1,0 +1,26 @@
+# Worker image: same footprint as the API image. Context = repo root.
+.env
+.env.*
+.git
+.github
+.venv
+**/.venv
+**/node_modules
+**/__pycache__
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+**/.import_linter_cache
+.coverage
+htmlcov
+.storage
+.DS_Store
+*.txt
+apps/web
+sdk
+examples
+docs
+infrastructure
+tests
+CONTRIBUTING.md
+SECURITY.md

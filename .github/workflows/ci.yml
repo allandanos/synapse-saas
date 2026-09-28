@@ -30,10 +30,10 @@ jobs:
         run: uv sync --all-groups --frozen
 
       - name: Ruff check
-        run: uv run ruff check src tests examples
+        run: uv run ruff check src tests examples scripts
 
       - name: Ruff format
-        run: uv run ruff format --check src tests examples
+        run: uv run ruff format --check src tests examples scripts
 
       - name: Import contracts
         run: uv run lint-imports
@@ -134,3 +134,88 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  # ── Contract: routers ⇒ contracts/openapi-v1.json must be committed ────────
+  contract:
+    name: REST contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --all-groups --frozen
+
+      - name: OpenAPI contract is up to date
+        env:
+          SYNAPSE_REDIS_URL: ""
+        run: uv run python scripts/export_openapi.py --check
+
+  # ── Images: no secrets baked, correct entrypoints, writable storage ────────
+  docker-image:
+    name: Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        run: docker build -f apps/api/Dockerfile -t synapse-api:ci .
+
+      - name: Build worker image
+        run: docker build -f apps/worker/Dockerfile -t synapse-worker:ci .
+
+      - name: Assert no env files or dev artifacts in the API image
+        run: |
+          docker run --rm synapse-api:ci sh -c '
+            set -e
+            test ! -e /app/.env
+            test ! -e /app/.git
+            test ! -d /app/apps/web
+            test ! -d /app/tests
+            test -w /data/storage
+            echo "image hygiene OK"'
+
+      - name: Assert entrypoints
+        run: |
+          test "$(docker inspect --format '{{join .Config.Cmd " "}}' synapse-api:ci)" = "synapse-api"
+          test "$(docker inspect --format '{{join .Config.Cmd " "}}' synapse-worker:ci)" = "synapse-worker"
+
+      - name: API image starts (health)
+        run: |
+          docker run -d --name api -p 8000:8000 \
+            -e SYNAPSE_DATABASE_URL=postgresql+asyncpg://x:x@localhost:1/x \
+            -e SYNAPSE_REDIS_URL= -e SYNAPSE_AUTO_SYNC_PLANS=false synapse-api:ci
+          for i in $(seq 1 30); do curl -sf http://localhost:8000/healthz && break; sleep 1; done
+          curl -sf http://localhost:8000/healthz
+          docker rm -f api
+
+  # ── Terraform: validate is not enough (dynamic blocks are unevaluated), so
+  #    also plan against a mock provider config where possible.
+  terraform:
+    name: Terraform validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure/terraform/cloudrun
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Init (no backend)
+        run: terraform init -backend=false
+
+      - name: Validate
+        run: terraform validate

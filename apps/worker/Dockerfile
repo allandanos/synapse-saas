@@ -1,4 +1,5 @@
-# Shared image for api / worker / migrate — uv multi-stage, non-root.
+# Worker image — uv multi-stage, non-root. Same build as apps/api/Dockerfile;
+# only the entrypoint differs (arq worker, no HTTP port).
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
@@ -16,8 +17,12 @@ COPY --from=builder /app /app
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
-RUN useradd --create-home --uid 1001 synapse
+# Local-disk storage fallback must be writable by the non-root user and live
+# outside the read-only app tree. Production should set SYNAPSE_S3_BUCKET;
+# with replicas>1 this directory is per-pod unless a volume is mounted here.
+RUN useradd --create-home --uid 1001 synapse \
+    && mkdir -p /data/storage && chown -R 1001:1001 /data/storage
+ENV SYNAPSE_STORAGE_ROOT=/data/storage
 USER synapse
 
-EXPOSE 8000
-CMD ["synapse-api"]
+CMD ["synapse-worker"]

@@ -13,3 +13,11 @@ data:
   SYNAPSE_IDENTITY_PROVIDER: "local"
   SYNAPSE_METRICS_ENABLED: "true"
   SYNAPSE_DEFAULT_PLAN_KEY: "free"
+  # Auth brute-force protection. The app REFUSES to start in production with
+  # looser values than 100/min per IP or 20/min per identity.
+  SYNAPSE_AUTH_RATE_LIMIT_PER_IP: "20"
+  SYNAPSE_AUTH_RATE_LIMIT_PER_IDENTITY: "5"
+  SYNAPSE_AUTH_RATE_WINDOW_SECONDS: "60"
+  SYNAPSE_TENANT_ISOLATION: "app"
+  SYNAPSE_AUDIT_RETENTION_DAYS: "365"
+  SYNAPSE_BILLING_CURRENCY: "PHP"

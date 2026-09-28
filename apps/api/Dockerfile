@@ -16,7 +16,12 @@ COPY --from=builder /app /app
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
-RUN useradd --create-home --uid 1001 synapse
+# Local-disk storage fallback must be writable by the non-root user and live
+# outside the read-only app tree. Production should set SYNAPSE_S3_BUCKET;
+# with replicas>1 this directory is per-pod unless a volume is mounted here.
+RUN useradd --create-home --uid 1001 synapse \
+    && mkdir -p /data/storage && chown -R 1001:1001 /data/storage
+ENV SYNAPSE_STORAGE_ROOT=/data/storage
 USER synapse
 
 EXPOSE 8000

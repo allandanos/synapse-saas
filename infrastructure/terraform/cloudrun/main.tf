@@ -56,8 +56,8 @@ variable "secret_key" {
 }
 
 variable "web_origin" {
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
   description = "Console origin for CORS, e.g. https://console.example.com"
 }
 
@@ -67,8 +67,8 @@ variable "billing_provider" {
 }
 
 variable "min_api_instances" {
-  type    = number
-  default = 1
+  type        = number
+  default     = 1
   description = "Keep ≥1 warm to avoid cold-start latency on the auth path"
 }
 
@@ -78,8 +78,8 @@ variable "max_api_instances" {
 }
 
 variable "worker_instances" {
-  type    = number
-  default = 1
+  type        = number
+  default     = 1
   description = "Outbox dispatch is SKIP LOCKED-safe; scale freely"
 }
 
@@ -176,8 +176,8 @@ locals {
     {
       name = "SYNAPSE_DATABASE_URL"
       value_source = {
-        secret_manager = {
-          secret = google_secret_manager_secret.database_url.secret_id
+        secret_key_ref = {
+          secret  = google_secret_manager_secret.database_url.secret_id
           version = "latest"
         }
       }
@@ -185,8 +185,8 @@ locals {
     {
       name = "SYNAPSE_SECRET_KEY"
       value_source = {
-        secret_manager = {
-          secret = google_secret_manager_secret.secret_key.secret_id
+        secret_key_ref = {
+          secret  = google_secret_manager_secret.secret_key.secret_id
           version = "latest"
         }
       }
@@ -196,8 +196,8 @@ locals {
     {
       name = "SYNAPSE_REDIS_URL"
       value_source = {
-        secret_manager = {
-          secret = google_secret_manager_secret.redis_url[0].secret_id
+        secret_key_ref = {
+          secret  = google_secret_manager_secret.redis_url[0].secret_id
           version = "latest"
         }
       }
@@ -293,22 +293,22 @@ resource "google_cloud_run_v2_job" "worker_tick" {
           "synapse-cli migrate && synapse-cli seed"
         ]
         dynamic "env" {
-        for_each = concat(local.common_env, local.secret_env, local.redis_env)
-        content {
-          name  = env.value.name
-          value = try(env.value.value, null)
+          for_each = concat(local.common_env, local.secret_env, local.redis_env)
+          content {
+            name  = env.value.name
+            value = try(env.value.value, null)
 
-          dynamic "value_source" {
-            for_each = try(env.value.value_source, null) != null ? [env.value.value_source] : []
-            content {
-              secret_key_ref {
-                secret  = env.value.value_source.secret_key_ref.secret
-                version = try(env.value.value_source.secret_key_ref.version, "latest")
+            dynamic "value_source" {
+              for_each = try(env.value.value_source, null) != null ? [env.value.value_source] : []
+              content {
+                secret_key_ref {
+                  secret  = env.value.value_source.secret_key_ref.secret
+                  version = try(env.value.value_source.secret_key_ref.version, "latest")
+                }
               }
             }
           }
         }
-      }
         resources {
           limits = {
             cpu    = "1"

@@ -1,0 +1,10 @@
+# Console image: only apps/web. Context = repo root.
+*
+!apps/web
+apps/web/.env
+apps/web/.env.*
+apps/web/node_modules
+apps/web/.next
+apps/web/test-results
+apps/web/playwright-report
+apps/web/e2e

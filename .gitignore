@@ -49,3 +49,6 @@ examples/**/dist/
 # Playwright
 apps/web/test-results/
 apps/web/playwright-report/
+
+# Session transcripts / scratch dumps
+*-help-me-build-this-*.txt
