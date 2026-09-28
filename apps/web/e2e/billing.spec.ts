@@ -5,6 +5,7 @@ import {
   loginConsole,
   api,
   emailFor,
+  platformApi,
   API_URL,
 } from "./fixtures";
 
@@ -67,13 +68,14 @@ test.describe("money path (manual provider — the whole loop runs locally)", ()
     await page.goto("/dashboard");
     await expect(page.getByText(/not on your current plan/i).first()).toBeVisible();
 
-    // Grant advanced_reports as a 14-day promo (what an admin/console does)
-    const grant = await client.post("/v1/entitlements/grants", {
+    // Grant advanced_reports as a 14-day promo — an OPERATOR action, never the tenant's
+    const operator = await platformApi(request);
+    const grant = await operator.post(`/v1/admin/orgs/${ctx.orgId}/entitlements/grants`, {
       feature_key: "advanced_reports",
       source: "promo",
       duration_days: 14,
     });
-    expect(grant.ok()).toBeTruthy();
+    expect(grant.ok(), `grant: ${grant.status()}`).toBeTruthy();
 
     await page.reload();
     await expect(page.getByText(/advanced reports/i).first()).toBeVisible();

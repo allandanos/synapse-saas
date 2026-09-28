@@ -7,7 +7,12 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from tests.integration.conftest import owner_session_factory
+from tests.integration.conftest import (
+    grant_as_platform,
+    owner_session_factory,
+    pay_as_platform,
+    void_as_platform,
+)
 
 pytestmark = pytest.mark.pg
 
@@ -46,10 +51,10 @@ class TestDraft:
         headers = org_headers(org_and_tokens)
         # Starter: ai_tokens has NO limit set in the default catalog… but
         # free/starter don't either — attach a tight addon and blow past it.
-        await client.post(
-            "/v1/entitlements/grants",
-            headers=headers,
-            json={"feature_key": "limit:ai_tokens", "source": "addon", "limit_value": 1000},
+        await grant_as_platform(
+            client,
+            org_and_tokens["org_id"],
+            {"feature_key": "limit:ai_tokens", "source": "addon", "limit_value": 1000},
         )
         # record (not consume): runtime enforcement already blocked the 402s;
         # metered usage past quota is exactly what period-end billing charges
@@ -92,10 +97,8 @@ class TestFinalizeAndPay:
         assert finalized["number"].startswith("INV-")
         assert finalized["issued_at"] is not None
 
-        paid = await client.post(
-            f"/v1/billing/invoices/{invoice_id}/pay",
-            headers=headers,
-            json={"amount_cents": 199900, "reference": "bank-transfer-001"},
+        paid = await pay_as_platform(
+            client, invoice_id, {"amount_cents": 199900, "reference": "bank-transfer-001"}
         )
         assert paid.status_code == 200
         assert paid.json()["status"] == "paid"
@@ -121,27 +124,18 @@ class TestFinalizeAndPay:
         invoice = await draft(client, org_and_tokens)
         await client.post(f"/v1/billing/invoices/{invoice['id']}/finalize", headers=headers)
 
-        short = await client.post(
-            f"/v1/billing/invoices/{invoice['id']}/pay",
-            headers=headers,
-            json={"amount_cents": 100},
-        )
+        short = await pay_as_platform(client, invoice["id"], {"amount_cents": 100})
         assert short.status_code == 422
 
     async def test_pay_before_finalize_rejected(self, client: AsyncClient, org_and_tokens) -> None:
         invoice = await draft(client, org_and_tokens)
-        res = await client.post(
-            f"/v1/billing/invoices/{invoice['id']}/pay",
-            headers=org_headers(org_and_tokens),
-            json={"amount_cents": 0 + 1},
-        )
+        res = await pay_as_platform(client, invoice["id"], {"amount_cents": 0 + 1})
         assert res.status_code == 422  # draft → paid is not a legal transition
 
     async def test_void_draft(self, client: AsyncClient, org_and_tokens) -> None:
         invoice = await draft(client, org_and_tokens)
-        res = await client.post(
-            f"/v1/billing/invoices/{invoice['id']}/void", headers=org_headers(org_and_tokens)
-        )
+        res = await void_as_platform(client, invoice["id"])
+        assert res.status_code == 200, res.text
         assert res.json()["status"] == "void"
 
     async def test_paid_invoice_is_terminal(self, client: AsyncClient, org_and_tokens) -> None:
@@ -149,12 +143,8 @@ class TestFinalizeAndPay:
         await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "starter"})
         invoice = await draft(client, org_and_tokens)
         await client.post(f"/v1/billing/invoices/{invoice['id']}/finalize", headers=headers)
-        await client.post(
-            f"/v1/billing/invoices/{invoice['id']}/pay",
-            headers=headers,
-            json={"amount_cents": 49900},
-        )
-        again = await client.post(f"/v1/billing/invoices/{invoice['id']}/void", headers=headers)
+        await pay_as_platform(client, invoice["id"], {"amount_cents": 49900})
+        again = await void_as_platform(client, invoice["id"])
         assert again.status_code == 422
 
 
@@ -258,11 +248,7 @@ class TestReporting:
         await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "pro"})
         invoice = await draft(client, org_and_tokens)
         await client.post(f"/v1/billing/invoices/{invoice['id']}/finalize", headers=headers)
-        await client.post(
-            f"/v1/billing/invoices/{invoice['id']}/pay",
-            headers=headers,
-            json={"amount_cents": 199900, "reference": "bank-1"},
-        )
+        await pay_as_platform(client, invoice["id"], {"amount_cents": 199900, "reference": "bank-1"})
 
         summary = (await client.get("/v1/billing/spend-summary", headers=headers)).json()
         assert summary["paid_cents"] == 199900
@@ -274,11 +260,7 @@ class TestReporting:
         await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "starter"})
         invoice = await draft(client, org_and_tokens)
         await client.post(f"/v1/billing/invoices/{invoice['id']}/finalize", headers=headers)
-        await client.post(
-            f"/v1/billing/invoices/{invoice['id']}/pay",
-            headers=headers,
-            json={"amount_cents": 49900},
-        )
+        await pay_as_platform(client, invoice["id"], {"amount_cents": 49900})
         monthly = (await client.get("/v1/billing/spend-monthly", headers=headers)).json()
         assert len(monthly) == 1
         assert monthly[0]["total_cents"] == 49900
@@ -304,11 +286,7 @@ class TestReporting:
         await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "pro"})
         invoice = await draft(client, org_and_tokens)
         await client.post(f"/v1/billing/invoices/{invoice['id']}/finalize", headers=headers)
-        await client.post(
-            f"/v1/billing/invoices/{invoice['id']}/pay",
-            headers=headers,
-            json={"amount_cents": 199900},
-        )
+        await pay_as_platform(client, invoice["id"], {"amount_cents": 199900})
 
         summary = (await client.get("/v1/billing/admin/revenue-summary", headers=headers)).json()
         assert summary["collected_cents"] >= 199900

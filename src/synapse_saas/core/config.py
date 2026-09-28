@@ -7,10 +7,10 @@ Loaded once via `get_settings()` (cached) and importable anywhere below the api/
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import ClassVar
+from typing import Annotated, ClassVar
 
 from pydantic import field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PLANS_FILE = REPO_ROOT / "config" / "plans.yaml"
@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     # database_url should be a NOBYPASSRLS, non-owner role and this the owner.
     worker_database_url: str = ""
     web_origin: str = "http://localhost:3000"
+    # Additional console origins (CSV or JSON list): per-tenant subdomains,
+    # staging, preview deploys. `web_origin` is always included.
+    web_origins: Annotated[list[str], NoDecode] = []
+    # Refresh-cookie Secure flag. None ⇒ derived: https web_origin or production.
+    cookie_secure: bool | None = None
+    # Reverse proxies / load balancers whose X-Forwarded-For chain we trust
+    # (CIDRs, CSV or JSON list). Empty ⇒ the socket peer is the client and
+    # X-Forwarded-For is ignored — a spoofed header must never bypass the
+    # per-IP auth rate limit.
+    trusted_proxies: Annotated[list[str], NoDecode] = []
     # app | app_and_rls
     tenant_isolation: str = "app"
 
@@ -108,6 +118,28 @@ class Settings(BaseSettings):
     auth_rate_limit_per_identity: int = 5
     auth_rate_window_seconds: int = 60
 
+    @field_validator("web_origins", "trusted_proxies", mode="before")
+    @classmethod
+    def _csv_or_list(cls, v: object) -> object:
+        """Accept `a,b,c` from the environment as well as a JSON list (NoDecode hands us the raw string)."""
+        if isinstance(v, str):
+            raw = v.strip()
+            if raw.startswith("["):
+                import json
+
+                return json.loads(raw)
+            return [item.strip() for item in raw.split(",") if item.strip()]
+        return v
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def _validate_cidrs(cls, v: list[str]) -> list[str]:
+        import ipaddress
+
+        for cidr in v:
+            ipaddress.ip_network(cidr, strict=False)  # raises ValueError on garbage
+        return v
+
     @field_validator("tenant_isolation")
     @classmethod
     def _validate_isolation(cls, v: str) -> str:
@@ -159,6 +191,20 @@ class Settings(BaseSettings):
     @property
     def rls_enabled(self) -> bool:
         return self.tenant_isolation == "app_and_rls"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """web_origin first, then the extras, de-duplicated and order-preserving."""
+        seen: dict[str, None] = {self.web_origin: None}
+        for origin in self.web_origins:
+            seen.setdefault(origin, None)
+        return list(seen)
+
+    @property
+    def cookie_secure_effective(self) -> bool:
+        if self.cookie_secure is not None:
+            return self.cookie_secure
+        return self.is_production or self.web_origin.lower().startswith("https://")
 
     @property
     def access_token_ttl_seconds(self) -> int:

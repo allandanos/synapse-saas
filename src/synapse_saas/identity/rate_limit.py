@@ -19,6 +19,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from synapse_saas.core.config import get_settings
+from synapse_saas.core.errors import RateLimitedError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.core.rate_limit import get_rate_limiter
 
@@ -30,19 +31,43 @@ AUTH_ROUTES: dict[str, str | None] = {
     "/v1/auth/register": "email",
     "/v1/auth/forgot-password": "email",
     "/v1/auth/reset-password": None,  # token-based; IP limit only
+    "/v1/auth/refresh": None,  # a stolen refresh token replayed at speed; IP limit only
 }
 
 
+def _is_trusted_proxy(host: str, cidrs: list[str]) -> bool:
+    import ipaddress
+
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    for cidr in cidrs:
+        try:
+            if addr in ipaddress.ip_network(cidr, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def _client_ip(request: Request) -> str:
-    # Behind a proxy/ingress the socket address is the proxy; honor the
-    # forwarded chain only when the first hop is private (our own LB).
-    forwarded = request.headers.get("x-forwarded-for", "")
-    client = request.client.host if request.client else "unknown"
-    if forwarded:
-        first = forwarded.split(",")[0].strip()
-        if first:
-            return first
-    return client
+    """The client address for rate limiting — never spoofable by the client.
+
+    X-Forwarded-For is honoured only when the socket peer is a configured
+    trusted proxy, and then only back to the first hop that is NOT a trusted
+    proxy (walking right to left — each proxy appends the peer it saw). With
+    no trusted proxies configured the header is ignored outright.
+    """
+    peer = request.client.host if request.client else "unknown"
+    trusted = get_settings().trusted_proxies
+    if not trusted or not _is_trusted_proxy(peer, trusted):
+        return peer
+    hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+    for hop in reversed(hops):
+        if not _is_trusted_proxy(hop, trusted):
+            return hop
+    return peer
 
 
 class AuthRateLimitMiddleware(BaseHTTPMiddleware):
@@ -64,8 +89,10 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
                 limit=settings.auth_rate_limit_per_ip,
                 window_seconds=settings.auth_rate_window_seconds,
             )
-        except Exception as exc:  # RateLimitedError or Redis failure
+        except RateLimitedError as exc:
             return _too_many(request, exc)
+        except Exception as exc:
+            _limiter_degraded(exc)
 
         # Identity bucket applies when the route carries a target account
         if identity_field and request.method == "POST":
@@ -77,8 +104,10 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
                         limit=settings.auth_rate_limit_per_identity,
                         window_seconds=settings.auth_rate_window_seconds,
                     )
-                except Exception as exc:
+                except RateLimitedError as exc:
                     return _too_many(request, exc)
+                except Exception as exc:
+                    _limiter_degraded(exc)
 
         final: Response = await call_next(request)
         return final
@@ -99,6 +128,20 @@ async def _peek_identity(request: Request, field: str) -> str | None:
         return str(value).lower() if value else None
     except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
         return None
+
+
+def _limiter_degraded(exc: Exception) -> None:
+    """Redis (or the limiter) failed: log, count, and let the request through.
+
+    Losing Redis costs the distributed counter, never availability — the
+    per-identity bucket still holds in the in-process fallback on the next
+    call, and a Redis blip must not 429 every login.
+    """
+    logger.warning("auth_rate_limiter_degraded", error=str(exc))
+    with contextlib.suppress(Exception):
+        from synapse_saas.core import metrics
+
+        metrics.AUTH_EVENTS.labels(event="limiter_degraded").inc()
 
 
 def _too_many(request: Request, exc: Exception) -> JSONResponse:

@@ -198,3 +198,52 @@ async def org_and_tokens(client: AsyncClient) -> dict[str, str]:
         "refresh_token": tokens["refresh_token"],
         "org_id": org.json()["id"],
     }
+
+
+# ── Platform operator helpers ─────────────────────────────────────────────────
+# Grants and money movements are operator actions (PlatformAdminDep). Tests that
+# exercise them as *setup* use these; tests that assert the tenant CANNOT do
+# them call the tenant routes directly.
+
+PLATFORM_ADMIN_EMAIL = "operator@platform.example.com"
+PLATFORM_ADMIN_PASSWORD = "operator-password-12345"
+
+
+async def platform_admin_headers(client: AsyncClient) -> dict[str, str]:
+    """Register (once per test DB state) and promote a platform operator; return auth headers."""
+    from sqlalchemy import select
+
+    from synapse_saas.identity.models import User
+
+    reg = await client.post(
+        "/v1/auth/register",
+        json={"email": PLATFORM_ADMIN_EMAIL, "password": PLATFORM_ADMIN_PASSWORD, "display_name": "Operator"},
+    )
+    if reg.status_code == 201:
+        async with owner_session_factory()() as session:
+            user = (
+                await session.execute(select(User).where(User.email == PLATFORM_ADMIN_EMAIL))
+            ).scalar_one()
+            user.is_platform_admin = True
+            await session.commit()
+    # A fresh login mints a JWT carrying the platform_admin claim
+    login = await client.post(
+        "/v1/auth/login", json={"email": PLATFORM_ADMIN_EMAIL, "password": PLATFORM_ADMIN_PASSWORD}
+    )
+    assert login.status_code == 200, login.text
+    return {"Authorization": f"Bearer {login.json()['tokens']['access_token']}"}
+
+
+async def grant_as_platform(client: AsyncClient, org_id: str, body: dict[str, object]):  # type: ignore[no-untyped-def]
+    headers = await platform_admin_headers(client)
+    return await client.post(f"/v1/admin/orgs/{org_id}/entitlements/grants", headers=headers, json=body)
+
+
+async def pay_as_platform(client: AsyncClient, invoice_id: str, body: dict[str, object]):  # type: ignore[no-untyped-def]
+    headers = await platform_admin_headers(client)
+    return await client.post(f"/v1/billing/admin/invoices/{invoice_id}/pay", headers=headers, json=body)
+
+
+async def void_as_platform(client: AsyncClient, invoice_id: str):  # type: ignore[no-untyped-def]
+    headers = await platform_admin_headers(client)
+    return await client.post(f"/v1/billing/admin/invoices/{invoice_id}/void", headers=headers)

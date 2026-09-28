@@ -18,6 +18,7 @@ pnpm install && pnpm tsx subscription.ts   # or: npx tsx subscription.ts
 
 - `SynapseLimitError` carries `metric` + `limit` + `upgrade_url` — enough to
   render an upgrade prompt without another API call
-- `entitlements.grant(..., durationDays)` — a time-boxed promo/trial that
-  bypasses plan checks entirely
+- `entitlements.grant(orgId, ..., durationDays)` — a time-boxed promo/trial
+  that bypasses plan checks entirely. This is an **operator** call (platform-admin
+  token via `SYNAPSE_PLATFORM_TOKEN`); tenants cannot grant themselves features
 - `subscription.change()` — the cap moves; no downtime, no migration

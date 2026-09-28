@@ -23,8 +23,14 @@ org is pinned; a supplied `X-Org-Id` is ignored (tested).
 
 ## Scopes
 
-Scopes are permission keys (`usage:read`, `project:manage`, …). An **empty
-scope list means full access** — everything the creating user could exercise.
+Scopes are permission keys (`usage:read`, `project:manage`, …). **A key can
+never exceed its creator.** An empty scope list snapshots the creator's
+permissions at creation time (it never means "everything"); an explicit list
+must be a subset of what the creator holds or the request is rejected with 403
+(`exceeds_creator` lists the offending keys). At request time the key's scopes
+are intersected with the creator's *current* permissions, so demoting or
+removing the creator shrinks or disables their keys immediately. Keys minted
+by a key are bounded by the human who created the parent key.
 A key can never exceed its creator's authority, and scope enforcement reuses
 the RBAC gate:
 

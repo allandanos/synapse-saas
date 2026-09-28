@@ -51,6 +51,7 @@ def bind_api_key_context(key: ApiKey, org: Organization) -> None:
             permission_keys=frozenset(key.scopes),
             api_key_id=key.id,
             api_key_scopes=frozenset(key.scopes),
+            api_key_creator_id=key.created_by_user_id,
         )
     )
 

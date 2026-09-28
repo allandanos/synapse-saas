@@ -7,7 +7,7 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from tests.integration.conftest import owner_session_factory
+from tests.integration.conftest import grant_as_platform, owner_session_factory
 
 pytestmark = pytest.mark.pg
 
@@ -164,10 +164,8 @@ class TestEntitlementExpiryJobPath:
         self, client: AsyncClient, org_and_tokens
     ) -> None:
         headers = org_headers(org_and_tokens)
-        grant = await client.post(
-            "/v1/entitlements/grants",
-            headers=headers,
-            json={"feature_key": "sso", "source": "beta", "duration_days": 7},
+        grant = await grant_as_platform(
+            client, org_and_tokens["org_id"], {"feature_key": "sso", "source": "beta", "duration_days": 7}
         )
         assert grant.status_code == 201
 

@@ -131,6 +131,12 @@ class EntitlementService:
         await _cache.bump(str(organization_id))
         return entitlement
 
+    async def get(self, entitlement_id: UUID) -> Entitlement:
+        entitlement = await self.session.get(Entitlement, entitlement_id)
+        if entitlement is None:
+            raise EntitlementNotFoundError("Grant not found", extras={"entitlement_id": str(entitlement_id)})
+        return entitlement
+
     async def revoke(self, entitlement_id: UUID) -> Entitlement:
         entitlement = await self.session.get(Entitlement, entitlement_id)
         if entitlement is None:

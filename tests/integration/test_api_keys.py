@@ -186,3 +186,131 @@ class TestAudit:
         audit = (await client.get("/v1/audit", headers=org_headers(org_and_tokens))).json()
         events = [e["event_type"] for e in audit["data"]]
         assert "api_key.created" in events
+
+
+# ── C4: a key can never exceed its creator ────────────────────────────────────
+
+
+async def _register(client: AsyncClient, email: str) -> dict[str, str]:
+    reg = await client.post(
+        "/v1/auth/register", json={"email": email, "password": "password12345", "display_name": "M"}
+    )
+    assert reg.status_code == 201, reg.text
+    return {"access_token": reg.json()["tokens"]["access_token"]}
+
+
+async def _add_member(client: AsyncClient, owner: dict[str, str], email: str, role: str) -> dict[str, str]:
+    """Invite `email` with `role`, link the (already registered) user, return their org headers."""
+    member = await _register(client, email)
+    inv = await client.post(
+        "/v1/orgs/current/members/invite",
+        headers=org_headers(owner),
+        json={"email": email, "role_keys": [role]},
+    )
+    assert inv.status_code == 201, inv.text
+    from synapse_saas.tenancy.service import OrganizationService
+
+    async with owner_session_factory()() as session:
+        await OrganizationService(session).accept_invite_by_email(uuid.UUID(owner["org_id"]), email)
+        await session.commit()
+    return {"access_token": member["access_token"], "org_id": owner["org_id"]}
+
+
+async def _membership_id(client: AsyncClient, owner: dict[str, str], email: str) -> str:
+    members = (await client.get("/v1/orgs/current/members", headers=org_headers(owner))).json()
+    rows = members["data"]
+    return next(m["id"] for m in rows if m.get("email") == email)
+
+
+class TestKeysAreBoundedByCreator:
+    async def test_empty_scopes_snapshot_creator_not_everything(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        dev = await _add_member(client, org_and_tokens, "dev@example.com", "developer")
+        res = await client.post("/v1/api-keys", headers=org_headers(dev), json={"name": "dev key"})
+        assert res.status_code == 201, res.text
+        from synapse_saas.authorization.permissions import SYSTEM_ROLES
+
+        assert sorted(res.json()["scopes"]) == SYSTEM_ROLES["developer"]["permissions"]
+
+    async def test_scope_superset_rejected_403(self, client: AsyncClient, org_and_tokens) -> None:
+        dev = await _add_member(client, org_and_tokens, "dev2@example.com", "developer")
+        res = await client.post(
+            "/v1/api-keys", headers=org_headers(dev), json={"name": "escalate", "scopes": ["org:delete"]}
+        )
+        assert res.status_code == 403
+        assert res.json()["exceeds_creator"] == ["org:delete"]
+
+    async def test_developer_key_cannot_manage_billing(self, client: AsyncClient, org_and_tokens) -> None:
+        dev = await _add_member(client, org_and_tokens, "dev3@example.com", "developer")
+        _, plaintext = await create_key(client, dev, name="dev")
+        res = await client.post(
+            "/v1/subscription/change",
+            headers={"Authorization": f"Bearer {plaintext}"},
+            json={"plan_key": "pro"},
+        )
+        assert res.status_code == 403
+        assert res.json()["auth"] == "api_key"
+
+    async def test_demoting_the_creator_shrinks_the_key(self, client: AsyncClient, org_and_tokens) -> None:
+        dev = await _add_member(client, org_and_tokens, "dev4@example.com", "developer")
+        _, plaintext = await create_key(client, dev, name="dev")
+        key_headers = {"Authorization": f"Bearer {plaintext}"}
+        assert (await client.get("/v1/api-keys", headers=key_headers)).status_code == 200  # apikey:manage
+
+        mid = await _membership_id(client, org_and_tokens, "dev4@example.com")
+        demote = await client.patch(
+            f"/v1/memberships/{mid}", headers=org_headers(org_and_tokens), json={"role_keys": ["member"]}
+        )
+        assert demote.status_code == 200, demote.text
+
+        res = await client.get("/v1/api-keys", headers=key_headers)
+        assert res.status_code == 403
+        assert res.json()["reason"] == "creator_lacks_permission"
+
+    async def test_key_minted_by_key_is_bounded_by_the_human(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        dev = await _add_member(client, org_and_tokens, "dev5@example.com", "developer")
+        _, parent = await create_key(client, dev, name="parent")
+        parent_headers = {"Authorization": f"Bearer {parent}"}
+
+        child = await client.post("/v1/api-keys", headers=parent_headers, json={"name": "child"})
+        assert child.status_code == 201, child.text
+        from synapse_saas.authorization.permissions import SYSTEM_ROLES
+
+        assert sorted(child.json()["scopes"]) == SYSTEM_ROLES["developer"]["permissions"]
+
+        escalate = await client.post(
+            "/v1/api-keys", headers=parent_headers, json={"name": "child2", "scopes": ["billing:manage"]}
+        )
+        assert escalate.status_code == 403
+
+        # The audit row is attributed to the human behind the key, never the key's sentinel user id
+        dev_bearer = {"Authorization": f"Bearer {dev['access_token']}"}
+        me = (await client.get("/v1/auth/me", headers=dev_bearer)).json()
+        from sqlalchemy import text
+
+        async with owner_session_factory()() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT actor_type, actor_user_id::text, diff->>'api_key_id' AS key_id "
+                        "FROM audit_logs WHERE event_type = 'api_key.created' AND target_id = :tid"
+                    ),
+                    {"tid": child.json()["id"]},
+                )
+            ).one()
+        assert row.actor_type == "api_key"
+        assert row.actor_user_id == me["id"]
+        assert row.key_id is not None
+
+    async def test_owner_key_with_explicit_scopes_stays_within_them(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        _, plaintext = await create_key(client, org_and_tokens, name="ro", scopes=["org:read"])
+        res = await client.post(
+            "/v1/api-keys", headers={"Authorization": f"Bearer {plaintext}"}, json={"name": "x"}
+        )
+        assert res.status_code == 403
+        assert res.json()["permission"] == "apikey:manage"

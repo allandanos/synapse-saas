@@ -50,13 +50,29 @@ class ApiKeyService:
         scopes: list[str],
         expires_in_days: int | None = None,
         created_by_user_id: UUID | None = None,
+        creator_keys: frozenset[str] | None = None,
     ) -> tuple[ApiKey, str]:
-        """Create a key. Returns (key, plaintext) — plaintext shown once."""
+        """Create a key. Returns (key, plaintext) — plaintext shown once.
+
+        A key can never exceed its creator: requested scopes must be a subset
+        of `creator_keys`, and an empty request SNAPSHOTS the creator's current
+        permissions rather than meaning "everything". At auth time the scopes
+        are further intersected with the creator's then-current permissions.
+        """
         unknown = set(scopes) - PERMISSION_KEYS
         if unknown:
             raise PermissionDeniedError(
                 f"Unknown permission scopes: {sorted(unknown)}", extras={"unknown": sorted(unknown)}
             )
+        if creator_keys is not None:
+            if not scopes:
+                scopes = sorted(creator_keys)
+            exceeding = set(scopes) - creator_keys
+            if exceeding:
+                raise PermissionDeniedError(
+                    f"Requested scopes exceed the creator's permissions: {sorted(exceeding)}",
+                    extras={"exceeds_creator": sorted(exceeding)},
+                )
 
         plaintext = KEY_PREFIX + secrets.token_urlsafe(KEY_RANDOM_BYTES)
         key = ApiKey(

@@ -14,6 +14,7 @@ import {
   loginConsole,
   api,
   waitForEmail,
+  platformApi,
   API_URL,
 } from "./fixtures";
 
@@ -111,8 +112,10 @@ test.describe("invoice delivery", () => {
       await client.post(`/v1/billing/invoices/${invoice.id}/finalize`, {})
     ).json()) as { number: string; total_cents: number };
 
+    // Recording the payment is an OPERATOR action (the tenant cannot mark its own invoice paid)
+    const operator = await platformApi(request);
     const paid = (await (
-      await client.post(`/v1/billing/invoices/${invoice.id}/pay`, {
+      await operator.post(`/v1/billing/admin/invoices/${invoice.id}/pay`, {
         amount_cents: finalized.total_cents,
         reference: "e2e-bank-transfer",
       })

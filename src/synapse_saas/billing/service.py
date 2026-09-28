@@ -24,7 +24,7 @@ from synapse_saas.billing.protocol import (
 from synapse_saas.billing.registry import build_provider
 from synapse_saas.core import events
 from synapse_saas.core.config import get_settings
-from synapse_saas.core.errors import InvoiceNotFoundError
+from synapse_saas.core.errors import CheckoutConfirmNotAllowedError, InvoiceNotFoundError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.core.outbox import append_outbox
 from synapse_saas.identity.models import User
@@ -111,8 +111,20 @@ class BillingService:
         *,
         provider_subscription_id: str | None = None,
         contact_user: User | None = None,
+        source: str = "webhook",
     ) -> Subscription:
-        """Activate the subscription after checkout (webhook or manual confirm)."""
+        """Activate the subscription after checkout.
+
+        `source="webhook"` is the provider telling us payment happened.
+        `source="client_confirm"` is the tenant telling us — only trustworthy
+        when the provider has no payment truth of its own (CLIENT_CONFIRM).
+        """
+        if source == "client_confirm" and BillingCapability.CLIENT_CONFIRM not in self.provider.supports:
+            raise CheckoutConfirmNotAllowedError(
+                f"{self.provider.name} verifies payment via its own callback; activation "
+                "happens when the provider webhook arrives, not on client confirmation",
+                extras={"provider": self.provider.name},
+            )
         customer = await self.ensure_customer(organization, contact_user=contact_user)
         subscriptions = SubscriptionService(self.session)
         subscription = await subscriptions.change_plan(

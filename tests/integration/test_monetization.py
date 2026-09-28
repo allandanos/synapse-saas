@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import grant_as_platform
+
 pytestmark = pytest.mark.pg
 
 
@@ -101,10 +103,10 @@ class TestTrialEntitlement:
         before = (await client.get("/v1/entitlements", headers=headers)).json()
         assert "advanced_reports" not in before["features"]
 
-        grant = await client.post(
-            "/v1/entitlements/grants",
-            headers=headers,
-            json={
+        grant = await grant_as_platform(
+            client,
+            org_and_tokens["org_id"],
+            {
                 "feature_key": "advanced_reports",
                 "source": "trial",
                 "duration_days": 14,
@@ -145,10 +147,10 @@ class TestUsageMetering:
 
         # Shrink the window: use the users gauge instead via direct counter SQL is
         # overkill — instead prove atomicity with api_requests after a tight grant.
-        grant = await client.post(
-            "/v1/entitlements/grants",
-            headers=headers,
-            json={
+        grant = await grant_as_platform(
+            client,
+            org_and_tokens["org_id"],
+            {
                 "feature_key": "limit:api_requests",
                 "source": "addon",
                 "limit_value": 3,

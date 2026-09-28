@@ -32,7 +32,9 @@ from synapse_saas.core.errors import WebhookSignatureInvalidError
 
 class ManualBillingProvider(BillingProvider):
     name = "manual"
-    supports = frozenset({BillingCapability.HOSTED_CHECKOUT})  # "hosted" = internal page
+    # "hosted" = internal page; CLIENT_CONFIRM = the operator collects payment
+    # out of band, so the tenant's confirm is the activation signal.
+    supports = frozenset({BillingCapability.HOSTED_CHECKOUT, BillingCapability.CLIENT_CONFIRM})
 
     def __init__(self, webhook_token: str = "", currency: str = "PHP") -> None:
         self._webhook_token = webhook_token

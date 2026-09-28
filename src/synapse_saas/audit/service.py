@@ -27,20 +27,38 @@ class AuditService:
         target_id: UUID | None = None,
         diff: dict[str, Any] | None = None,
     ) -> AuditLog:
-        """Record an audit row. Never raises — audit must not block the mutation."""
+        """Record an audit row in the caller's transaction.
+
+        Actor resolution: an explicit `actor_user_id` wins; otherwise the bound
+        principal. A programmatic principal (API key) is attributed to the human
+        who created the key with `actor_type="api_key"` and the key id in the
+        diff — its `user_id` is a sentinel that matches no `users` row and must
+        never be written to the FK column.
+        """
         user = context.current_user()
-        effective_actor = actor_user_id or (user.user_id if user else None)
+        effective_actor = actor_user_id
+        effective_type = actor_type
+        effective_diff = diff
+        if effective_actor is None and user is not None:
+            if user.api_key_id is not None:
+                effective_actor = user.api_key_creator_id
+                effective_type = "api_key"
+                effective_diff = {**(diff or {}), "api_key_id": str(user.api_key_id)}
+            else:
+                effective_actor = user.user_id
+        if effective_actor is None and effective_type == "user":
+            effective_type = "system"
         request_id = context.current_request_id()
 
         entry = AuditLog(
             id=uuid_v7(),
             organization_id=organization_id,
             actor_user_id=effective_actor,
-            actor_type=actor_type if effective_actor is not None else "system",
+            actor_type=effective_type,
             event_type=event_type,
             target_type=target_type,
             target_id=target_id,
-            diff=diff,
+            diff=effective_diff,
             request_id=request_id,
         )
         self.session.add(entry)

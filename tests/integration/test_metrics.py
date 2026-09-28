@@ -7,6 +7,8 @@ import contextlib
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import grant_as_platform
+
 pytestmark = pytest.mark.pg
 
 
@@ -112,10 +114,10 @@ class TestBusinessCounters:
             "X-Org-Id": org_and_tokens["org_id"],
         }
         # Cap api_requests at 10, then trip it
-        await client.post(
-            "/v1/entitlements/grants",
-            headers=headers,
-            json={"feature_key": "limit:api_requests", "source": "addon", "limit_value": 10},
+        await grant_as_platform(
+            client,
+            org_and_tokens["org_id"],
+            {"feature_key": "limit:api_requests", "source": "addon", "limit_value": 10},
         )
         ok = await client.post(
             "/v1/usage/consume",
@@ -141,10 +143,10 @@ class TestBusinessCounters:
             "Authorization": f"Bearer {org_and_tokens['access_token']}",
             "X-Org-Id": org_and_tokens["org_id"],
         }
-        await client.post(
-            "/v1/entitlements/grants",
-            headers=headers,
-            json={"feature_key": "api_access", "source": "override", "enabled": False},
+        await grant_as_platform(
+            client,
+            org_and_tokens["org_id"],
+            {"feature_key": "api_access", "source": "override", "enabled": False},
         )
         await VersionedCache("entl").bump(org_and_tokens["org_id"])
 

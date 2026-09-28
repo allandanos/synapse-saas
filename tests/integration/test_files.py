@@ -7,6 +7,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import grant_as_platform
+
 pytestmark = pytest.mark.pg
 
 
@@ -93,10 +95,10 @@ class TestQuota:
 
     async def test_quota_breach_402(self, client: AsyncClient, org_and_tokens) -> None:
         """Free plan storage_bytes = 1 GiB — cap via a tight addon, then upload."""
-        grant = await client.post(
-            "/v1/entitlements/grants",
-            headers=org_headers(org_and_tokens),
-            json={
+        grant = await grant_as_platform(
+            client,
+            org_and_tokens["org_id"],
+            {
                 "feature_key": "limit:storage_bytes",
                 "source": "addon",
                 "limit_value": 100,
@@ -119,10 +121,10 @@ class TestFeatureGate:
         """Revoke api_access (kill switch) and uploads turn into 403 upgrade prompts."""
         from synapse_saas.core.cache import VersionedCache
 
-        await client.post(
-            "/v1/entitlements/grants",
-            headers=org_headers(org_and_tokens),
-            json={"feature_key": "api_access", "source": "override", "enabled": False},
+        await grant_as_platform(
+            client,
+            org_and_tokens["org_id"],
+            {"feature_key": "api_access", "source": "override", "enabled": False},
         )
         await VersionedCache("entl").bump(org_and_tokens["org_id"])
 

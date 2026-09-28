@@ -178,3 +178,34 @@ export async function waitForEmail(
 
 // Re-export so journeys import one module.
 export { base as test, expect };
+
+// ── Platform operator ───────────────────────────────────────────────────────
+// Grants and money movements are operator actions. The e2e stack seeds a
+// platform admin (`synapse-cli seed --dev`); journeys that need an operator
+// log in as that user. Credentials are the documented dev-seed defaults.
+
+export const PLATFORM_ADMIN_EMAIL = process.env.E2E_PLATFORM_ADMIN_EMAIL ?? "owner@acme.example.com";
+export const PLATFORM_ADMIN_PASSWORD = process.env.E2E_PLATFORM_ADMIN_PASSWORD ?? "password123";
+
+export async function platformApi(request: APIRequestContext) {
+  const login = await request.post(`${API_URL}/v1/auth/login`, {
+    data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
+  });
+  const body = (await login.json().catch(() => ({}))) as { tokens?: { access_token: string } };
+  expect(
+    login.ok() && body.tokens?.access_token,
+    `platform admin login: ${login.status()} — run synapse-cli seed --dev`,
+  ).toBeTruthy();
+  const headers = { Authorization: `Bearer ${body.tokens!.access_token}` };
+  return {
+    async post(path: string, data: unknown) {
+      return request.post(`${API_URL}${path}`, { headers, data });
+    },
+    async get(path: string) {
+      return request.get(`${API_URL}${path}`, { headers });
+    },
+    async delete(path: string) {
+      return request.delete(`${API_URL}${path}`, { headers });
+    },
+  };
+}

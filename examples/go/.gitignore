@@ -1,0 +1,6 @@
+# Built example binaries (go build . in each module)
+/ai-saas/ai-saas
+/domain-service/domain-service
+/hello-saas/hello-saas
+/multi-tenant/multi-tenant
+/subscription/subscription

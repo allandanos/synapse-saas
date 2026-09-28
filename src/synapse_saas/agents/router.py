@@ -9,26 +9,26 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
 from synapse_saas.agents.schemas import AgentCreate, AgentRead, AgentUpdate
 from synapse_saas.agents.service import AgentService
 from synapse_saas.authorization.dependencies import require_permission
-from synapse_saas.entitlements.service import EntitlementService
+from synapse_saas.entitlements.dependencies import require_feature
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.tenancy.dependencies import TenantDep
 
-router = APIRouter(prefix="/agents", tags=["agents"])
-
-
-async def _require_agents_feature(tenant: TenantDep, session: SessionDep) -> None:
-    """403 with upgrade hints for orgs whose plan lacks `agents`."""
-    await EntitlementService(session).require_feature(tenant.organization_id, "agents")
+# Every agents route is behind the `agents` entitlement (403 + upgrade hints
+# for plans without it) — one declaration, not one call per handler.
+router = APIRouter(
+    prefix="/agents",
+    tags=["agents"],
+    dependencies=[Depends(require_feature("agents"))],
+)
 
 
 @router.get("", response_model=list[AgentRead])
 async def list_agents(tenant: TenantDep, session: SessionDep, user: CurrentUser) -> list[AgentRead]:
-    await _require_agents_feature(tenant, session)
     await require_permission("agents:read", user, session, tenant)
     agents = await AgentService(session).list_for_org(tenant.organization_id)
     return [AgentRead.model_validate(a) for a in agents]
@@ -38,7 +38,6 @@ async def list_agents(tenant: TenantDep, session: SessionDep, user: CurrentUser)
 async def create_agent(
     body: AgentCreate, tenant: TenantDep, session: SessionDep, user: CurrentUser
 ) -> AgentRead:
-    await _require_agents_feature(tenant, session)
     await require_permission("agents:manage", user, session, tenant)
     agent = await AgentService(session).create(
         tenant.organization_id,
@@ -52,7 +51,6 @@ async def create_agent(
 
 @router.get("/{agent_id}", response_model=AgentRead)
 async def get_agent(agent_id: UUID, tenant: TenantDep, session: SessionDep, user: CurrentUser) -> AgentRead:
-    await _require_agents_feature(tenant, session)
     await require_permission("agents:read", user, session, tenant)
     agent = await AgentService(session).get(agent_id, tenant.organization_id)
     return AgentRead.model_validate(agent)
@@ -66,7 +64,6 @@ async def update_agent(
     session: SessionDep,
     user: CurrentUser,
 ) -> AgentRead:
-    await _require_agents_feature(tenant, session)
     await require_permission("agents:manage", user, session, tenant)
     agent = await AgentService(session).update(
         agent_id,
@@ -82,7 +79,6 @@ async def update_agent(
 async def disable_agent(
     agent_id: UUID, tenant: TenantDep, session: SessionDep, user: CurrentUser
 ) -> AgentRead:
-    await _require_agents_feature(tenant, session)
     await require_permission("agents:manage", user, session, tenant)
     agent = await AgentService(session).set_status(agent_id, tenant.organization_id, status="disabled")
     return AgentRead.model_validate(agent)
@@ -92,7 +88,6 @@ async def disable_agent(
 async def enable_agent(
     agent_id: UUID, tenant: TenantDep, session: SessionDep, user: CurrentUser
 ) -> AgentRead:
-    await _require_agents_feature(tenant, session)
     await require_permission("agents:manage", user, session, tenant)
     agent = await AgentService(session).set_status(agent_id, tenant.organization_id, status="active")
     return AgentRead.model_validate(agent)
@@ -100,6 +95,5 @@ async def enable_agent(
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent(agent_id: UUID, tenant: TenantDep, session: SessionDep, user: CurrentUser) -> None:
-    await _require_agents_feature(tenant, session)
     await require_permission("agents:manage", user, session, tenant)
     await AgentService(session).delete(agent_id, tenant.organization_id)

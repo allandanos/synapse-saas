@@ -3003,6 +3003,150 @@
         ]
       }
     },
+    "/v1/admin/orgs/{org_id}/entitlements": {
+      "get": {
+        "operationId": "admin_effective_entitlements_v1_admin_orgs__org_id__entitlements_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveEntitlementsRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Effective Entitlements",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/admin/orgs/{org_id}/entitlements/grants": {
+      "post": {
+        "operationId": "admin_grant_entitlement_v1_admin_orgs__org_id__entitlements_grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Grant Entitlement V1 Admin Orgs  Org Id  Entitlements Grants Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Grant Entitlement",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/admin/orgs/{org_id}/entitlements/grants/{grant_id}": {
+      "delete": {
+        "operationId": "admin_revoke_entitlement_v1_admin_orgs__org_id__entitlements_grants__grant_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Revoke Entitlement",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/v1/agents": {
       "get": {
         "operationId": "list_agents_v1_agents_get",
@@ -3795,6 +3939,103 @@
         ]
       }
     },
+    "/v1/billing/admin/invoices/{invoice_id}/pay": {
+      "post": {
+        "description": "Record an external payment (bank transfer, check, cash) against an open invoice.",
+        "operationId": "admin_record_payment_v1_billing_admin_invoices__invoice_id__pay_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invoice_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invoice Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceDetailRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Record Payment",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/billing/admin/invoices/{invoice_id}/void": {
+      "post": {
+        "operationId": "admin_void_invoice_v1_billing_admin_invoices__invoice_id__void_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invoice_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invoice Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceDetailRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Void Invoice",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
     "/v1/billing/admin/revenue-monthly": {
       "get": {
         "operationId": "revenue_monthly_v1_billing_admin_revenue_monthly_get",
@@ -3888,7 +4129,7 @@
     },
     "/v1/billing/checkout/confirm": {
       "post": {
-        "description": "Manual-provider flow: confirm and activate immediately.",
+        "description": "Offline-payment flow: the tenant confirms, the operator collects out of band.\n\n409 on any provider that verifies payment itself (Stripe, Paddle, Xendit,\nPayMongo) \u2014 those activate from the provider webhook only.",
         "operationId": "confirm_checkout_v1_billing_checkout_confirm_post",
         "requestBody": {
           "content": {
@@ -4084,60 +4325,6 @@
         ]
       }
     },
-    "/v1/billing/invoices/{invoice_id}/pay": {
-      "post": {
-        "description": "Record an external payment (bank transfer, check, cash) against an open invoice.",
-        "operationId": "record_payment_v1_billing_invoices__invoice_id__pay_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "invoice_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Invoice Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PaymentRecordRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvoiceDetailRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Record Payment",
-        "tags": [
-          "billing"
-        ]
-      }
-    },
     "/v1/billing/invoices/{invoice_id}/pdf": {
       "get": {
         "description": "Stream the framework-rendered PDF for an invoice.",
@@ -4175,49 +4362,6 @@
           }
         },
         "summary": "Download Invoice Pdf",
-        "tags": [
-          "billing"
-        ]
-      }
-    },
-    "/v1/billing/invoices/{invoice_id}/void": {
-      "post": {
-        "operationId": "void_invoice_v1_billing_invoices__invoice_id__void_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "invoice_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Invoice Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvoiceDetailRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Void Invoice",
         "tags": [
           "billing"
         ]
@@ -4355,49 +4499,6 @@
           }
         },
         "summary": "Effective Entitlements",
-        "tags": [
-          "entitlements"
-        ]
-      }
-    },
-    "/v1/entitlements/grants": {
-      "post": {
-        "operationId": "grant_entitlement_v1_entitlements_grants_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GrantRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Grant Entitlement V1 Entitlements Grants Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Grant Entitlement",
         "tags": [
           "entitlements"
         ]

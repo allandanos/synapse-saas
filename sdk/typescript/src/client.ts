@@ -73,12 +73,14 @@ export class SynapseClient {
 
   readonly entitlements = {
     effective: (): Promise<Json> => this.call("GET", "/v1/entitlements"),
+    /** Platform-operator action: requires a platform-admin bearer, targets any org. */
     grant: (
+      organizationId: string,
       featureKey: string,
       source: string,
       opts: { durationDays?: number; limitValue?: number } = {},
     ): Promise<Json> =>
-      this.call("POST", "/v1/entitlements/grants", {
+      this.call("POST", `/v1/admin/orgs/${organizationId}/entitlements/grants`, {
         body: {
           feature_key: featureKey,
           source,

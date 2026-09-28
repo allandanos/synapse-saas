@@ -180,18 +180,20 @@ class EntitlementsResource(_Resource):
 
     def grant(
         self,
+        organization_id: str,
         feature_key: str,
         source: str,
         *,
         duration_days: int | None = None,
         limit_value: int | None = None,
     ) -> dict:
+        """Platform-operator action: requires a platform-admin bearer, targets any org."""
         payload: dict[str, Any] = {"feature_key": feature_key, "source": source}
         if duration_days is not None:
             payload["duration_days"] = duration_days
         if limit_value is not None:
             payload["limit_value"] = limit_value
-        return self._call("POST", "/v1/entitlements/grants", json=payload)
+        return self._call("POST", f"/v1/admin/orgs/{organization_id}/entitlements/grants", json=payload)
 
 
 class ApiKeysResource(_Resource):

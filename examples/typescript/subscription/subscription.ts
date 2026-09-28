@@ -3,13 +3,10 @@
  *
  * Freemium lifecycle: quota wall → trial grant → plan upgrade.
  *   SYNAPSE_API (default http://localhost:8000)
- *   SYNAPSE_TOKEN (access token for an org owner)
+ *   SYNAPSE_TOKEN (access token for an org owner), SYNAPSE_ORG (org uuid)
+ *   SYNAPSE_PLATFORM_TOKEN (optional: platform-admin token — grants are an operator action)
  */
-import {
-  SynapseClient,
-  SynapseFeatureGatedError,
-  SynapseLimitError,
-} from "@synapse-saas/client";
+import { SynapseClient, SynapseLimitError } from "@synapse-saas/client";
 
 const api = process.env.SYNAPSE_API ?? "http://localhost:8000";
 const token = process.env.SYNAPSE_TOKEN;
@@ -20,6 +17,7 @@ if (!token) {
 
 const orgId = process.env.SYNAPSE_ORG ?? "";
 const client = new SynapseClient(api, { accessToken: token, orgId });
+const platformToken = process.env.SYNAPSE_PLATFORM_TOKEN;
 
 async function main(): Promise<void> {
   // ── Where we start: the free plan ──────────────────────────────────────
@@ -47,21 +45,24 @@ async function main(): Promise<void> {
   }
 
   // ── Trial grant: a paid feature without a plan change ──────────────────
-  await client.entitlements.grant("advanced_reports", "promo", { durationDays: 14 });
-  const granted = (await client.entitlements.effective()) as { features: string[] };
-  console.log(
-    `after grant: advanced_reports=${granted.features.includes("advanced_reports")} (plan unchanged)`,
-  );
-
-  // ── A gated feature now passes; other gates still throw ───────────────
-  try {
-    await client.entitlements.grant("sso", "promo", { durationDays: 1 });
-    console.log("sso granted too");
-  } catch (err) {
-    if (err instanceof SynapseFeatureGatedError) {
-      console.log(`sso unavailable — available in: ${err.availableIn.join(", ")}`);
-    }
+  // Grants are an OPERATOR action: a tenant can never grant itself features.
+  // The platform team does this with a platform-admin token against the org.
+  if (platformToken) {
+    const operator = new SynapseClient(api, { accessToken: platformToken });
+    await operator.entitlements.grant(orgId, "advanced_reports", "promo", { durationDays: 14 });
+    const granted = (await client.entitlements.effective()) as { features: string[] };
+    console.log(
+      `after grant: advanced_reports=${granted.features.includes("advanced_reports")} (plan unchanged)`,
+    );
+  } else {
+    console.log("skipping trial grant (set SYNAPSE_PLATFORM_TOKEN — grants are an operator action)");
   }
+
+  // ── Other gates still hold: sso is enterprise-only ─────────────────────
+  // A gated route answers 403 with `feature` + `available_in`; the SDK maps
+  // that to SynapseFeatureGatedError so the UI can render an upgrade prompt.
+  const gated = (await client.entitlements.effective()) as { features: string[] };
+  console.log(`sso available: ${gated.features.includes("sso")} (enterprise plan or an operator grant)`);
 
   // ── Plan upgrade: the cap moves ────────────────────────────────────────
   await client.subscription.change("starter");

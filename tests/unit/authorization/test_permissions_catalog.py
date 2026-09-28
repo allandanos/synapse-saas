@@ -21,12 +21,19 @@ class TestCatalog:
     def test_permission_keys_matches(self) -> None:
         assert {p.key for p in PERMISSIONS} == PERMISSION_KEYS
 
-    def test_owner_has_everything(self) -> None:
-        assert set(SYSTEM_ROLES["owner"]["permissions"]) == PERMISSION_KEYS  # type: ignore[arg-type]
+    def test_owner_has_every_tenant_permission(self) -> None:
+        # entitlement:manage is an operator permission — no tenant role holds it (ADR 0008)
+        owner = set(SYSTEM_ROLES["owner"]["permissions"])  # type: ignore[arg-type]
+        assert owner == PERMISSION_KEYS - {"entitlement:manage"}
 
     def test_admin_lacks_only_org_delete(self) -> None:
         admin = set(SYSTEM_ROLES["admin"]["permissions"])  # type: ignore[arg-type]
-        assert admin == PERMISSION_KEYS - {"org:delete"}
+        owner = set(SYSTEM_ROLES["owner"]["permissions"])  # type: ignore[arg-type]
+        assert admin == owner - {"org:delete"}
+
+    def test_no_tenant_role_can_grant_entitlements(self) -> None:
+        for key, role in SYSTEM_ROLES.items():
+            assert "entitlement:manage" not in role["permissions"], key  # type: ignore[operator]
 
     def test_member_is_least_privileged(self) -> None:
         member = set(SYSTEM_ROLES["member"]["permissions"])  # type: ignore[arg-type]

@@ -37,7 +37,9 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     # Webhooks
     PermissionDef("webhook:manage", "webhook", "manage", "Manage webhook endpoints and view deliveries"),
     # Entitlements
-    PermissionDef("entitlement:manage", "entitlement", "manage", "Grant or revoke feature entitlements"),
+    PermissionDef(
+        "entitlement:manage", "entitlement", "manage", "Grant or revoke feature entitlements (operator)"
+    ),
     PermissionDef("apikey:manage", "apikey", "manage", "Create, list, and revoke API keys"),
     # Files
     PermissionDef("file:read", "file", "read", "List and download organization files"),
@@ -61,7 +63,10 @@ SYSTEM_ROLE_BILLING = "billing"
 SYSTEM_ROLE_DEVELOPER = "developer"
 SYSTEM_ROLE_MEMBER = "member"
 
-_OWNER = {p.key for p in PERMISSIONS}
+# entitlement:manage is an OPERATOR permission: a tenant must never be able to
+# grant itself features or raise its own limits. It stays in the catalog for
+# platform-operator roles; no tenant system role carries it.
+_OWNER = {p.key for p in PERMISSIONS} - {"entitlement:manage"}
 _ADMIN = _OWNER - {"org:delete"}
 _BILLING = {"org:read", "billing:read", "billing:manage", "usage:read"}
 _DEVELOPER = {

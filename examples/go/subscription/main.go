@@ -2,6 +2,7 @@
 //
 //	SYNAPSE_API (default http://localhost:8000)
 //	SYNAPSE_TOKEN (access token for an org owner), SYNAPSE_ORG (org uuid)
+//	SYNAPSE_PLATFORM_TOKEN (optional: platform-admin token — grants are an operator action)
 package main
 
 import (
@@ -46,8 +47,17 @@ func main() {
 	}
 
 	// ── Trial grant: a paid feature without a plan change ──────────────────
-	if _, err := client.Entitlements().Grant(ctx, "advanced_reports", "promo", 14); err != nil {
-		log.Fatal(err)
+	// Grants are an OPERATOR action: a tenant can never grant itself features.
+	if platformToken := os.Getenv("SYNAPSE_PLATFORM_TOKEN"); platformToken != "" {
+		operator, err := synapse.New(api, synapse.Options{AccessToken: platformToken})
+		if err != nil {
+			log.Fatal(err)
+		}
+		if _, err := operator.Entitlements().Grant(ctx, os.Getenv("SYNAPSE_ORG"), "advanced_reports", "promo", 14); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		fmt.Println("skipping trial grant (set SYNAPSE_PLATFORM_TOKEN — grants are an operator action)")
 	}
 	granted, _ := client.Entitlements().Effective(ctx)
 	if ent, ok := granted["features"].([]any); ok {

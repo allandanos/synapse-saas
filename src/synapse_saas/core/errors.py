@@ -288,3 +288,10 @@ class ConflictError(DomainError):
 class RateLimitedError(DomainError):
     status = 429
     title = "rate_limited"
+
+
+class CheckoutConfirmNotAllowedError(DomainError):
+    """Client-side checkout confirmation on a provider that verifies payment itself."""
+
+    status = 409
+    title = "checkout_confirm_not_allowed"

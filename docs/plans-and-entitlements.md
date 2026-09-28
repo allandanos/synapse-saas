@@ -56,10 +56,13 @@ changes.
 
 ### Limits as grants
 
-A grant with feature key `limit:<metric>` overrides that metric's cap:
+A grant with feature key `limit:<metric>` overrides that metric's cap.
+Grants are an **operator** action — they live under the platform-admin
+surface and no tenant role can issue one (an owner must not be able to raise
+its own limits or grant itself `sso`; see ADR 0008):
 
 ```json
-POST /v1/entitlements/grants
+POST /v1/admin/orgs/{org_id}/entitlements/grants      # platform-admin bearer
 {"feature_key": "limit:api_requests", "source": "addon", "limit_value": 250000}
 ```
 

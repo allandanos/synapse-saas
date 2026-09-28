@@ -34,8 +34,10 @@ class UserContext:
     """The authenticated actor.
 
     When `api_key_id` is set, the actor is a programmatic key, not a user:
-    user_id is a nil UUID sentinel, `email` names the key, and permission_keys
-    are the key's scopes (empty ⇒ everything the creating user could exercise).
+    user_id is a fresh random sentinel that matches no `users` row (never write
+    it to a FK — audit attributes key actions to `api_key_creator_id`), `email`
+    names the key, and permission_keys are the key's scopes, bounded by the
+    creating user's current permissions.
     """
 
     user_id: UUID
@@ -43,8 +45,10 @@ class UserContext:
     is_platform_admin: bool = False
     permission_keys: frozenset[str] = field(default_factory=frozenset)
     api_key_id: UUID | None = None
-    # When set (key auth), permissions come from the key's scopes — not RBAC
+    # When set (key auth), permissions come from the key's scopes — not RBAC —
+    # AND are intersected with what the creating user can currently exercise.
     api_key_scopes: frozenset[str] | None = None
+    api_key_creator_id: UUID | None = None
 
 
 _tenant: ContextVar[TenantContext | None] = ContextVar("synapse_tenant", default=None)

@@ -10,7 +10,8 @@ import java.util.Map;
  * subscription (Java) — freemium lifecycle: quota wall → trial grant → upgrade.
  *
  * <p>SYNAPSE_API, SYNAPSE_TOKEN (access token for an org owner),
- * SYNAPSE_ORG (org uuid).
+ * SYNAPSE_ORG (org uuid), SYNAPSE_PLATFORM_TOKEN (optional: platform-admin
+ * token — grants are an operator action).
  */
 public final class SubscriptionSample {
 
@@ -39,11 +40,18 @@ public final class SubscriptionSample {
         }
 
         // ── Trial grant: a paid feature without a plan change ──────────────
-        client.entitlements.grant("advanced_reports", "promo", 14);
-        Map<String, Object> granted = client.entitlements.effective();
-        if (granted.get("features") instanceof List<?> features) {
-            System.out.printf("after grant: advanced_reports=%s (plan unchanged)%n",
-                features.contains("advanced_reports"));
+        // Grants are an OPERATOR action: a tenant can never grant itself features.
+        String platformToken = System.getenv("SYNAPSE_PLATFORM_TOKEN");
+        if (platformToken != null && !platformToken.isBlank()) {
+            SynapseClient operator = SynapseClient.builder(api, null, platformToken).build();
+            operator.entitlements.grant(orgId, "advanced_reports", "promo", 14);
+            Map<String, Object> granted = client.entitlements.effective();
+            if (granted.get("features") instanceof List<?> features) {
+                System.out.printf("after grant: advanced_reports=%s (plan unchanged)%n",
+                    features.contains("advanced_reports"));
+            }
+        } else {
+            System.out.println("skipping trial grant (set SYNAPSE_PLATFORM_TOKEN — grants are an operator action)");
         }
 
         // ── Plan upgrade: the cap moves ────────────────────────────────────

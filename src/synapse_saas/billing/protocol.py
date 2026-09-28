@@ -27,6 +27,11 @@ class BillingCapability(StrEnum):
     RECURRING_HOSTED = "recurring_hosted"  # provider-side recurring subscriptions
     PLAN_SYNC = "plan_sync"  # can push our catalog to the provider
     WEBHOOK_SIGNED = "webhook_signed"
+    # Activation may be confirmed by the tenant WITHOUT a provider callback
+    # (offline/manual payment). Providers that verify payment themselves must
+    # never carry this flag — otherwise POST /billing/checkout/confirm is a
+    # free upgrade.
+    CLIENT_CONFIRM = "client_confirm"
 
 
 @dataclass(frozen=True, slots=True)

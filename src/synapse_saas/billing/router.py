@@ -25,6 +25,7 @@ from synapse_saas.billing.schemas import (
 )
 from synapse_saas.billing.service import BillingService
 from synapse_saas.billing.webhooks import BillingWebhookService
+from synapse_saas.core.errors import InvoiceNotFoundError
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.subscriptions.service import SubscriptionService
 from synapse_saas.tenancy.dependencies import PlatformAdminDep, TenantDep
@@ -67,12 +68,16 @@ async def confirm_checkout(
     session: SessionDep,
     user: CurrentUser,
 ) -> dict[str, Any]:
-    """Manual-provider flow: confirm and activate immediately."""
+    """Offline-payment flow: the tenant confirms, the operator collects out of band.
+
+    409 on any provider that verifies payment itself (Stripe, Paddle, Xendit,
+    PayMongo) — those activate from the provider webhook only.
+    """
     await require_permission("billing:manage", user, session, tenant)
     org = await OrganizationService(session).get_organization(tenant.organization_id)
     plan = await SubscriptionService(session).plan_by_key(body.plan_key)
     billing = BillingService(session)
-    subscription = await billing.complete_checkout(org, plan, contact_user=user)
+    subscription = await billing.complete_checkout(org, plan, contact_user=user, source="client_confirm")
     return {
         "status": subscription.status,
         "plan_key": plan.key,
@@ -158,34 +163,51 @@ async def finalize_invoice(
     return await _detail(session, invoice)
 
 
-@router.post("/invoices/{invoice_id}/pay", response_model=InvoiceDetailRead)
-async def record_payment(
+# ── Operator-only money movements ─────────────────────────────────────────────
+# Recording a payment or voiding an invoice is the OPERATOR's statement about
+# money that changed hands; a tenant must never be able to mark its own
+# invoice paid. Platform admin, org derived from the invoice.
+
+
+async def _invoice_org(session: SessionDep, invoice_id: UUID) -> UUID:
+    from sqlalchemy import select
+
+    from synapse_saas.billing.models import Invoice
+
+    org_id = (
+        await session.execute(select(Invoice.organization_id).where(Invoice.id == invoice_id))
+    ).scalar_one_or_none()
+    if org_id is None:
+        raise InvoiceNotFoundError("Invoice not found", extras={"invoice_id": str(invoice_id)})
+    return org_id
+
+
+@router.post("/admin/invoices/{invoice_id}/pay", response_model=InvoiceDetailRead)
+async def admin_record_payment(
     invoice_id: UUID,
     body: PaymentRecordRequest,
-    tenant: TenantDep,
+    platform: PlatformAdminDep,
     session: SessionDep,
-    user: CurrentUser,
 ) -> InvoiceDetailRead:
     """Record an external payment (bank transfer, check, cash) against an open invoice."""
-    await require_permission("billing:manage", user, session, tenant)
+    org_id = await _invoice_org(session, invoice_id)
     invoice = await InvoicingService(session).record_payment(
         invoice_id,
-        tenant.organization_id,
+        org_id,
         amount_cents=body.amount_cents,
         reference=body.reference,
     )
     return await _detail(session, invoice)
 
 
-@router.post("/invoices/{invoice_id}/void", response_model=InvoiceDetailRead)
-async def void_invoice(
+@router.post("/admin/invoices/{invoice_id}/void", response_model=InvoiceDetailRead)
+async def admin_void_invoice(
     invoice_id: UUID,
-    tenant: TenantDep,
+    platform: PlatformAdminDep,
     session: SessionDep,
-    user: CurrentUser,
 ) -> InvoiceDetailRead:
-    await require_permission("billing:manage", user, session, tenant)
-    invoice = await InvoicingService(session).void(invoice_id, tenant.organization_id)
+    org_id = await _invoice_org(session, invoice_id)
+    invoice = await InvoicingService(session).void(invoice_id, org_id)
     return await _detail(session, invoice)
 
 

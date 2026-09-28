@@ -154,10 +154,10 @@ public class SynapseClient {
             return call("GET", "/v1/entitlements", null, null);
         }
 
-        /** Time-boxed feature grant (trial/promo/…) independent of the plan. */
-        public Map<String, Object> grant(String featureKey, String source, int durationDays)
+        /** Platform-operator action (platform-admin bearer): time-boxed feature grant for any org. */
+        public Map<String, Object> grant(String organizationId, String featureKey, String source, int durationDays)
                 throws IOException, InterruptedException {
-            return call("POST", "/v1/entitlements/grants",
+            return call("POST", "/v1/admin/orgs/" + organizationId + "/entitlements/grants",
                 Map.of("feature_key", featureKey, "source", source, "duration_days", durationDays),
                 null);
         }

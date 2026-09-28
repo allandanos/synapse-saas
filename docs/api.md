@@ -60,6 +60,8 @@ Conventions:
 | POST | `/billing/checkout/confirm` | manual-provider activation |
 | GET | `/billing/portal-url` | provider portal, null when unsupported |
 | GET | `/billing/invoices` | org invoices |
+| POST | `/billing/admin/invoices/{id}/pay` | **platform admin** — record an out-of-band payment (tenants cannot mark their own invoice paid) |
+| POST | `/billing/admin/invoices/{id}/void` | **platform admin** — void an open invoice |
 | POST | `/billing/webhooks/{provider}` | raw-body ingest; provider-verifiable |
 
 ## Entitlements & usage
@@ -67,7 +69,9 @@ Conventions:
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/entitlements` | effective features + limits |
-| POST | `/entitlements/grants` | `entitlement:manage`; sources: trial/addon/promo/beta/override/enterprise/grandfather |
+| GET | `/admin/orgs/{org_id}/entitlements` | **platform admin** — effective entitlements for any org |
+| POST | `/admin/orgs/{org_id}/entitlements/grants` | **platform admin** — sources: trial/addon/promo/beta/override/enterprise/grandfather. Tenants cannot grant themselves entitlements (ADR 0008) |
+| DELETE | `/admin/orgs/{org_id}/entitlements/grants/{grant_id}` | **platform admin** — revoke a grant |
 | POST | `/usage/events` | batch ≤100; metering never blocks |
 | POST | `/usage/consume` | atomic; **402** with `{metric, limit, used, upgrade_url}` on breach |
 | GET | `/usage/check?metric=` | pre-flight |

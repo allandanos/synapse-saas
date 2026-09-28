@@ -71,3 +71,35 @@ class TestEnvFileOverride:
         assert (os.environ.get("SYNAPSE_ENV_FILE", ".env") or None) is None
         monkeypatch.setenv("SYNAPSE_ENV_FILE", "/etc/synapse/prod.env")
         assert os.environ.get("SYNAPSE_ENV_FILE", ".env") == "/etc/synapse/prod.env"
+
+
+class TestOriginsAndCookies:
+    def test_cors_origins_include_web_origin_first(self) -> None:
+        s = Settings(
+            web_origin="https://console.example.com",
+            web_origins="https://a.example.com, https://console.example.com",
+        )  # type: ignore[arg-type]
+        assert s.cors_origins == ["https://console.example.com", "https://a.example.com"]
+
+    def test_cookie_secure_derivation(self) -> None:
+        assert (
+            Settings(env="development", web_origin="http://localhost:3000").cookie_secure_effective is False
+        )
+        assert (
+            Settings(env="development", web_origin="https://console.example.com").cookie_secure_effective
+            is True
+        )
+        assert (
+            Settings(
+                env="production",
+                secret_key=PROD_KEY,
+                web_origin="http://x",
+                auth_rate_limit_per_ip=20,
+                auth_rate_limit_per_identity=5,
+            ).cookie_secure_effective
+            is True
+        )
+        assert (
+            Settings(env="development", web_origin="http://x", cookie_secure=True).cookie_secure_effective
+            is True
+        )

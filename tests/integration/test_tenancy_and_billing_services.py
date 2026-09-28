@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.conftest import grant_as_platform
+
 pytestmark = pytest.mark.pg
 
 
@@ -160,19 +162,17 @@ class TestUsageCheckEndpoint:
 
 class TestEntitlementGrantValidation:
     async def test_invalid_source_rejected(self, client: AsyncClient, org_and_tokens) -> None:
-        res = await client.post(
-            "/v1/entitlements/grants",
-            headers=org_headers(org_and_tokens),
-            json={"feature_key": "sso", "source": "magic"},
+        res = await grant_as_platform(
+            client, org_and_tokens["org_id"], {"feature_key": "sso", "source": "magic"}
         )
         assert res.status_code == 422
 
     async def test_limit_addon_grant_changes_cap(self, client: AsyncClient, org_and_tokens) -> None:
         headers = org_headers(org_and_tokens)
-        await client.post(
-            "/v1/entitlements/grants",
-            headers=headers,
-            json={
+        await grant_as_platform(
+            client,
+            org_and_tokens["org_id"],
+            {
                 "feature_key": "limit:api_requests",
                 "source": "addon",
                 "limit_value": 50,

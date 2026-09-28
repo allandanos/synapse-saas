@@ -103,7 +103,7 @@ jobs:
       - name: Migrate + seed system (roles, plans)
         run: |
           uv run alembic -c database/alembic.ini upgrade head
-          uv run synapse-cli seed
+          uv run synapse-cli seed --dev   # dev seed = platform operator the journeys log in as
 
       - name: Run API (background)
         run: |

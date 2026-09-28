@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from httpx import AsyncClient, Response
 
-from tests.integration.conftest import owner_session_factory
+from tests.integration.conftest import grant_as_platform, owner_session_factory
 
 pytestmark = pytest.mark.pg
 
@@ -114,10 +114,10 @@ class TestEntitlementExpiry:
     ) -> None:
         headers = org_headers(org_and_tokens)
 
-        grant = await client.post(
-            "/v1/entitlements/grants",
-            headers=headers,
-            json={
+        grant = await grant_as_platform(
+            client,
+            org_and_tokens["org_id"],
+            {
                 "feature_key": "advanced_reports",
                 "source": "promo",
                 "duration_days": 1,

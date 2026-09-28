@@ -34,7 +34,7 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
         refresh_token,
         httponly=True,
         samesite="lax",
-        secure=settings.is_production,
+        secure=settings.cookie_secure_effective,
         max_age=settings.refresh_token_ttl_seconds,
         path="/",
     )

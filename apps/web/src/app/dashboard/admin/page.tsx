@@ -68,17 +68,17 @@ export default function AdminPage() {
 
   const grantEntitlement = useMutation({
     mutationFn: () =>
-      api("/v1/entitlements/grants", {
+      // Operator route: grants are a platform action against an explicit org.
+      api(`/v1/admin/orgs/${grantOrg.trim()}/entitlements/grants`, {
         method: "POST",
         body: JSON.stringify({
           feature_key: grantFeature,
           source: "promo",
           duration_days: parseInt(grantDays, 10) || undefined,
         }),
-        // grants go through the org-scoped route; org context is the header
       }),
     onSuccess: () => {
-      setMessage(`Granted ${grantFeature} for ${grantDays} days`);
+      setMessage(`Granted ${grantFeature} to org ${grantOrg.slice(0, 8)}… for ${grantDays} days`);
       setError(null);
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Grant failed"),
@@ -151,15 +151,22 @@ export default function AdminPage() {
       {/* ── Entitlement grants ────────────────────────────────────────────── */}
       <section aria-labelledby="grants-h" className="mb-10">
         <h2 id="grants-h" className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-          Entitlement grant (active org)
+          Entitlement grant
         </h2>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (grantFeature.trim()) grantEntitlement.mutate();
+            if (grantFeature.trim() && grantOrg.trim()) grantEntitlement.mutate();
           }}
           className="flex flex-wrap gap-3"
         >
+          <input
+            aria-label="Organization id"
+            placeholder="organization id"
+            value={grantOrg}
+            onChange={(e) => setGrantOrg(e.target.value)}
+            className="w-80 rounded-lg border border-zinc-300 px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          />
           <input
             aria-label="Feature key"
             placeholder="feature key, e.g. advanced_reports"
@@ -185,8 +192,8 @@ export default function AdminPage() {
           </button>
         </form>
         <p className="mt-2 text-xs text-zinc-400">
-          Grants apply to your <span className="font-medium">currently active org</span> — switch
-          orgs in the sidebar first. Time-boxed promotions without plan changes.
+          Operator action: time-boxed promotions for any organization without a plan change.
+          Tenants cannot grant themselves entitlements.
         </p>
       </section>
 
