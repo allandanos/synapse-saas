@@ -207,8 +207,26 @@ class AuthorizationService:
         role = await self._get_scoped_role(role_id, organization_id)
         from sqlalchemy import delete
 
+        # Members holding the role keep a denormalised permission_keys column;
+        # recompute it after the role is gone or they keep its permissions.
+        holders = (
+            (
+                await self.session.execute(
+                    select(Membership)
+                    .join(MembershipRole, MembershipRole.membership_id == Membership.id)
+                    .where(MembershipRole.role_id == role_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
         await self.session.execute(delete(MembershipRole).where(MembershipRole.role_id == role_id))
         await self.session.delete(role)
+        await self.session.flush()
+        for membership in holders:
+            await self.recompute_membership_permissions(membership)
+            if membership.user_id is not None:
+                await self.invalidate_user_perms(membership.user_id, membership.organization_id)
         await self.invalidate_org_perms(organization_id)
 
     async def assign_role(self, membership: Membership, role_key: str) -> None:

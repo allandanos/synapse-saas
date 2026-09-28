@@ -155,3 +155,56 @@ class TestPortFindings:
         )
         wrong = await client.delete("/v1/meta")
         assert wrong.status_code == 405 and wrong.json()["title"] == "method not allowed"
+
+
+class TestJavaPortFindings:
+    """Defect the Java port surfaced: deleting a custom role left holders' permissions stale."""
+
+    async def test_deleting_a_role_recomputes_holders_permissions(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        from sqlalchemy import text
+
+        from synapse_saas.testing.fixtures import owner_session_factory
+
+        owner = org_headers(org_and_tokens)
+        role = await client.post(
+            "/v1/roles",
+            headers=owner,
+            json={"key": "auditor", "name": "Auditor", "permissions": ["audit:read"]},
+        )
+        assert role.status_code == 201, role.text
+
+        reg = await client.post(
+            "/v1/auth/register",
+            json={"email": "holder@example.com", "password": "password12345", "display_name": "H"},
+        )
+        assert reg.status_code == 201
+        invited = await client.post(
+            "/v1/orgs/current/members/invite",
+            headers=owner,
+            json={"email": "holder@example.com", "role_keys": ["auditor"]},
+        )
+        assert invited.status_code == 201, invited.text
+        async with owner_session_factory()() as session:
+            token = (
+                await session.execute(
+                    text(
+                        "SELECT payload->>'invite_token' FROM outbox_events "
+                        "WHERE event_type = 'member.invite_email' ORDER BY created_at DESC LIMIT 1"
+                    )
+                )
+            ).scalar_one()
+        holder = {"Authorization": f"Bearer {reg.json()['tokens']['access_token']}"}
+        accepted = await client.post("/v1/auth/accept-invite", headers=holder, json={"token": token})
+        assert accepted.status_code == 200, accepted.text
+        holder_in_org = {**holder, "X-Org-Id": org_and_tokens["org_id"]}
+        assert (await client.get("/v1/audit", headers=holder_in_org)).status_code == 200
+
+        assert (await client.delete(f"/v1/roles/{role.json()['id']}", headers=owner)).status_code == 204
+
+        denied = await client.get("/v1/audit", headers=holder_in_org)
+        assert denied.status_code == 403, denied.text  # the very next request sees the smaller set
+        members = await client.get("/v1/orgs/current/members", headers=owner)
+        holder_row = next(m for m in members.json()["data"] if m["email"] == "holder@example.com")
+        assert holder_row["role_keys"] == []
