@@ -44,6 +44,19 @@ Not a path change, but a semantic one clients may observe:
   unless the configured provider declares `client_confirm` (only the manual
   provider does). Hosted-checkout providers activate via their webhook only.
 
+### Reliability and observability (P3 WS-D/WS-E, ADR 0005 amendment)
+
+- **Changed** `GET /readyz` answers **503** (same body) when the database or a
+  configured Redis fails its check; 200 only when everything answers.
+- **Changed** problem documents' `request_id` is the server's request id
+  (echoed in `X-Request-Id`), whether or not the client sent one.
+- **Changed** webhook payload for `member.invited` is `{email, org_name,
+  membership_id}` — the invite token no longer leaves the platform. Endpoints
+  now only receive the event types in their `events` list (empty = all).
+- Usage results for `usage.soft_limit_reached` payloads gain `organization_id`.
+- New settings: `SYNAPSE_NOTIFIER`, `SYNAPSE_SMTP_TLS`, `SYNAPSE_SMTP_USERNAME`,
+  `SYNAPSE_SMTP_PASSWORD`.
+
 ### Billing integrity (P2 WS-B, ADR 0004 amendment)
 
 - **Changed** `POST /v1/subscription/change`: goes through the billing

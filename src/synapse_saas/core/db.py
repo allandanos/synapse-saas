@@ -283,14 +283,20 @@ async def get_session() -> AsyncIterator[AsyncSession]:
     DomainError → rollback (the exception handler still renders the problem doc).
     Any other exception → rollback and re-raise for the 500 handler.
     """
+    from synapse_saas.core.cache import discard_deferred_bumps, flush_deferred_bumps
+
     session = get_session_factory()()
     try:
         yield session
     except DomainError:
         await session.rollback()
+        discard_deferred_bumps(session)
         raise
     except Exception:
         await session.rollback()
+        discard_deferred_bumps(session)
         raise
     else:
         await session.commit()
+        # Cache invalidation only once the change is durable (core/cache.py)
+        await flush_deferred_bumps(session)

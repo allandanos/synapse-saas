@@ -51,7 +51,20 @@ def _record_job(job: str, outcome: str, t0: float) -> None:
         metrics.WORKER_JOB_LATENCY.labels(job=job).observe(time.perf_counter() - t0)
 
 
+OUTBOX_MAX_ATTEMPTS = 8
+OUTBOX_BACKOFF_SECONDS = (5, 30, 120, 600, 1800, 3600, 3600, 3600)
+
+
 async def _dispatch_outbox_impl(ctx: dict[str, Any]) -> int:
+    """Per event, in its own savepoint:
+    - public audience ⇒ one WebhookDelivery per active endpoint subscribed to
+      the event type (empty `events` ⇒ all); internal audience never fans out
+    - mark published
+    On failure the savepoint rolls back, `attempts`/`last_error`/`next_attempt_at`
+    are written, and after OUTBOX_MAX_ATTEMPTS the event is dead-lettered
+    (`dead_at`) so one poison row cannot pin the batch forever.
+    Emails run AFTER the commit — a retry can no longer resend them.
+    """
     # Import order matters: these models FK cross-module (organizations, users).
     # A partial registry fails mapper configuration at query time — the worker's
     # lazy imports must land the whole graph before any ORM use.
@@ -59,9 +72,11 @@ async def _dispatch_outbox_impl(ctx: dict[str, Any]) -> int:
     import synapse_saas.identity.models
     import synapse_saas.tenancy.models  # noqa: F401
     from synapse_saas.audit.models import OutboxEvent
+    from synapse_saas.core import events as ev
     from synapse_saas.webhooks.models import WebhookDelivery
 
     factory = get_owner_session_factory()
+    to_email: list[tuple[str, dict[str, Any]]] = []
     async with factory() as session:
         rows = (
             (
@@ -69,7 +84,7 @@ async def _dispatch_outbox_impl(ctx: dict[str, Any]) -> int:
                     text(
                         """
                         SELECT id FROM outbox_events
-                        WHERE published_at IS NULL AND next_attempt_at <= now()
+                        WHERE published_at IS NULL AND dead_at IS NULL AND next_attempt_at <= now()
                         ORDER BY id
                         LIMIT :limit
                         FOR UPDATE SKIP LOCKED
@@ -89,58 +104,99 @@ async def _dispatch_outbox_impl(ctx: dict[str, Any]) -> int:
             event = await session.get(OutboxEvent, event_id)
             if event is None:
                 continue
-
-            # Fan out to matching endpoints
-            if event.organization_id is not None:
-                endpoints = (
-                    (
-                        await session.execute(
-                            text(
-                                """
-                                SELECT id FROM webhook_endpoints
-                                WHERE organization_id = :org AND is_active = true
-                                """
-                            ),
-                            {"org": str(event.organization_id)},
+            try:
+                async with session.begin_nested():
+                    if event.audience == ev.AUDIENCE_PUBLIC and event.organization_id is not None:
+                        endpoints = (
+                            (
+                                await session.execute(
+                                    text(
+                                        """
+                                        SELECT id FROM webhook_endpoints
+                                        WHERE organization_id = :org AND is_active = true
+                                          AND (events = '{}' OR :event_type = ANY(events))
+                                        """
+                                    ),
+                                    {"org": str(event.organization_id), "event_type": event.event_type},
+                                )
+                            )
+                            .scalars()
+                            .all()
                         )
-                    )
-                    .scalars()
-                    .all()
-                )
-                for endpoint_id in endpoints:
-                    session.add(
-                        WebhookDelivery(
-                            endpoint_id=endpoint_id,
-                            organization_id=event.organization_id,
-                            outbox_event_id=event.id,
-                            event_type=event.event_type,
-                            payload=dict(event.payload),
-                        )
-                    )
+                        for endpoint_id in endpoints:
+                            session.add(
+                                WebhookDelivery(
+                                    endpoint_id=endpoint_id,
+                                    organization_id=event.organization_id,
+                                    outbox_event_id=event.id,
+                                    event_type=event.event_type,
+                                    payload=dict(event.payload),
+                                )
+                            )
+                    event.published_at = datetime.now(UTC)
+                    await session.flush()
+            except Exception as exc:
+                _outbox_failure(event, exc)
+                continue
 
-            # Business-event counter (bounded: event_type is a fixed vocabulary)
             with contextlib.suppress(Exception):  # metrics must never block dispatch
                 from synapse_saas.core import metrics
 
                 metrics.BUSINESS_EVENTS.labels(event=event.event_type).inc()
-
-            # Best-effort email for user-facing events; never blocks dispatch
-            try:
-                from synapse_saas.notifications.handlers import handle_event
-
-                await handle_event(event.event_type, dict(event.payload))
-            except Exception as exc:
-                logger.warning("email_handler_failed", error=str(exc), event_type=event.event_type)
-
-            event.published_at = datetime.now(UTC)
+            to_email.append((event.event_type, dict(event.payload)))
             dispatched += 1
 
         await session.commit()
-        return dispatched
+
+    # Emails only after the events are durably published: a crash or retry
+    # cannot send the same invite/invoice twice. Delivery failure is logged.
+    from synapse_saas.notifications.handlers import handle_event
+
+    for event_type, payload in to_email:
+        try:
+            await handle_event(event_type, payload)
+        except Exception as exc:
+            logger.warning("email_handler_failed", error=str(exc), event_type=event_type)
+    return dispatched
+
+
+def _outbox_failure(event: Any, exc: Exception) -> None:
+    """Retry bookkeeping for one failed outbox event (savepoint already rolled back)."""
+    event.attempts = int(event.attempts or 0) + 1
+    event.last_error = str(exc)[:1000]
+    if event.attempts >= OUTBOX_MAX_ATTEMPTS:
+        event.dead_at = datetime.now(UTC)
+        logger.error(
+            "outbox_event_dead_lettered",
+            event_id=str(event.id),
+            event_type=event.event_type,
+            attempts=event.attempts,
+            error=event.last_error,
+        )
+        with contextlib.suppress(Exception):
+            from synapse_saas.core import metrics
+
+            metrics.OUTBOX_DEAD.labels(event=event.event_type).inc()
+        return
+    backoff = OUTBOX_BACKOFF_SECONDS[min(event.attempts - 1, len(OUTBOX_BACKOFF_SECONDS) - 1)]
+    event.next_attempt_at = datetime.now(UTC) + timedelta(seconds=backoff)
+    logger.warning(
+        "outbox_event_failed",
+        event_id=str(event.id),
+        event_type=event.event_type,
+        attempts=event.attempts,
+        retry_in_seconds=backoff,
+        error=event.last_error,
+    )
 
 
 async def deliver_webhooks(ctx: dict[str, Any]) -> int:
-    """Attempt pending deliveries whose backoff has elapsed."""
+    """Attempt pending deliveries whose backoff has elapsed.
+
+    Rows are claimed with SKIP LOCKED so N workers never POST the same delivery
+    twice; the shared HTTP client (core/http.py) is reused across ticks.
+    """
+    from synapse_saas.core.http import get_http_client
     from synapse_saas.webhooks.service import WebhookService
 
     factory = get_owner_session_factory()
@@ -154,6 +210,7 @@ async def deliver_webhooks(ctx: dict[str, Any]) -> int:
                         WHERE status = 'pending' AND next_attempt_at <= now()
                         ORDER BY created_at
                         LIMIT :limit
+                        FOR UPDATE SKIP LOCKED
                         """
                     ),
                     {"limit": DELIVERY_BATCH},
@@ -165,7 +222,7 @@ async def deliver_webhooks(ctx: dict[str, Any]) -> int:
         if not due:
             return 0
 
-        service = WebhookService(session)
+        service = WebhookService(session, http=get_http_client())
         delivered = 0
         for delivery_id in due:
             if await service.deliver(delivery_id):
@@ -219,11 +276,13 @@ async def expire_entitlements(ctx: dict[str, Any]) -> int:
                 )
             )
         ).all()
+        touched: set[str] = set()
         for row_id, org_id, feature_key in rows:
             entitlement = await session.get(Entitlement, row_id)
             if entitlement is None:
                 continue
             entitlement.revoked_at = datetime.now(UTC)
+            touched.add(str(org_id))
             session.add(
                 _outbox_row(
                     events.ENTITLEMENT_EXPIRED,
@@ -234,7 +293,12 @@ async def expire_entitlements(ctx: dict[str, Any]) -> int:
                 )
             )
         await session.commit()
-        return len(rows)
+    # Invalidate AFTER commit so no reader caches the pre-revocation rows
+    from synapse_saas.entitlements.service import invalidate_entitlements
+
+    for org in touched:
+        await invalidate_entitlements(org)
+    return len(rows)
 
 
 RENEWAL_BATCH = 100
@@ -319,8 +383,15 @@ async def _renew_locally_billed(session: Any, subscription: Any, invoicing: Any)
 advance_manual_billing = advance_recurring_billing
 
 
+PARTITION_MONTHS_AHEAD = 3
+
+
 async def ensure_partitions(ctx: dict[str, Any]) -> int:
-    """Pre-create next month's usage_events partition."""
+    """Pre-create usage_events partitions for the next PARTITION_MONTHS_AHEAD months.
+
+    A lapsed run is survivable: rows for a month without a partition land in
+    `usage_events_default` (migration 0016) instead of failing every insert.
+    """
     factory = get_owner_session_factory()
     async with factory() as session:
         await session.execute(
@@ -328,31 +399,63 @@ async def ensure_partitions(ctx: dict[str, Any]) -> int:
                 """
                 DO $$
                 DECLARE
-                    p DATE := (date_trunc('month', now()) + interval '1 month')::date;
+                    i INT;
+                    p DATE;
                 BEGIN
-                    EXECUTE format(
-                        'CREATE TABLE IF NOT EXISTS usage_events_y%sm%s PARTITION OF usage_events
-                         FOR VALUES FROM (%L) TO (%L)',
-                        to_char(p, 'YYYY'), to_char(p, 'MM'), p, p + INTERVAL '1 month'
-                    );
+                    FOR i IN 0..:months LOOP
+                        p := (date_trunc('month', now()) + make_interval(months => i))::date;
+                        EXECUTE format(
+                            'CREATE TABLE IF NOT EXISTS usage_events_y%sm%s PARTITION OF usage_events
+                             FOR VALUES FROM (%L) TO (%L)',
+                            to_char(p, 'YYYY'), to_char(p, 'MM'), p, p + INTERVAL '1 month'
+                        );
+                    END LOOP;
                 END $$;
-                """
+                """.replace(":months", str(PARTITION_MONTHS_AHEAD))
             )
         )
         await session.commit()
-        return 1
+        return PARTITION_MONTHS_AHEAD + 1
 
 
 IDEMPOTENCY_RETENTION_DAYS = 90
+DELIVERY_RETENTION_DAYS = 30
+EXHAUSTED_DELIVERY_RETENTION_DAYS = 90  # the failure audit trail outlives routine rows
+OUTBOX_RETENTION_DAYS = 7
 
 
 async def purge_expired(ctx: dict[str, Any]) -> int:
-    """Retention: old webhook deliveries (30d), spent usage idempotency keys (90d)."""
+    """Retention: delivered/failed webhook deliveries (30d), exhausted ones (90d —
+    they are the failure audit trail), published outbox rows (7d), spent usage
+    idempotency keys (90d), audit logs past SYNAPSE_AUDIT_RETENTION_DAYS."""
+    from synapse_saas.core.config import get_settings
 
     factory = get_owner_session_factory()
     async with factory() as session:
         await session.execute(
-            text("DELETE FROM webhook_deliveries WHERE created_at < now() - interval '30 days'")
+            text(
+                "DELETE FROM webhook_deliveries WHERE status <> 'exhausted' "
+                "AND created_at < now() - make_interval(days => :days)"
+            ),
+            {"days": DELIVERY_RETENTION_DAYS},
+        )
+        await session.execute(
+            text(
+                "DELETE FROM webhook_deliveries WHERE status = 'exhausted' "
+                "AND created_at < now() - make_interval(days => :days)"
+            ),
+            {"days": EXHAUSTED_DELIVERY_RETENTION_DAYS},
+        )
+        await session.execute(
+            text(
+                "DELETE FROM outbox_events WHERE published_at IS NOT NULL "
+                "AND published_at < now() - make_interval(days => :days)"
+            ),
+            {"days": OUTBOX_RETENTION_DAYS},
+        )
+        await session.execute(
+            text("DELETE FROM audit_logs WHERE created_at < now() - make_interval(days => :days)"),
+            {"days": get_settings().audit_retention_days},
         )
         await session.execute(
             text(
@@ -426,8 +529,8 @@ class WorkerSettings:
 
     @staticmethod
     async def on_shutdown(ctx: dict[str, Any]) -> None:
-        from synapse_saas.billing.registry import close_http_client
         from synapse_saas.core.db import dispose_engine
+        from synapse_saas.core.http import close_http_client
 
         await close_http_client()
         await dispose_engine()

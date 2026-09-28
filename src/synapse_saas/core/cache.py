@@ -71,7 +71,18 @@ def _backend() -> CacheBackend:
 
 
 class VersionedCache:
-    """get/set/expire around a version counter, with graceful degradation."""
+    """get/set/expire around a version counter, with graceful degradation.
+
+    Correctness rules (each one closed a real bug):
+    - `set` writes under the version observed at *read* time (`get_versioned`),
+      never a version re-read at write time: a bump between the read and the
+      write must leave the new version empty, not fill it with the stale body.
+    - `delete` is a bump. Resetting the counter to 0 would resurrect whatever
+      body was cached under version 0.
+    - Invalidation belongs AFTER commit: `defer_bump(session, …)` queues the bump
+      on the session and `flush_deferred_bumps(session)` runs it once the
+      transaction is durable (the request session does this automatically).
+    """
 
     def __init__(self, namespace: str, *, ttl: int = DEFAULT_TTL_SECONDS) -> None:
         self.namespace = namespace
@@ -83,17 +94,40 @@ class VersionedCache:
     def _body_key(self, key: str, version: int) -> str:
         return f"{self.namespace}:v{version}:{key}"
 
-    async def get(self, key: str, *, loader: None = None) -> str | None:
-        backend = _backend()
-        version_raw = await backend.get(self._version_key(key))
-        version = int(version_raw) if version_raw else 0
-        return await backend.get(self._body_key(key, version))
+    async def current_version(self, key: str) -> int:
+        version_raw = await _backend().get(self._version_key(key))
+        return int(version_raw) if version_raw else 0
 
-    async def set(self, key: str, value: str) -> None:
+    async def get_versioned(self, key: str) -> tuple[str | None, int]:
+        """(body, version) — pass the version back to `set` after a miss."""
         backend = _backend()
-        version_raw = await backend.get(self._version_key(key))
-        version = int(version_raw) if version_raw else 0
+        version = await self.current_version(key)
+        return await backend.get(self._body_key(key, version)), version
+
+    async def get(self, key: str, *, loader: None = None) -> str | None:
+        body, _ = await self.get_versioned(key)
+        return body
+
+    async def set(self, key: str, value: str, *, version: int | None = None) -> None:
+        """Store `value` under `version` (from `get_versioned`); a fresh read when omitted."""
+        backend = _backend()
+        if version is None:
+            version = await self.current_version(key)
         await backend.set(self._body_key(key, version), value, ex=self.ttl)
+
+    async def get_scoped(self, key: str, *scopes: str) -> tuple[str | None, str]:
+        """A body that several counters can invalidate (e.g. a flag evaluation
+        depends on the global, org and user scopes). Returns (body, token);
+        pass the token back to `set_scoped` after a miss."""
+        parts = [f"{scope}={await self.current_version(scope)}" for scope in scopes]
+        token = ",".join(parts)
+        return await _backend().get(self._scoped_key(key, token)), token
+
+    async def set_scoped(self, key: str, value: str, token: str) -> None:
+        await _backend().set(self._scoped_key(key, token), value, ex=self.ttl)
+
+    def _scoped_key(self, key: str, token: str) -> str:
+        return f"{self.namespace}:s[{token}]:{key}"
 
     async def bump(self, key: str) -> int:
         """Invalidate: increment the version counter. Next read misses."""
@@ -105,4 +139,40 @@ class VersionedCache:
             return -1
 
     async def delete(self, key: str) -> None:
-        await _backend().delete(self._version_key(key))
+        """Invalidate — implemented as a bump (see class docstring)."""
+        await self.bump(key)
+
+
+# ── Post-commit invalidation ─────────────────────────────────────────────────
+
+_DEFERRED_KEY = "synapse_deferred_bumps"
+
+
+def defer_bump(session: Any, cache: VersionedCache, key: str) -> None:
+    """Queue `cache.bump(key)` to run after the session's transaction commits.
+
+    Bumping inside the transaction lets a concurrent reader recompute from the
+    pre-commit rows and cache them under the NEW version — stale for a full TTL
+    after an upgrade. Deferring closes that window.
+    """
+    pending: list[tuple[VersionedCache, str]] = session.info.setdefault(_DEFERRED_KEY, [])
+    if (cache, key) not in pending:
+        pending.append((cache, key))
+
+
+def discard_deferred_bumps(session: Any) -> None:
+    session.info.pop(_DEFERRED_KEY, None)
+
+
+async def flush_deferred_bumps(session: Any) -> int:
+    """Run the bumps queued with `defer_bump`. Call after `commit()`."""
+    pending: list[tuple[VersionedCache, str]] = session.info.pop(_DEFERRED_KEY, [])
+    for cache, key in pending:
+        await cache.bump(key)
+    return len(pending)
+
+
+async def commit_and_flush_bumps(session: Any) -> None:
+    """Jobs/CLI helper: commit, then run the deferred invalidations."""
+    await session.commit()
+    await flush_deferred_bumps(session)

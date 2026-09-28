@@ -18,7 +18,7 @@ from synapse_saas.core.cache import VersionedCache
 from synapse_saas.core.context import TenantContext, current_tenant, set_tenant
 from synapse_saas.core.db import get_session, set_rls_platform, set_rls_tenant
 from synapse_saas.core.errors import AuthenticationError, TenantNotResolvedError
-from synapse_saas.core.logging import get_logger
+from synapse_saas.core.logging import bind_request_context, get_logger
 from synapse_saas.core.security import decode_access_token
 from synapse_saas.identity.dependencies import CurrentUser
 from synapse_saas.tenancy.models import Organization
@@ -95,6 +95,7 @@ async def resolve_tenant(request: Request, user: CurrentUser, session: SessionDe
     context = TenantContext(organization_id=org.id, slug=org.slug)
     # Bind for the rest of the request: tenant-scoped repositories, audit, logs.
     set_tenant(context)
+    bind_request_context()  # org_id on every log line from here on
     return context
 
 

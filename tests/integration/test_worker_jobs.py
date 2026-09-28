@@ -78,9 +78,9 @@ class TestManualBillingRoll:
 
 class TestPartitionJob:
     async def test_ensure_partitions_creates_next_month(self) -> None:
-        from synapse_saas.worker.jobs import ensure_partitions
+        from synapse_saas.worker.jobs import PARTITION_MONTHS_AHEAD, ensure_partitions
 
-        assert await ensure_partitions({}) == 1
+        assert await ensure_partitions({}) == PARTITION_MONTHS_AHEAD + 1
 
         factory = owner_session_factory()
         async with factory() as session:
@@ -91,10 +91,10 @@ class TestPartitionJob:
                     text("SELECT count(*) FROM pg_tables WHERE tablename LIKE 'usage_events_y%'")
                 )
             ).scalar_one()
-        # Migration created current+next; the job guarantees next month exists
+        # The job guarantees this month + the next PARTITION_MONTHS_AHEAD exist
         # (idempotent — running again must not fail or duplicate).
-        assert await ensure_partitions({}) == 1
-        assert count >= 2
+        assert await ensure_partitions({}) == PARTITION_MONTHS_AHEAD + 1
+        assert count >= PARTITION_MONTHS_AHEAD + 1
 
 
 class TestPurgeJob:

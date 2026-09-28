@@ -19,6 +19,12 @@ def org_headers(fixture: dict[str, str]) -> dict[str, str]:
     }
 
 
+def _same_problem(a: dict, b: dict) -> bool:
+    """Problem documents are byte-identical apart from per-request correlation ids."""
+    strip = lambda d: {k: v for k, v in d.items() if k != "request_id"}  # noqa: E731
+    return strip(a) == strip(b)
+
+
 async def create_key(client: AsyncClient, fixture: dict[str, str], **overrides: object) -> tuple[str, str]:
     """Returns (key_id, plaintext)."""
     body: dict[str, object] = {"name": "test key"}
@@ -98,7 +104,7 @@ class TestCrud:
         # Bodies match except `instance` (the path echoes the requested id)
         foreign_body, phantom_body = foreign.json(), phantom.json()
         foreign_body.pop("instance"), phantom_body.pop("instance")
-        assert foreign_body == phantom_body
+        assert _same_problem(foreign_body, phantom_body)  # identical apart from request_id
 
 
 class TestKeyAuth:

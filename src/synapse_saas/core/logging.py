@@ -63,3 +63,8 @@ def bind_request_context() -> None:
         values["user_id"] = str(user.user_id)
     if values:
         structlog.contextvars.bind_contextvars(**values)
+
+
+def clear_request_context() -> None:
+    """Drop the request-scoped log bindings (end of request)."""
+    structlog.contextvars.unbind_contextvars("trace_id", "request_id", "org_id", "user_id")

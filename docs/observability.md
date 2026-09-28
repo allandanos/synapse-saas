@@ -41,11 +41,17 @@ SYNAPSE_OTEL_SERVICE_NAME=synapse-saas
 
 - One **server span per request** (`METHOD /path`), started by the request
   middleware regardless of exporter state — code paths are identical with
-  tracing on or off
-- **Trace correlation everywhere**: the active trace id flows into structlog
-  (`trace_id=` on every log line inside a span) and into problem documents
-  (`request_id` falls back to the trace id) — a 4xx/5xx body names the exact
-  trace your APM shows
+  tracing on or off. The span is *current* for the whole handler: spans you
+  open in domain code nest under it.
+- **Correlation everywhere**: `request_id` (client-supplied `X-Request-Id` or a
+  server-generated `req_…`, echoed in the response header) and `trace_id` are
+  bound to structlog before the handler runs; `org_id`/`user_id` join them as
+  soon as the auth dependencies resolve; everything is cleared at the end of
+  the request. Problem documents carry the same `request_id`, so a 4xx/5xx
+  body names the exact log lines and trace your APM shows.
+- `/readyz` answers **503** when the database (or a configured Redis) fails
+  its check — a readiness probe that returned 200 with `error` inside kept
+  broken pods in rotation.
 - Resource attributes: `service.name`, `service.version`,
   `deployment.environment`
 

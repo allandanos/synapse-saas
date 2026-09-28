@@ -36,6 +36,8 @@ def append_outbox(
             organization_id=organization_id,
             event_type=event_type,
             payload=payload,
+            # Internal events (tokens, reset links, invoice mail) never fan out
+            audience=events.audience_for(event_type),
         )
     )
 

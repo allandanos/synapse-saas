@@ -84,6 +84,13 @@ EMAILS = Counter(
     registry=REGISTRY,
 )
 
+OUTBOX_DEAD = Counter(
+    "synapse_outbox_dead_lettered_total",
+    "Outbox events that exhausted their retries and left the dispatch loop",
+    labelnames=("event",),
+    registry=REGISTRY,
+)
+
 # ── Worker ────────────────────────────────────────────────────────────────────
 
 WORKER_JOBS = Counter(

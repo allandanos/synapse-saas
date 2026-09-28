@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from synapse_saas.authorization.models import AuthorizationRole, MembershipRole, Permission, RolePermission
 from synapse_saas.authorization.permissions import PERMISSION_KEYS
-from synapse_saas.core.cache import VersionedCache
+from synapse_saas.core.cache import VersionedCache, defer_bump
 from synapse_saas.core.errors import PermissionDeniedError, RoleNotFoundError, SystemRoleImmutableError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.tenancy.models import Membership
@@ -34,7 +34,7 @@ class AuthorizationService:
     async def permission_keys_for(self, user_id: UUID, organization_id: UUID) -> frozenset[str]:
         """Effective permission set for (user, org) — cached briefly."""
         cache_key = f"{user_id}:{organization_id}"
-        cached = await _perm_cache.get(cache_key)
+        cached, version = await _perm_cache.get_versioned(cache_key)
         if cached:
             return frozenset(cached.split(","))
 
@@ -52,7 +52,7 @@ class AuthorizationService:
         else:
             keys = frozenset(membership.permission_keys or [])
 
-        await _perm_cache.set(cache_key, ",".join(sorted(keys)))
+        await _perm_cache.set(cache_key, ",".join(sorted(keys)), version=version)
         return keys
 
     async def user_can(self, user_id: UUID, organization_id: UUID, permission: str) -> bool:
@@ -220,6 +220,7 @@ class AuthorizationService:
         Role/membership changes must be visible to the very next request.
         """
         await _perm_cache.bump(f"{user_id}:{organization_id}")
+        defer_bump(self.session, _perm_cache, f"{user_id}:{organization_id}")  # again once durable
 
     async def invalidate_org_perms(self, organization_id: UUID) -> None:
         """Invalidate every member of an org (role edits, custom-role changes)."""

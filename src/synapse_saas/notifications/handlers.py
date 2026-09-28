@@ -25,7 +25,7 @@ async def handle_event(event_type: str, payload: dict[str, Any]) -> None:
     """Map one outbox event to at most one email. Unknown events are ignored."""
     notifier = get_notifier()
 
-    if event_type == "member.invited":
+    if event_type == "member.invite_email":
         email = payload.get("email")
         token = payload.get("invite_token")
         org = payload.get("org_name", "an organization")
@@ -71,12 +71,26 @@ async def handle_event(event_type: str, payload: dict[str, Any]) -> None:
         await _send_invoice_email(str(invoice_id))
 
     elif event_type == "usage.soft_limit_reached":
-        # Org-level warning: routed to the billing-contact email when known
+        # Org-level warning to the billing contact (billing customer email →
+        # org settings.billing_email → owner's email)
         metric = payload.get("metric")
         org_id = payload.get("organization_id")
-        logger.info("soft_limit_email", metric=metric, org=str(org_id))
-        # Recipient resolution (org billing contact) is a later refinement;
-        # the event still lands in audit + webhooks today.
+        if not org_id or not metric:
+            logger.debug("soft_limit_email_skipped", reason="missing organization_id/metric")
+            return
+        recipient = await billing_recipient(str(org_id))
+        if recipient is None:
+            logger.info("soft_limit_email_no_recipient", metric=metric, org=str(org_id))
+            return
+        total, limit = payload.get("total"), payload.get("limit")
+        await notifier.send(
+            to=recipient,
+            subject=f"You're approaching your {metric} limit",
+            body=(
+                f"Your organization has used {total} of {limit} {metric} for this period.\n\n"
+                f"Upgrade or add capacity here: {_web_url('/dashboard/billing')}"
+            ),
+        )
 
     # Other events intentionally unhandled — email is opt-in per event type.
 
@@ -171,3 +185,33 @@ def _pay_to() -> str | None:
 
     instructions = get_settings().manual_pay_to_instructions
     return instructions or None
+
+
+async def billing_recipient(organization_id: str) -> str | None:
+    """Who gets money/quota mail for an org: billing customer → settings.billing_email → owner."""
+    from sqlalchemy import select
+
+    from synapse_saas.billing.models import BillingCustomer
+    from synapse_saas.core.db import get_owner_session_factory
+    from synapse_saas.identity.models import User
+    from synapse_saas.tenancy.models import Organization
+
+    async with get_owner_session_factory()() as session:
+        customer = (
+            await session.execute(
+                select(BillingCustomer.email).where(BillingCustomer.organization_id == organization_id)
+            )
+        ).scalar_one_or_none()
+        if customer:
+            return str(customer)
+        org = await session.get(Organization, organization_id)
+        if org is None:
+            return None
+        from_settings = (org.settings or {}).get("billing_email")
+        if isinstance(from_settings, str) and from_settings:
+            return from_settings
+        if org.owner_user_id is not None:
+            owner = await session.get(User, org.owner_user_id)
+            if owner is not None and owner.email:
+                return str(owner.email)
+    return None

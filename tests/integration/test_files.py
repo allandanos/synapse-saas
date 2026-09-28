@@ -34,6 +34,12 @@ def org_headers(fixture: dict[str, str]) -> dict[str, str]:
     }
 
 
+def _same_problem(a: dict, b: dict) -> bool:
+    """Problem documents are byte-identical apart from per-request correlation ids."""
+    strip = lambda d: {k: v for k, v in d.items() if k != "request_id"}  # noqa: E731
+    return strip(a) == strip(b)
+
+
 def multipart(filename: str, content: bytes, content_type: str = "text/plain") -> dict:
     return {"files": ("file", content, content_type)} | {"_filename": filename}  # type: ignore[dict-item]
 
@@ -167,7 +173,7 @@ class TestIsolation:
         assert foreign.status_code == phantom.status_code == 404
         foreign_body, phantom_body = foreign.json(), phantom.json()
         foreign_body.pop("instance"), phantom_body.pop("instance")
-        assert foreign_body == phantom_body
+        assert _same_problem(foreign_body, phantom_body)  # identical apart from request_id
 
     async def test_key_namespace_is_org_scoped(self, client: AsyncClient, org_and_tokens) -> None:
         """Keys are always {org_id}/… — the tenant boundary extends to bytes."""

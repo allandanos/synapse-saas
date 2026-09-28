@@ -7,8 +7,6 @@ rather than provider names.
 
 from __future__ import annotations
 
-import httpx
-
 from synapse_saas.billing.protocol import BillingProvider
 from synapse_saas.billing.providers.manual_provider import ManualBillingProvider
 from synapse_saas.billing.providers.paddle_provider import PaddleBillingProvider
@@ -18,21 +16,8 @@ from synapse_saas.billing.providers.xendit_provider import XenditBillingProvider
 from synapse_saas.core.config import get_settings
 from synapse_saas.core.errors import BillingProviderNotConfiguredError
 
-_shared_http: httpx.AsyncClient | None = None
-
-
-def get_http_client() -> httpx.AsyncClient:
-    global _shared_http
-    if _shared_http is None or _shared_http.is_closed:
-        _shared_http = httpx.AsyncClient(timeout=30)
-    return _shared_http
-
-
-async def close_http_client() -> None:
-    global _shared_http
-    if _shared_http is not None and not _shared_http.is_closed:
-        await _shared_http.aclose()
-    _shared_http = None
+# Re-exported for backwards compatibility: the client lives in core/http.py now.
+from synapse_saas.core.http import get_http_client
 
 
 def build_provider(name: str | None = None) -> BillingProvider:

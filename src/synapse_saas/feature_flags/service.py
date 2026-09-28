@@ -12,7 +12,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from synapse_saas.core.cache import VersionedCache
+from synapse_saas.core.cache import VersionedCache, defer_bump
 from synapse_saas.core.errors import FeatureFlagNotFoundError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.feature_flags.models import FeatureFlag, FeatureFlagOverride
@@ -50,7 +50,27 @@ class FeatureFlagService:
         organization_id: UUID | None = None,
         user_id: UUID | None = None,
     ) -> bool:
-        """Resolve flag → user override → org override → global (rollout-aware)."""
+        """Resolve flag → user override → org override → global (rollout-aware).
+
+        Cached under the (global, org, user) scope versions so any of the three
+        invalidations (flag edit, org override, user override) misses correctly.
+        """
+        scopes = ("all", f"org:{organization_id}", f"user:{user_id}")
+        cache_key = f"{flag_key}|{organization_id}|{user_id}"
+        cached, token = await _cache.get_scoped(cache_key, *scopes)
+        if cached is not None:
+            return cached == "1"
+        enabled = await self._evaluate(flag_key, organization_id=organization_id, user_id=user_id)
+        await _cache.set_scoped(cache_key, "1" if enabled else "0", token)
+        return enabled
+
+    async def _evaluate(
+        self,
+        flag_key: str,
+        *,
+        organization_id: UUID | None,
+        user_id: UUID | None,
+    ) -> bool:
         flag = await self._flag(flag_key)
         if flag is None:
             return False  # unknown flags are off — new code paths dark by default
@@ -94,7 +114,7 @@ class FeatureFlagService:
         )
         self.session.add(flag)
         await self.session.flush()
-        await _cache.bump("all")
+        await self._invalidate("all")
         return flag
 
     async def update_flag(
@@ -112,7 +132,7 @@ class FeatureFlagService:
         if rollout_percentage is not None:
             flag.rollout_percentage = rollout_percentage
         await self.session.flush()
-        await _cache.bump("all")
+        await self._invalidate("all")
         return flag
 
     async def set_override(
@@ -202,6 +222,11 @@ class FeatureFlagService:
 
     async def _bump_scope(self, organization_id: UUID | None, user_id: UUID | None) -> None:
         if organization_id is not None:
-            await _cache.bump(f"org:{organization_id}")
+            await self._invalidate(f"org:{organization_id}")
         if user_id is not None:
-            await _cache.bump(f"user:{user_id}")
+            await self._invalidate(f"user:{user_id}")
+
+    async def _invalidate(self, scope: str) -> None:
+        """Now (this request sees the change) and after commit (nobody caches pre-commit rows)."""
+        await _cache.bump(scope)
+        defer_bump(self.session, _cache, scope)

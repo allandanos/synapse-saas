@@ -198,14 +198,23 @@ class OrganizationService:
             target_id=membership.id,
             diff={"email": invited_email, "roles": role_keys or ["member"]},
         )
+        # Public event (tenant webhooks): no credential material, ever.
         append_outbox(
             self.session,
             event_type=events.MEMBER_INVITED,
             aggregate_type="membership",
             aggregate_id=membership.id,
             organization_id=organization_id,
-            # invite_token is email-layer material: the worker's notifier consumes
-            # it; it is never persisted (the row keeps only the hash)
+            payload={"email": invited_email, "org_name": org_name, "membership_id": str(membership.id)},
+        )
+        # Internal event (email only): the invite token is never persisted in
+        # clear elsewhere (the row keeps the hash) and never fans out.
+        append_outbox(
+            self.session,
+            event_type=events.MEMBER_INVITE_EMAIL,
+            aggregate_type="membership",
+            aggregate_id=membership.id,
+            organization_id=organization_id,
             payload={"email": invited_email, "invite_token": token, "org_name": org_name},
         )
         await self._sync_seat_gauge(organization_id)

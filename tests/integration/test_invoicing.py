@@ -24,6 +24,12 @@ def org_headers(fixture: dict[str, str]) -> dict[str, str]:
     }
 
 
+def _same_problem(a: dict, b: dict) -> bool:
+    """Problem documents are byte-identical apart from per-request correlation ids."""
+    strip = lambda d: {k: v for k, v in d.items() if k != "request_id"}  # noqa: E731
+    return strip(a) == strip(b)
+
+
 async def draft(client: AsyncClient, fixture: dict[str, str]) -> dict:
     res = await client.post("/v1/billing/invoices/draft", headers=org_headers(fixture), json={})
     assert res.status_code == 201, res.text
@@ -191,7 +197,7 @@ class TestDetailAndIsolation:
         assert foreign.status_code == phantom.status_code == 404
         foreign_body, phantom_body = foreign.json(), phantom.json()
         foreign_body.pop("instance"), phantom_body.pop("instance")
-        assert foreign_body == phantom_body
+        assert _same_problem(foreign_body, phantom_body)  # identical apart from request_id
 
     async def test_permission_gate(self, client: AsyncClient, org_and_tokens) -> None:
         """Plain members (no billing:manage) cannot draft."""
@@ -239,7 +245,7 @@ async def _invite_token(fixture: dict[str, str]) -> str:
             await session.execute(
                 text(
                     "SELECT payload FROM outbox_events "
-                    "WHERE event_type='member.invited' ORDER BY created_at DESC LIMIT 1"
+                    "WHERE event_type='member.invite_email' ORDER BY created_at DESC LIMIT 1"
                 )
             )
         ).first()

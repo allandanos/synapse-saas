@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from synapse_saas.api.v1 import api_v1
 from synapse_saas.audit.middleware import RequestContextMiddleware
+from synapse_saas.core import context
 from synapse_saas.core.commit_before_send import CommitBeforeSendMiddleware
 from synapse_saas.core.config import get_settings
 from synapse_saas.core.db import assert_role_matches_isolation, dispose_engine, get_session_factory
@@ -60,7 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     await close_redis()
     await dispose_engine()
-    from synapse_saas.billing.registry import close_http_client
+    from synapse_saas.core.http import close_http_client
 
     await close_http_client()
 
@@ -97,7 +98,7 @@ def create_app() -> FastAPI:
             status_code=exc.status,
             content=exc.to_problem(
                 instance=str(request.url.path),
-                request_id=request.headers.get("X-Request-Id") or _trace_id(),
+                request_id=context.current_request_id() or request.headers.get("X-Request-Id") or _trace_id(),
             ),
         )
 
@@ -116,7 +117,7 @@ def create_app() -> FastAPI:
                 "title": "internal error",
                 "status": 500,
                 "detail": "An unexpected error occurred.",
-                "request_id": request.headers.get("X-Request-Id"),
+                "request_id": context.current_request_id() or request.headers.get("X-Request-Id"),
             },
         )
 
@@ -125,7 +126,9 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/readyz", tags=["health"])
-    async def readyz() -> dict[str, object]:
+    async def readyz() -> JSONResponse:
+        """Readiness: 200 when every dependency answers, **503** otherwise —
+        so a Kubernetes readiness probe actually pulls a broken pod."""
         checks: dict[str, str] = {}
         try:
             async with get_session_factory()() as session:
@@ -145,7 +148,9 @@ def create_app() -> FastAPI:
             except Exception as exc:
                 checks["redis"] = f"error: {exc}"
         overall = "ok" if all(v in {"ok", "not_configured"} for v in checks.values()) else "error"
-        return {"status": overall, "checks": checks}
+        return JSONResponse(
+            status_code=200 if overall == "ok" else 503, content={"status": overall, "checks": checks}
+        )
 
     @app.get("/metrics", tags=["health"], include_in_schema=False)
     async def prometheus_metrics() -> Response:

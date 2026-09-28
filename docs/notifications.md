@@ -17,10 +17,18 @@ invite / forgot-password
 ## Configuration
 
 ```bash
+SYNAPSE_NOTIFIER=smtp                # smtp | noop (noop is implied when no host is set)
 SYNAPSE_SMTP_HOST=smtp.example.com   # unset ⇒ emails are logged, not sent
 SYNAPSE_SMTP_PORT=587
 SYNAPSE_SMTP_FROM=noreply@example.com
+SYNAPSE_SMTP_TLS=starttls            # none (MailHog) | starttls (587) | ssl (465)
+SYNAPSE_SMTP_USERNAME=…              # AUTH is refused over a plaintext connection
+SYNAPSE_SMTP_PASSWORD=…
 ```
+
+Any real relay (SES, Postmark, Mailgun, Google Workspace) is `starttls` or
+`ssl` plus credentials. Credentials are only ever sent after the channel is
+secured; `tls=none` with a username fails fast instead of leaking them.
 
 Local dev: `docker compose --profile extras up` runs MailHog on
 http://localhost:8025 — set `SYNAPSE_SMTP_HOST=localhost SYNAPSE_SMTP_PORT=1025`
@@ -57,5 +65,12 @@ elif event_type == "subscription.past_due":
     await notifier.send(to=owner_email, subject="…", body="…")
 ```
 
-Swap the transport by implementing the `Notifier` protocol — the handlers and
-worker wiring don't change.
+Swap the transport by implementing the `Notifier` protocol (it carries
+`attachments`, so invoice PDFs work on any transport) and returning it from
+`get_notifier()` — the handlers and worker wiring don't change. `NoopNotifier`
+is what runs when no SMTP host is configured or `SYNAPSE_NOTIFIER=noop`.
+
+Emails are sent **after** the outbox dispatch commits: a worker crash or retry
+cannot resend the same invite or invoice. `usage.soft_limit_reached` mails the
+org's billing contact (billing customer email → `settings.billing_email` →
+the owner).

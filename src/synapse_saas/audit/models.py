@@ -67,6 +67,10 @@ class OutboxEvent(Base):
         DateTime(timezone=True), server_default=text("now()"), nullable=False
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 'public' fans out to tenant webhooks; 'internal' is consumed in-process only
+    audience: Mapped[str] = mapped_column(String(16), default="public", nullable=False)
+    # Set after OUTBOX_MAX_ATTEMPTS failures: out of the dispatch loop, kept for forensics
+    dead_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     next_attempt_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False

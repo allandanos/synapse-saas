@@ -3024,16 +3024,13 @@
     },
     "/readyz": {
       "get": {
+        "description": "Readiness: 200 when every dependency answers, **503** otherwise \u2014\nso a Kubernetes readiness probe actually pulls a broken pod.",
         "operationId": "readyz_readyz_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Readyz Readyz Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"

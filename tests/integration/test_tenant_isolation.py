@@ -12,6 +12,12 @@ from httpx import AsyncClient
 pytestmark = pytest.mark.pg
 
 
+def _same_problem(a: dict, b: dict) -> bool:
+    """Problem documents are byte-identical apart from per-request correlation ids."""
+    strip = lambda d: {k: v for k, v in d.items() if k != "request_id"}  # noqa: E731
+    return strip(a) == strip(b)
+
+
 @pytest.fixture
 async def two_worlds(client: AsyncClient) -> dict[str, dict[str, str]]:
     """Org A owned by user A; org B owned by user B."""
@@ -82,7 +88,7 @@ class TestCrossTenantDenied:
             headers={"Authorization": f"Bearer {token}", "X-Org-Id": PHANTOM},
         )
         assert foreign.status_code == phantom.status_code == 404
-        assert foreign.json() == phantom.json()
+        assert _same_problem(foreign.json(), phantom.json())  # identical apart from request_id
 
     async def test_no_org_context_rejected(self, client: AsyncClient, two_worlds) -> None:
         res = await client.get(

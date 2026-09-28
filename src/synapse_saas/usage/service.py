@@ -474,7 +474,13 @@ class UsageService:
                 aggregate_type="usage",
                 aggregate_id=uuid_v7(),
                 organization_id=organization_id,
-                payload={"metric": metric, "threshold": threshold, "total": total, "limit": limit.value},
+                payload={
+                    "organization_id": str(organization_id),
+                    "metric": metric,
+                    "threshold": threshold,
+                    "total": total,
+                    "limit": limit.value,
+                },
             )
 
 

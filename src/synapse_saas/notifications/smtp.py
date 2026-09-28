@@ -10,9 +10,13 @@ from __future__ import annotations
 import contextlib
 import smtplib
 from email.message import EmailMessage
+from typing import TYPE_CHECKING
 
 from synapse_saas.core.config import get_settings
 from synapse_saas.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from synapse_saas.notifications import Notifier
 
 logger = get_logger(__name__)
 
@@ -61,7 +65,14 @@ class SmtpNotifier:
                     subtype=subtype,
                     filename=attachment.filename,
                 )
-            await _send_message(message, settings.smtp_host, settings.smtp_port)
+            await _send_message(
+                message,
+                settings.smtp_host,
+                settings.smtp_port,
+                tls=settings.smtp_tls,
+                username=settings.smtp_username,
+                password=settings.smtp_password,
+            )
             logger.info("email_sent", to=to, subject=subject, attachments=len(attachments or []))
             _inc_email("sent")
         except Exception as exc:
@@ -69,18 +80,69 @@ class SmtpNotifier:
             _inc_email("failed")
 
 
-async def _send_message(message: EmailMessage, host: str, port: int) -> None:
+async def _send_message(
+    message: EmailMessage,
+    host: str,
+    port: int,
+    *,
+    tls: str = "none",
+    username: str = "",
+    password: str = "",
+) -> None:
+    """Deliver over SMTP with the configured transport security and AUTH.
+
+    - ssl: implicit TLS from the first byte (port 465)
+    - starttls: plaintext hello, then STARTTLS (port 587)
+    - none: plaintext (MailHog / a trusted relay on localhost)
+    Credentials are sent only after the channel is secured — never in the clear.
+    """
     import asyncio
+    import ssl
 
     def _deliver() -> None:
-        with smtplib.SMTP(host, port, timeout=10) as smtp:
+        if tls == "ssl":
+            client: smtplib.SMTP = smtplib.SMTP_SSL(
+                host, port, timeout=10, context=ssl.create_default_context()
+            )
+        else:
+            client = smtplib.SMTP(host, port, timeout=10)
+        with client as smtp:
+            if tls == "starttls":
+                smtp.ehlo()
+                smtp.starttls(context=ssl.create_default_context())
+                smtp.ehlo()
+            if username:
+                if tls == "none":
+                    raise RuntimeError(
+                        "SMTP AUTH over a plaintext connection is refused; set SYNAPSE_SMTP_TLS"
+                    )
+                smtp.login(username, password)
             smtp.send_message(message)
 
     await asyncio.to_thread(_deliver)
 
 
-def get_notifier() -> SmtpNotifier:
+def get_notifier() -> Notifier:
+    """The configured transport: SMTP when a host is set (and not forced to noop), else Noop."""
+    settings = get_settings()
+    if settings.notifier == "noop" or not settings.smtp_host:
+        return NoopNotifier()
     return SmtpNotifier()
+
+
+class NoopNotifier:
+    """Log-only transport: what runs when no SMTP host is configured."""
+
+    async def send(
+        self,
+        *,
+        to: str,
+        subject: str,
+        body: str,
+        attachments: list[Attachment] | None = None,
+    ) -> None:
+        logger.info("notification_suppressed", to=to, subject=subject, attachments=len(attachments or []))
+        _inc_email("suppressed")
 
 
 def _inc_email(outcome: str) -> None:

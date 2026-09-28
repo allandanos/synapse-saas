@@ -11,9 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from synapse_saas.core import events
-from synapse_saas.core.cache import VersionedCache
+from synapse_saas.core.cache import VersionedCache, defer_bump
 from synapse_saas.core.config import get_settings
-from synapse_saas.core.errors import EntitlementNotFoundError, FeatureNotEntitledError
+from synapse_saas.core.errors import EntitlementNotFoundError, FeatureNotEntitledError, PlanNotFoundError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.core.outbox import append_outbox
 from synapse_saas.entitlements.models import Entitlement
@@ -42,7 +42,7 @@ class EntitlementService:
 
     async def effective_for_org(self, organization_id: UUID) -> EffectiveEntitlements:
         cache_key = str(organization_id)
-        cached = await _cache.get(cache_key)
+        cached, version = await _cache.get_versioned(cache_key)
         if cached is not None:
             try:
                 return _deserialize(cached)
@@ -50,8 +50,16 @@ class EntitlementService:
                 pass  # corrupt cache → recompute
 
         effective = await self._compute(organization_id)
-        await _cache.set(cache_key, _serialize(effective))
+        # Store under the version seen at read: a bump in between leaves the
+        # new version empty instead of filling it with this (now stale) body.
+        await _cache.set(cache_key, _serialize(effective), version=version)
         return effective
+
+    async def _invalidate(self, organization_id: UUID) -> None:
+        """Now (so this request recomputes) AND after commit (so no other request
+        caches the pre-commit rows under the new version for a whole TTL)."""
+        await _cache.bump(str(organization_id))
+        defer_bump(self.session, _cache, str(organization_id))
 
     async def require_feature(self, organization_id: UUID, feature: str) -> EffectiveEntitlements:
         effective = await self.effective_for_org(organization_id)
@@ -130,7 +138,7 @@ class EntitlementService:
                 "limit_value": limit_value,
             },
         )
-        await _cache.bump(str(organization_id))
+        await self._invalidate(organization_id)
         return entitlement
 
     async def get(self, entitlement_id: UUID) -> Entitlement:
@@ -154,7 +162,7 @@ class EntitlementService:
             organization_id=entitlement.organization_id,
             payload={"feature_key": entitlement.feature_key},
         )
-        await _cache.bump(str(entitlement.organization_id))
+        await self._invalidate(entitlement.organization_id)
         return entitlement
 
     # ── Internals ───────────────────────────────────────────────────────────────
@@ -174,8 +182,10 @@ class EntitlementService:
             # resolves sensible features/limits
             try:
                 plan = await subscriptions.plan_by_key(settings.default_plan_key)
-            except Exception:
-                plan = None
+            except PlanNotFoundError:
+                plan = None  # no catalog seeded yet ⇒ no plan features/limits
+            # Any other failure (DB down, aborted transaction) propagates: an
+            # org must never silently resolve to "zero features".
 
         rows = (
             (
@@ -292,3 +302,8 @@ def _inc_gated(feature: str) -> None:
         metrics.FEATURE_GATED.labels(feature=feature).inc()
     except Exception as exc:  # metrics must never fail the request
         logger.debug("metrics_inc_failed", metric="feature_gated", error=str(exc))
+
+
+async def invalidate_entitlements(organization_id: str) -> None:
+    """Out-of-session invalidation (worker jobs, after their own commit)."""
+    await _cache.bump(organization_id)

@@ -42,7 +42,15 @@ class TestInviteEmail:
             row = (
                 await session.execute(
                     text(
-                        "SELECT event_type, payload FROM outbox_events "
+                        "SELECT event_type, payload, audience FROM outbox_events "
+                        "WHERE event_type = 'member.invite_email' ORDER BY created_at DESC LIMIT 1"
+                    )
+                )
+            ).first()
+            public = (
+                await session.execute(
+                    text(
+                        "SELECT payload, audience FROM outbox_events "
                         "WHERE event_type = 'member.invited' ORDER BY created_at DESC LIMIT 1"
                     )
                 )
@@ -52,6 +60,9 @@ class TestInviteEmail:
         assert payload["email"] == "invitee@example.com"
         assert "invite_token" in payload
         assert len(payload["invite_token"]) >= 32  # a usable link, not the hash
+        assert row.audience == "internal"  # email only — never fanned out to webhooks
+        assert public is not None and public.audience == "public"
+        assert "invite_token" not in public.payload  # the public event carries no credential
 
     async def test_worker_dispatch_sends_invite_email(
         self, client: AsyncClient, org_and_tokens, monkeypatch: pytest.MonkeyPatch
@@ -176,7 +187,7 @@ class TestAcceptInviteEndpoint:
                 await session.execute(
                     text(
                         "SELECT payload FROM outbox_events "
-                        "WHERE event_type = 'member.invited' ORDER BY created_at DESC LIMIT 1"
+                        "WHERE event_type = 'member.invite_email' ORDER BY created_at DESC LIMIT 1"
                     )
                 )
             ).first()

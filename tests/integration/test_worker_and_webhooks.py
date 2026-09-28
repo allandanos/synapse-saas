@@ -259,3 +259,114 @@ class TestRecurringBilling:
             assert by_org[org].total_cents == 49900  # the ended period, through the invoicing engine
         rolled = {row.org: row.rolled for row in periods}
         assert rolled[manual] and rolled[xendit] and not rolled[stripe]
+
+
+# ── P3 / D8: partitions ahead + default, retention that keeps the audit trail ─
+
+
+class TestPartitionsAndRetention:
+    async def test_partitions_exist_three_months_ahead_plus_default(self, client: AsyncClient) -> None:
+        from sqlalchemy import text
+
+        from synapse_saas.worker.jobs import PARTITION_MONTHS_AHEAD, ensure_partitions
+
+        assert await ensure_partitions({}) == PARTITION_MONTHS_AHEAD + 1
+        async with owner_session_factory()() as session:
+            names = set(
+                (
+                    await session.execute(
+                        text(
+                            "SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid "
+                            "JOIN pg_class p ON p.oid = i.inhparent WHERE p.relname = 'usage_events'"
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC)
+        for i in range(PARTITION_MONTHS_AHEAD + 1):
+            month = (now.month - 1 + i) % 12 + 1
+            year = now.year + (now.month - 1 + i) // 12
+            assert f"usage_events_y{year}m{month:02d}" in names
+        assert "usage_events_default" in names  # a lapsed cron degrades, it does not 500
+
+    async def test_retention_keeps_exhausted_deliveries_and_honours_audit_setting(
+        self, client: AsyncClient, org_and_tokens, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from sqlalchemy import text
+
+        from synapse_saas.core.config import get_settings
+        from synapse_saas.worker.jobs import purge_expired
+
+        monkeypatch.setenv("SYNAPSE_AUDIT_RETENTION_DAYS", "10")
+        get_settings.cache_clear()
+        org = org_and_tokens["org_id"]
+        async with owner_session_factory()() as session:
+            endpoint_id = (
+                await session.execute(
+                    text(
+                        "INSERT INTO webhook_endpoints "
+                        "(id, organization_id, url, secret_encrypted, events, is_active) "
+                        "VALUES (gen_random_uuid(), :org, 'https://x.test', 'enc', '{}', true) RETURNING id"
+                    ),
+                    {"org": org},
+                )
+            ).scalar_one()
+            for status, age in (("delivered", 40), ("exhausted", 40), ("exhausted", 100)):
+                await session.execute(
+                    text(
+                        "INSERT INTO webhook_deliveries "
+                        "(id, endpoint_id, organization_id, event_type, payload, attempts, max_attempts, "
+                        "next_attempt_at, status, created_at) VALUES "
+                        "(gen_random_uuid(), :ep, :org, 'x.y', '{}', 5, 5, now(), :status, "
+                        "now() - make_interval(days => :age))"
+                    ),
+                    {"ep": endpoint_id, "org": org, "status": status, "age": age},
+                )
+            await session.execute(
+                text(
+                    "INSERT INTO audit_logs (id, organization_id, actor_type, event_type, created_at) "
+                    "VALUES (gen_random_uuid(), :org, 'system', 'old.event', now() - interval '30 days'), "
+                    "(gen_random_uuid(), :org, 'system', 'fresh.event', now())"
+                ),
+                {"org": org},
+            )
+            await session.commit()
+
+        await purge_expired({})
+        get_settings.cache_clear()
+
+        async with owner_session_factory()() as session:
+            statuses = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT status FROM webhook_deliveries "
+                            "WHERE organization_id = :org ORDER BY status"
+                        ),
+                        {"org": org},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            audit = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT event_type FROM audit_logs "
+                            "WHERE organization_id = :org AND event_type LIKE '%.event'"
+                        ),
+                        {"org": org},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert statuses == [
+            "exhausted"
+        ]  # the 40-day exhausted row survives; delivered@40d and exhausted@100d go
+        assert audit == ["fresh.event"]

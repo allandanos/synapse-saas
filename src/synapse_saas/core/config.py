@@ -7,7 +7,7 @@ Loaded once via `get_settings()` (cached) and importable anywhere below the api/
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, ClassVar
+from typing import Annotated, ClassVar, Literal
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -90,9 +90,16 @@ class Settings(BaseSettings):
     manual_pay_to_instructions: str = ""
 
     # ── Email ───────────────────────────────────────────────────────────────────
+    # notifier: "smtp" sends through the relay below when smtp_host is set;
+    # "noop" logs only (the default when no host is configured).
+    notifier: Literal["smtp", "noop"] = "smtp"
     smtp_host: str = ""
     smtp_port: int = 1025
     smtp_from: str = "synapse@localhost"
+    smtp_username: str = ""
+    smtp_password: str = ""
+    # none (MailHog/dev), starttls (587), ssl (465)
+    smtp_tls: Literal["none", "starttls", "ssl"] = "none"
 
     # ── Storage (S3-compatible; unset ⇒ local disk under storage_root) ────────
     s3_endpoint_url: str = ""  # e.g. http://localhost:9000 for MinIO; "" = AWS

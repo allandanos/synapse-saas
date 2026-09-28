@@ -77,13 +77,26 @@ class TestEventHandlers:
             captured.update(to=to, subject=subject, body=body)
 
         monkeypatch.setattr(handlers, "get_notifier", lambda: type("N", (), {"send": fake_send}))
+        # The token rides the INTERNAL event; the public member.invited carries none
         await handlers.handle_event(
-            "member.invited",
+            "member.invite_email",
             {"email": "new@example.com", "invite_token": "tok123", "org_name": "Acme"},
         )
         assert captured["to"] == "new@example.com"
         assert "Acme" in captured["subject"]
         assert "tok123" in captured["body"]
+
+    async def test_public_invite_event_sends_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from synapse_saas.notifications import handlers
+
+        sent: list[str] = []
+
+        async def fake_send(*, to: str, subject: str, body: str, attachments: object = None) -> None:
+            sent.append(to)
+
+        monkeypatch.setattr(handlers, "get_notifier", lambda: type("N", (), {"send": fake_send}))
+        await handlers.handle_event("member.invited", {"email": "new@example.com", "org_name": "Acme"})
+        assert sent == []
 
     async def test_reset_email_composed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from synapse_saas.notifications import handlers
@@ -114,3 +127,131 @@ class TestEventHandlers:
         monkeypatch.setattr(handlers, "get_notifier", lambda: type("N", (), {"send": fake_send}))
         await handlers.handle_event("member.invited", {"email": "x@example.com"})  # no token
         assert called == []
+
+
+# ── P3 / D7: transport security, AUTH, and the notifier seam ─────────────────
+
+
+class _FakeSMTP:
+    """Records the protocol steps a real relay would see."""
+
+    instances: list[_FakeSMTP] = []
+
+    def __init__(self, host: str, port: int, timeout: int = 10, context: object = None) -> None:
+        self.host, self.port, self.steps = host, port, ["connect"]
+        self.ssl_context = context
+        _FakeSMTP.instances.append(self)
+
+    def __enter__(self) -> _FakeSMTP:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.steps.append("quit")
+
+    def ehlo(self) -> None:
+        self.steps.append("ehlo")
+
+    def starttls(self, context: object = None) -> None:
+        self.steps.append("starttls")
+        self.ssl_context = context
+
+    def login(self, username: str, password: str) -> None:
+        self.steps.append(f"login:{username}")
+
+    def send_message(self, message: object) -> None:
+        self.steps.append("send")
+
+
+@pytest.fixture
+def fake_smtp(monkeypatch: pytest.MonkeyPatch) -> type[_FakeSMTP]:
+    import smtplib
+
+    _FakeSMTP.instances = []
+    monkeypatch.setattr(smtplib, "SMTP", _FakeSMTP)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", _FakeSMTP)
+    return _FakeSMTP
+
+
+class TestTransportSecurity:
+    async def test_starttls_then_auth(self, fake_smtp: type[_FakeSMTP]) -> None:
+        from email.message import EmailMessage
+
+        from synapse_saas.notifications.smtp import _send_message
+
+        await _send_message(
+            EmailMessage(), "smtp.example.test", 587, tls="starttls", username="u", password="p"
+        )
+        (conn,) = fake_smtp.instances
+        assert conn.steps == ["connect", "ehlo", "starttls", "ehlo", "login:u", "send", "quit"]
+        assert conn.ssl_context is not None
+
+    async def test_implicit_ssl(self, fake_smtp: type[_FakeSMTP]) -> None:
+        from email.message import EmailMessage
+
+        from synapse_saas.notifications.smtp import _send_message
+
+        await _send_message(EmailMessage(), "smtp.example.test", 465, tls="ssl", username="u", password="p")
+        (conn,) = fake_smtp.instances
+        assert conn.ssl_context is not None and "starttls" not in conn.steps
+        assert conn.steps == ["connect", "login:u", "send", "quit"]
+
+    async def test_auth_over_plaintext_is_refused(self, fake_smtp: type[_FakeSMTP]) -> None:
+        """Credentials never go over the wire in the clear."""
+        from email.message import EmailMessage
+
+        from synapse_saas.notifications.smtp import _send_message
+
+        with pytest.raises(RuntimeError, match="plaintext"):
+            await _send_message(
+                EmailMessage(), "smtp.example.test", 25, tls="none", username="u", password="p"
+            )
+        assert "send" not in fake_smtp.instances[0].steps
+
+    async def test_plaintext_without_auth_is_allowed_for_mailhog(self, fake_smtp: type[_FakeSMTP]) -> None:
+        from email.message import EmailMessage
+
+        from synapse_saas.notifications.smtp import _send_message
+
+        await _send_message(EmailMessage(), "localhost", 1025)
+        assert fake_smtp.instances[0].steps == ["connect", "send", "quit"]
+
+
+class TestNotifierSeam:
+    async def test_noop_when_no_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from synapse_saas.core.config import get_settings
+        from synapse_saas.notifications import NoopNotifier, get_notifier
+
+        monkeypatch.setenv("SYNAPSE_SMTP_HOST", "")
+        get_settings.cache_clear()
+        assert isinstance(get_notifier(), NoopNotifier)
+        get_settings.cache_clear()
+
+    async def test_noop_can_be_forced(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from synapse_saas.core.config import get_settings
+        from synapse_saas.notifications import NoopNotifier, get_notifier
+
+        monkeypatch.setenv("SYNAPSE_SMTP_HOST", "smtp.example.test")
+        monkeypatch.setenv("SYNAPSE_NOTIFIER", "noop")
+        get_settings.cache_clear()
+        assert isinstance(get_notifier(), NoopNotifier)
+        get_settings.cache_clear()
+
+    async def test_smtp_when_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from synapse_saas.core.config import get_settings
+        from synapse_saas.notifications import SmtpNotifier, get_notifier
+
+        monkeypatch.setenv("SYNAPSE_SMTP_HOST", "smtp.example.test")
+        monkeypatch.setenv("SYNAPSE_NOTIFIER", "smtp")
+        get_settings.cache_clear()
+        assert isinstance(get_notifier(), SmtpNotifier)
+        get_settings.cache_clear()
+
+    async def test_protocol_carries_attachments(self) -> None:
+        from synapse_saas.notifications import Attachment, NoopNotifier
+
+        await NoopNotifier().send(
+            to="a@example.com",
+            subject="s",
+            body="b",
+            attachments=[Attachment("x.pdf", b"%PDF-", "application/pdf")],
+        )

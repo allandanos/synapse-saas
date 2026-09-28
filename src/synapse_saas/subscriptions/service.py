@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from synapse_saas.core import events
-from synapse_saas.core.cache import VersionedCache
+from synapse_saas.core.cache import VersionedCache, defer_bump
 from synapse_saas.core.errors import (
     PlanNotFoundError,
     SubscriptionNotFoundError,
@@ -328,7 +328,10 @@ class SubscriptionService:
         )
 
     async def _bump_cache(self, organization_id: UUID) -> None:
+        # Now (this request recomputes) and again after commit (no other request
+        # caches pre-commit rows under the new version) — see core/cache.py.
         await _entitlement_cache.bump(str(organization_id))
+        defer_bump(self.session, _entitlement_cache, str(organization_id))
 
 
 def _snapshot(plan: Plan) -> dict[str, Any]:

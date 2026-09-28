@@ -72,3 +72,20 @@ WEBHOOK_DELIVERY_EXHAUSTED = "webhook.delivery_exhausted"
 AGENT_REGISTERED = "agent.registered"
 AGENT_UPDATED = "agent.updated"
 AGENT_DISABLED = "agent.disabled"
+
+# ── Internal (in-process consumers only — NEVER fanned out to tenant webhooks) ─
+# These carry credentials or per-recipient material (invite tokens, reset
+# links, invoice delivery instructions). `append_outbox` stamps them
+# audience='internal'; the dispatcher skips webhook fan-out for that audience.
+MEMBER_INVITE_EMAIL = "member.invite_email"
+USER_PASSWORD_RESET_LINK = "user.password_reset_link"
+INVOICE_EMAIL = "invoice.email"
+
+INTERNAL_EVENTS: frozenset[str] = frozenset({MEMBER_INVITE_EMAIL, USER_PASSWORD_RESET_LINK, INVOICE_EMAIL})
+
+AUDIENCE_PUBLIC = "public"
+AUDIENCE_INTERNAL = "internal"
+
+
+def audience_for(event_type: str) -> str:
+    return AUDIENCE_INTERNAL if event_type in INTERNAL_EVENTS else AUDIENCE_PUBLIC

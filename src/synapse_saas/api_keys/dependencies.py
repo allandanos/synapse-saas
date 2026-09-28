@@ -20,7 +20,7 @@ from synapse_saas.api_keys.service import KEY_PREFIX, ApiKeyService
 from synapse_saas.core import context
 from synapse_saas.core.context import TenantContext, UserContext
 from synapse_saas.core.errors import AuthenticationError
-from synapse_saas.core.logging import get_logger
+from synapse_saas.core.logging import bind_request_context, get_logger
 from synapse_saas.tenancy.models import Organization
 
 logger = get_logger(__name__)
@@ -54,6 +54,7 @@ def bind_api_key_context(key: ApiKey, org: Organization) -> None:
             api_key_creator_id=key.created_by_user_id,
         )
     )
+    bind_request_context()  # org_id + key principal on every log line from here on
 
 
 async def meter_api_key_request(session: AsyncSession, organization_id: UUID) -> None:
@@ -65,7 +66,10 @@ async def meter_api_key_request(session: AsyncSession, organization_id: UUID) ->
     """
     from synapse_saas.usage.service import UsageService
 
+    # Savepoint: a failed INSERT here would otherwise leave the whole request
+    # transaction in an aborted state and 500 the real work that follows.
     try:
-        await UsageService(session).record(organization_id, "api_requests", quantity=1)
+        async with session.begin_nested():
+            await UsageService(session).record(organization_id, "api_requests", quantity=1)
     except Exception:
         logger.warning("api_key_metering_failed", organization_id=str(organization_id))

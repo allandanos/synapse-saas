@@ -6,13 +6,14 @@ import contextlib
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
 from synapse_saas.core import context
-from synapse_saas.core.logging import bind_request_context
+from synapse_saas.core.logging import bind_request_context, clear_request_context
 
 REQUEST_ID_HEADER = "X-Request-Id"
 
@@ -27,19 +28,21 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         token = context.set_request_id(request_id)
         start = time.perf_counter()
         span_cm = _request_span(request)
-        span_cm.__enter__()
+        span_cm.__enter__()  # the span is CURRENT: handlers' spans nest under it, logs carry trace_id
+        bind_request_context()  # request_id + trace_id on every log line from here on;
+        # tenant/user are rebound by the auth dependencies once they resolve.
         try:
             response = await call_next(request)
         finally:
             context.reset_request_id(token)
             span_cm.__exit__(None, None, None)
+            clear_request_context()  # never leak ids into the next request on this task
 
         duration_ms = (time.perf_counter() - start) * 1000
         response.headers[REQUEST_ID_HEADER] = request_id
         response.headers["X-Response-Time-Ms"] = f"{duration_ms:.1f}"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        bind_request_context()
 
         try:
             from synapse_saas.core import metrics
@@ -74,24 +77,26 @@ def _request_span(request: Request) -> _SpanGuard:
 
 
 class _SpanGuard:
-    """Starts a span on enter, ends it on exit. Tracing failures are absorbed —
-    the request path is identical whether or not spans are being recorded."""
+    """Starts a span on enter and makes it CURRENT (so `current_trace_id()` and
+    child spans see it); ends it on exit. Tracing failures are absorbed — the
+    request path is identical whether or not spans are being recorded."""
 
     def __init__(self, request: Request) -> None:
         self._request = request
-        self._span: object | None = None
+        self._cm: Any = None
 
     def __enter__(self) -> _SpanGuard:
         with contextlib.suppress(Exception):
             from synapse_saas.core.tracing import get_tracer
 
-            self._span = get_tracer("synapse.http").start_span(
+            self._cm = get_tracer("synapse.http").start_as_current_span(
                 f"{self._request.method} {self._request.url.path}"
             )
+            self._cm.__enter__()
         return self
 
     def __exit__(self, *exc: object) -> None:
         with contextlib.suppress(Exception):
-            if self._span is not None:
-                self._span.end()  # type: ignore[attr-defined]
-        self._span = None
+            if self._cm is not None:
+                self._cm.__exit__(None, None, None)
+        self._cm = None
