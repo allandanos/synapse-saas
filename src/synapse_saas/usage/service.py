@@ -84,8 +84,13 @@ class UsageService:
     async def check(self, organization_id: UUID, metric: str, *, quantity: int = 1) -> dict[str, Any]:
         """Read-only limit check for pre-flight UI."""
         entitlements = await EntitlementService(self.session).effective_for_org(organization_id)
-        limit = entitlements.limit(metric)
         used = await self.current_total(organization_id, metric)
+        return self.check_against(entitlements, metric, used=used, quantity=quantity)
+
+    @staticmethod
+    def check_against(entitlements: Any, metric: str, *, used: int, quantity: int = 1) -> dict[str, Any]:
+        """Pure limit arithmetic for an already-resolved entitlement set."""
+        limit = entitlements.limit(metric)
         value = limit.value if limit else None
         soft = int(value * limit.soft_limit_ratio) if (limit and value and limit.soft_limit_ratio) else None
         return {

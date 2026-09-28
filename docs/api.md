@@ -9,6 +9,12 @@ Conventions:
 - Org context via `X-Org-Id` (UUID) or `X-Org-Slug`; unauthorized cross-tenant
   access is 404 identical to a nonexistent org
 
+## Pagination
+
+Every list route accepts `?limit=` (1–100, default 50) and `?offset=`. The
+body stays a plain JSON array; the total number of rows rides the
+`X-Total-Count` response header (exposed through CORS).
+
 ## Auth
 
 | Method | Path | Notes |
@@ -86,8 +92,10 @@ Conventions:
 | GET | `/files` | org listing (`file:read`) |
 | POST | `/files` | multipart ≤10 MiB (`file:write` + `api_access`); meters `storage_bytes` |
 | GET | `/files/{id}` | stream download |
-| POST | `/files/{id}/presign` | time-limited direct URL (S3 backends) |
-| DELETE | `/files/{id}` | soft-delete + object delete |
+| POST | `/files/presign-upload` | reserve quota + PUT URL for a direct upload (S3 backends; 409 on local disk) |
+| POST | `/files/{id}/complete` | verify the uploaded object and mark it ready (409 `upload_incomplete` on mismatch) |
+| POST | `/files/{id}/presign` | time-limited direct download URL (S3 backends) |
+| DELETE | `/files/{id}` | soft-delete + object delete + quota released |
 
 ## Feature flags
 
@@ -125,7 +133,7 @@ See [Feature flags](feature-flags.md) — deployment toggles, distinct from enti
 
 | Method | Path |
 |---|---|
-| GET | `/healthz`, `/readyz`, `/v1/meta` |
+| GET | `/healthz`, `/readyz` (**503** when a dependency fails), `/v1/meta` |
 
 ## Status codes
 

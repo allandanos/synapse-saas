@@ -1,0 +1,23 @@
+# Keep at least one API and one worker pod through voluntary disruptions
+# (node drains, cluster upgrades). Pairs with the 2-replica minimums.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: synapse-api
+  namespace: synapse
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: synapse-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: synapse-worker
+  namespace: synapse
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: synapse-worker

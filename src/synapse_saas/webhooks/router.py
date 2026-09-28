@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Response, status
 
 from synapse_saas.authorization.dependencies import require_permission
+from synapse_saas.core.pagination import PageDep, paginate, paginate_in_memory
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.tenancy.dependencies import TenantDep
 from synapse_saas.webhooks.schemas import (
@@ -22,11 +23,11 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 @router.get("/endpoints", response_model=list[WebhookEndpointRead])
 async def list_endpoints(
-    tenant: TenantDep, session: SessionDep, user: CurrentUser
+    tenant: TenantDep, session: SessionDep, user: CurrentUser, page: PageDep, response: Response
 ) -> list[WebhookEndpointRead]:
     await require_permission("webhook:manage", user, session, tenant)
     endpoints = await WebhookService(session).list_endpoints(tenant.organization_id)
-    return [WebhookEndpointRead.model_validate(e) for e in endpoints]
+    return [WebhookEndpointRead.model_validate(e) for e in paginate_in_memory(endpoints, page, response)]
 
 
 @router.post("/endpoints", response_model=WebhookEndpointCreated, status_code=status.HTTP_201_CREATED)
@@ -59,13 +60,23 @@ async def list_deliveries(
     tenant: TenantDep,
     session: SessionDep,
     user: CurrentUser,
+    page: PageDep,
+    response: Response,
     endpoint_id: UUID | None = None,
-    limit: int = Query(50, ge=1, le=100),
 ) -> list[WebhookDeliveryRead]:
     await require_permission("webhook:manage", user, session, tenant)
-    deliveries = await WebhookService(session).list_deliveries(
-        tenant.organization_id, endpoint_id=endpoint_id, limit=limit
+    from sqlalchemy import select
+
+    from synapse_saas.webhooks.models import WebhookDelivery
+
+    stmt = (
+        select(WebhookDelivery)
+        .where(WebhookDelivery.organization_id == tenant.organization_id)
+        .order_by(WebhookDelivery.created_at.desc())
     )
+    if endpoint_id is not None:
+        stmt = stmt.where(WebhookDelivery.endpoint_id == endpoint_id)
+    deliveries = await paginate(session, stmt, page, response)
     return [WebhookDeliveryRead.model_validate(d) for d in deliveries]
 
 

@@ -21,3 +21,20 @@ data:
   SYNAPSE_TENANT_ISOLATION: "app"
   SYNAPSE_AUDIT_RETENTION_DAYS: "365"
   SYNAPSE_BILLING_CURRENCY: "PHP"
+  # Object storage. With replicas > 1 the local-disk fallback is per pod, so a
+  # bucket is REQUIRED for anything but a single-replica trial (README).
+  SYNAPSE_S3_REGION: "us-east-1"
+  SYNAPSE_S3_ENDPOINT_URL: ""      # e.g. https://<account>.r2.cloudflarestorage.com
+  SYNAPSE_STORAGE_ROOT: "/data/storage"
+  # Email (credentials in 02-secret.yaml). none | starttls | ssl
+  SYNAPSE_NOTIFIER: "smtp"
+  SYNAPSE_SMTP_HOST: ""
+  SYNAPSE_SMTP_PORT: "587"
+  SYNAPSE_SMTP_TLS: "starttls"
+  SYNAPSE_SMTP_FROM: "noreply@example.com"
+  # Observability: empty endpoint ⇒ tracing inert
+  SYNAPSE_OTEL_EXPORTER_ENDPOINT: ""
+  SYNAPSE_OTEL_SERVICE_NAME: "synapse-saas"
+  # Reverse-proxy chain that may set X-Forwarded-For (CIDRs, comma-separated)
+  SYNAPSE_TRUSTED_PROXIES: "10.0.0.0/8"
+  SYNAPSE_COOKIE_SECURE: "true"

@@ -15,7 +15,7 @@ kubectl apply -f 02-secret.yaml
 kubectl apply -f 10-api.yaml
 kubectl apply -f 11-migrate-job.yaml
 kubectl wait --for=condition=complete job/synapse-migrate -n synapse --timeout=180s
-kubectl apply -f 12-worker.yaml
+kubectl apply -f 12-worker.yaml 14-pdb.yaml
 kubectl apply -f 13-web.yaml
 kubectl apply -f 20-ingress.yaml   # adjust hosts + TLS issuer first
 ```
@@ -48,3 +48,21 @@ for the standard install.
   data services by hand in-cluster is how data gets lost.
 - **No NetworkPolicies/PodSecurity admission boilerplate**: cluster-specific.
   Apply yours; the workloads run non-root with no privileged requests.
+
+## Storage
+
+The images fall back to local disk under `/data/storage` (an `emptyDir` per
+pod in these manifests). That is fine for a single-replica trial and wrong
+for anything else: with `replicas: 2` an upload lands on one pod and a
+download may hit the other. Set `SYNAPSE_S3_BUCKET` (plus endpoint/keys in
+`02-secret.yaml`) for any real deployment — S3, Cloudflare R2 and MinIO all
+work — and the presigned upload/download routes become available.
+
+## Hardening that ships
+
+- Non-root, read-only root filesystem, all capabilities dropped, RuntimeDefault
+  seccomp on API and worker pods (`/data/storage` and `/tmp` are the only
+  writable mounts)
+- PodDisruptionBudgets keep one API and one worker pod through drains
+- `/readyz` answers 503 when the database is unreachable, so the readiness
+  probe really pulls a broken pod out of the Service

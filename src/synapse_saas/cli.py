@@ -1,4 +1,4 @@
-"""synapse-cli: migrate, seed, plans sync."""
+"""synapse-cli: migrate, seed, plans sync, on-demand jobs."""
 
 from __future__ import annotations
 
@@ -90,6 +90,60 @@ def provision_app_role(role: str, password: str) -> None:
     except ValueError as exc:
         raise click.BadParameter(str(exc), param_hint="--role") from exc
     click.echo(f"Role {role!r} provisioned: LOGIN NOBYPASSRLS, DML on public schema, default privileges set.")
+
+
+@cli.group()
+def jobs() -> None:
+    """Run worker jobs on demand (Cloud Run / Cloud Scheduler, one-off maintenance)."""
+
+
+JOB_NAMES = (
+    "dispatch_outbox",
+    "deliver_webhooks",
+    "rollup_usage",
+    "expire_entitlements",
+    "advance_recurring_billing",
+    "ensure_partitions",
+    "purge_expired",
+)
+
+
+@jobs.command("run-once")
+@click.argument("names", nargs=-1)
+@click.option("--all", "run_all", is_flag=True, help="Run every cron job once, in dispatch order")
+def jobs_run_once(names: tuple[str, ...], run_all: bool) -> None:
+    """Await each named job exactly once and exit — what a scheduler-triggered
+    Cloud Run job executes instead of the always-on arq loop."""
+    selected = list(JOB_NAMES) if run_all else list(names)
+    if not selected:
+        raise click.UsageError("Name at least one job or pass --all. Known: " + ", ".join(JOB_NAMES))
+    unknown = [n for n in selected if n not in JOB_NAMES]
+    if unknown:
+        raise click.UsageError(f"Unknown job(s): {', '.join(unknown)}. Known: {', '.join(JOB_NAMES)}")
+    results = asyncio.run(_run_jobs_once(selected))
+    for name, outcome in results.items():
+        click.echo(f"{name}: {outcome}")
+    if any(str(v).startswith("error") for v in results.values()):
+        raise SystemExit(1)
+
+
+async def _run_jobs_once(names: list[str]) -> dict[str, object]:
+    from synapse_saas.core.db import dispose_engine
+    from synapse_saas.core.http import close_http_client
+    from synapse_saas.worker import jobs as job_module
+
+    results: dict[str, object] = {}
+    try:
+        for name in names:
+            fn = getattr(job_module, name)
+            try:
+                results[name] = await fn({})
+            except Exception as exc:  # report, keep going: one job must not hide the others
+                results[name] = f"error: {exc}"
+    finally:
+        await close_http_client()
+        await dispose_engine()
+    return results
 
 
 @cli.group()

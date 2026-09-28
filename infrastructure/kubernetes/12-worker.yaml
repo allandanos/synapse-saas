@@ -21,6 +21,16 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        # Local-disk storage fallback + tmp; per pod. Use S3 for real deployments.
+        - name: storage
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
       containers:
         - name: worker
           image: synapse-saas/api:latest # same image; different entrypoint
@@ -37,6 +47,16 @@ spec:
             limits:
               cpu: "1"
               memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: storage
+              mountPath: /data/storage
+            - name: tmp
+              mountPath: /tmp
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

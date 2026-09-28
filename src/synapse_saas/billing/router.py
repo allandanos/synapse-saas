@@ -26,6 +26,7 @@ from synapse_saas.billing.schemas import (
 from synapse_saas.billing.service import BillingService
 from synapse_saas.billing.webhooks import BillingWebhookService
 from synapse_saas.core.errors import InvoiceNotFoundError
+from synapse_saas.core.pagination import PageDep, paginate_in_memory
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.subscriptions.service import SubscriptionService
 from synapse_saas.tenancy.dependencies import PlatformAdminDep, TenantDep
@@ -98,10 +99,12 @@ async def portal_url(
 
 
 @router.get("/invoices", response_model=list[InvoiceRead])
-async def list_invoices(tenant: TenantDep, session: SessionDep, user: CurrentUser) -> list[InvoiceRead]:
+async def list_invoices(
+    tenant: TenantDep, session: SessionDep, user: CurrentUser, page: PageDep, response: Response
+) -> list[InvoiceRead]:
     await require_permission("billing:read", user, session, tenant)
     invoices = await BillingService(session).invoices_for_org(tenant.organization_id)
-    return [InvoiceRead.model_validate(inv) for inv in invoices]
+    return [InvoiceRead.model_validate(inv) for inv in paginate_in_memory(invoices, page, response)]
 
 
 # ── Reporting (tenant spend + platform revenue) ──────────────────────────────

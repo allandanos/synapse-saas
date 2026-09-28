@@ -1,7 +1,13 @@
 # Multi-tenancy
 
-Every organization's data is isolated. The application never writes
-`WHERE organization_id = ?` — the framework does, or the query doesn't run.
+Every organization's data is isolated, by three layers that fail
+independently: `TenantRepository` scopes reads and writes of `TenantMixin`
+models automatically; service code that builds its own queries filters on the
+resolved tenant explicitly (there are ~30 such sites — grep
+`organization_id ==`); and with `SYNAPSE_TENANT_ISOLATION=app_and_rls` the
+database itself refuses rows outside the request's tenant (row-level
+security, ADR 0002). The last layer is the one the integration suite runs as
+a real non-owner role (`make test-rls`).
 
 ## Model
 

@@ -34,7 +34,9 @@ SYNAPSE_S3_SECRET_ACCESS_KEY=minioadmin
 | POST | `/v1/files` | multipart upload ≤10 MiB (`file:write` + `api_access` feature) |
 | GET | `/v1/files/{id}` | stream download (`file:read`) |
 | POST | `/v1/files/{id}/presign` | time-limited direct URL (S3 backends) |
-| DELETE | `/v1/files/{id}` | soft-delete index row + delete object |
+| POST | `/v1/files/presign-upload` | reserve quota + PUT URL for a direct upload (S3 backends) |
+| POST | `/v1/files/{id}/complete` | verify the uploaded object, mark it ready |
+| DELETE | `/v1/files/{id}` | soft-delete index row + delete object + release quota |
 
 ## Quotas and gates
 
@@ -43,8 +45,24 @@ SYNAPSE_S3_SECRET_ACCESS_KEY=minioadmin
   byte is written*
 - Uploads require the **`api_access` feature** — storage is a paid-tier
   capability; the 403 carries `available_in` upgrade hints
-- Direct multipart uploads cap at 10 MiB; larger objects use presigned PUT URLs
-  that bypass the API entirely (quota check stays server-side)
+- Direct multipart uploads cap at 10 MiB; larger objects use the **presigned
+  upload flow** (S3-compatible backends only; local disk answers 409
+  `presign_unsupported`):
+
+  ```
+  POST /v1/files/presign-upload  {name, content_type, size_bytes}
+    → {id, key, url, method: PUT, headers, expires_in}   # quota reserved, row = pending
+  PUT  <url>  (the client uploads straight to the bucket)
+  POST /v1/files/{id}/complete
+    → the API HEADs the object, checks the size, marks the row ready
+      (mismatch: 409 upload_incomplete, reservation released)
+  ```
+
+  Pending rows never appear in listings; ones that are never completed are
+  reclaimed by the retention job (quota given back). `storage_bytes` is a
+  gauge: uploads move it up, deletes move it back down.
+- `GET /v1/files` paginates (`?limit=&offset=`, `X-Total-Count`); the old
+  hard cap of 200 rows is gone
 
 ## Key rules (enforced in `storage/backend.py`)
 
@@ -56,7 +74,8 @@ SYNAPSE_S3_SECRET_ACCESS_KEY=minioadmin
 ## Data model
 
 `stored_files` is the org-scoped index (key, name, content type, size,
-soft-delete). Bytes never touch Postgres; deleting an org cascades the index,
-and the backend objects age out with the lifecycle policy you configure
-(S3 lifecycle rules / MinIO expiry) — the framework deliberately does not
-manage remote lifecycle.
+status `pending|ready`, soft-delete). Bytes never touch Postgres. `DELETE
+/v1/files/{id}` soft-deletes the row **and deletes the object** immediately
+(and returns the bytes to the quota); deleting an org cascades the index and
+leaves the objects to the lifecycle policy you configure (S3 lifecycle rules /
+MinIO expiry) — the framework does not manage remote lifecycle beyond that.

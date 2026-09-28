@@ -7,18 +7,30 @@ as every other metered resource.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response, status
 from starlette.datastructures import UploadFile
 
 from synapse_saas.authorization.dependencies import require_permission
-from synapse_saas.core.errors import NotFoundError, StorageError
+from synapse_saas.core.errors import (
+    NotFoundError,
+    PresignUnsupportedError,
+    StorageError,
+    UploadIncompleteError,
+)
+from synapse_saas.core.pagination import PageDep, paginate
 from synapse_saas.entitlements.service import EntitlementService
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.storage.backend import get_storage, scoped_key
 from synapse_saas.storage.models import StoredFile
-from synapse_saas.storage.schemas import FileRead, PresignResponse
+from synapse_saas.storage.schemas import (
+    FileRead,
+    PresignResponse,
+    PresignUploadRequest,
+    PresignUploadResponse,
+)
 from synapse_saas.tenancy.dependencies import TenantDep
 from synapse_saas.usage.service import UsageService
 
@@ -28,22 +40,22 @@ MAX_DIRECT_UPLOAD_BYTES = 10 * 1024 * 1024  # larger ⇒ presigned PUT
 
 
 @router.get("", response_model=list[FileRead])
-async def list_files(tenant: TenantDep, session: SessionDep, user: CurrentUser) -> list[FileRead]:
+async def list_files(
+    tenant: TenantDep, session: SessionDep, user: CurrentUser, page: PageDep, response: Response
+) -> list[FileRead]:
     await require_permission("file:read", user, session, tenant)
     from sqlalchemy import select
 
-    rows = (
-        (
-            await session.execute(
-                select(StoredFile)
-                .where(StoredFile.organization_id == tenant.organization_id, StoredFile.deleted_at.is_(None))
-                .order_by(StoredFile.created_at.desc())
-                .limit(200)
-            )
+    stmt = (
+        select(StoredFile)
+        .where(
+            StoredFile.organization_id == tenant.organization_id,
+            StoredFile.deleted_at.is_(None),
+            StoredFile.status == "ready",
         )
-        .scalars()
-        .all()
+        .order_by(StoredFile.created_at.desc())
     )
+    rows = await paginate(session, stmt, page, response)
     return [FileRead.model_validate(r) for r in rows]
 
 
@@ -96,6 +108,74 @@ async def upload_file(
     return FileRead.model_validate(row)
 
 
+@router.post("/presign-upload", response_model=PresignUploadResponse)
+async def presign_upload(
+    body: PresignUploadRequest, tenant: TenantDep, session: SessionDep, user: CurrentUser
+) -> PresignUploadResponse:
+    """Large-file path: reserve the quota, hand out a time-limited PUT URL, and
+    index the object as `pending`. The client uploads straight to the bucket and
+    then calls `POST /files/{id}/complete`. Local-disk storage answers 409."""
+    await require_permission("file:write", user, session, tenant)
+    await EntitlementService(session).require_feature(tenant.organization_id, "api_access")
+    storage = get_storage()
+    if not storage.supports_presigned_upload:
+        raise PresignUnsupportedError(
+            "Presigned uploads need an S3-compatible backend; use multipart POST /files",
+            extras={"direct_upload_limit_bytes": MAX_DIRECT_UPLOAD_BYTES},
+        )
+    # Reserve the quota now (402 on breach) — released by complete-mismatch, delete, or retention
+    await UsageService(session).adjust_gauge(tenant.organization_id, "storage_bytes", body.size_bytes)
+    key = scoped_key(tenant.organization_id, body.name)
+    url = await storage.presign_put(key=key, content_type=body.content_type)
+    row = StoredFile(
+        organization_id=tenant.organization_id,
+        key=key,
+        name=body.name,
+        content_type=body.content_type,
+        size_bytes=body.size_bytes,
+        status="pending",
+        created_by_user_id=user.id,
+    )
+    session.add(row)
+    await session.flush()
+    from synapse_saas.core.config import get_settings
+
+    return PresignUploadResponse(
+        id=row.id,
+        key=key,
+        url=url,
+        headers={"Content-Type": body.content_type},
+        expires_in=get_settings().storage_presign_seconds,
+    )
+
+
+@router.post("/{file_id}/complete", response_model=FileRead)
+async def complete_upload(
+    file_id: UUID, tenant: TenantDep, session: SessionDep, user: CurrentUser
+) -> FileRead:
+    """Verify the uploaded object (exists, size matches the reservation) and mark it ready.
+    A mismatch releases the reservation and answers 409 so the client can retry."""
+    await require_permission("file:write", user, session, tenant)
+    row = await _get_scoped(file_id, tenant.organization_id, session, statuses=("pending", "ready"))
+    if row.status == "ready":
+        return FileRead.model_validate(row)  # idempotent
+    actual = await get_storage().head(key=row.key)
+    if actual is None or actual != row.size_bytes:
+        await UsageService(session).adjust_gauge(
+            tenant.organization_id, "storage_bytes", -int(row.size_bytes)
+        )
+        row.deleted_at = datetime.now(UTC)
+        # Release first, then report: the 409 must not roll the release back
+        await session.commit()
+        raise UploadIncompleteError(
+            "Object missing or size mismatch; request a new presigned upload",
+            extras={"expected_bytes": row.size_bytes, "actual_bytes": actual},
+        )
+    row.status = "ready"
+    await session.flush()
+    return FileRead.model_validate(row)
+
+
 @router.get("/{file_id}")
 async def download_file(file_id: UUID, tenant: TenantDep, session: SessionDep, user: CurrentUser) -> Response:
     await require_permission("file:read", user, session, tenant)
@@ -125,15 +205,19 @@ async def presign_download(
 async def delete_file(file_id: UUID, tenant: TenantDep, session: SessionDep, user: CurrentUser) -> None:
     """Soft-delete the index row, remove the object, and give the bytes back to the quota."""
     await require_permission("file:write", user, session, tenant)
-    row = await _get_scoped(file_id, tenant.organization_id, session)
-    from datetime import UTC, datetime
-
+    row = await _get_scoped(file_id, tenant.organization_id, session, statuses=("pending", "ready"))
     row.deleted_at = datetime.now(UTC)
     await get_storage().delete(key=row.key)
     await UsageService(session).adjust_gauge(tenant.organization_id, "storage_bytes", -int(row.size_bytes))
 
 
-async def _get_scoped(file_id: UUID, organization_id: UUID, session: SessionDep) -> StoredFile:
+async def _get_scoped(
+    file_id: UUID,
+    organization_id: UUID,
+    session: SessionDep,
+    *,
+    statuses: tuple[str, ...] = ("ready",),
+) -> StoredFile:
     from sqlalchemy import select
 
     row = (
@@ -142,6 +226,7 @@ async def _get_scoped(file_id: UUID, organization_id: UUID, session: SessionDep)
                 StoredFile.id == file_id,
                 StoredFile.organization_id == organization_id,
                 StoredFile.deleted_at.is_(None),
+                StoredFile.status.in_(statuses),
             )
         )
     ).scalar_one_or_none()

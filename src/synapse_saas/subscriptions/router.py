@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 
 from synapse_saas.authorization.dependencies import require_permission
+from synapse_saas.core.pagination import PageDep, paginate
 from synapse_saas.entitlements.service import EntitlementService
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.subscriptions.schemas import (
@@ -25,22 +26,15 @@ router = APIRouter(tags=["subscriptions"])
 
 
 @router.get("/plans", response_model=list[PlanRead])
-async def list_plans(session: SessionDep, user: CurrentUser) -> list[PlanRead]:
+async def list_plans(
+    session: SessionDep, user: CurrentUser, page: PageDep, response: Response
+) -> list[PlanRead]:
     from sqlalchemy import select
 
     from synapse_saas.subscriptions.models import Plan
 
-    plans = (
-        (
-            await session.execute(
-                select(Plan)
-                .where(Plan.is_public.is_(True), Plan.archived_at.is_(None))
-                .order_by(Plan.sort_order)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    stmt = select(Plan).where(Plan.is_public.is_(True), Plan.archived_at.is_(None)).order_by(Plan.sort_order)
+    plans = await paginate(session, stmt, page, response)
     return [PlanRead.model_validate(p) for p in plans]
 
 

@@ -119,10 +119,14 @@ async def usage_summary(
     period_date = datetime.strptime(period, "%Y-%m").date().replace(day=1) if period else None
     summary = await service.summary(tenant.organization_id, period=period_date)
 
+    # One entitlement resolution for the whole summary (not one per metric)
+    from synapse_saas.entitlements.service import EntitlementService
+
+    entitlements = await EntitlementService(session).effective_for_org(tenant.organization_id)
     checks = []
     for entry in summary:
-        check = await service.check(tenant.organization_id, entry["metric"])
-        checks.append(UsageCheckOut(**{**check, "used": entry["used"]}))
+        check = service.check_against(entitlements, entry["metric"], used=entry["used"])
+        checks.append(UsageCheckOut(**check))
 
     from datetime import UTC
     from datetime import datetime as dt

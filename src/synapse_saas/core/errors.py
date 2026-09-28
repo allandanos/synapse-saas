@@ -246,6 +246,20 @@ class StorageError(DomainError):
     title = "storage_error"
 
 
+class PresignUnsupportedError(DomainError):
+    """The configured storage backend cannot hand out direct-upload URLs (local disk)."""
+
+    status = 409
+    title = "presign_unsupported"
+
+
+class UploadIncompleteError(DomainError):
+    """`complete` was called but the object is missing or its size does not match."""
+
+    status = 409
+    title = "upload_incomplete"
+
+
 # ── API keys ──────────────────────────────────────────────────────────────────
 
 

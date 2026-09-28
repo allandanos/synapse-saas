@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FileUploadRequest(BaseModel):
@@ -21,7 +21,25 @@ class FileRead(BaseModel):
     name: str
     content_type: str
     size_bytes: int
+    status: str = "ready"
     created_at: datetime
+
+
+class PresignUploadRequest(BaseModel):
+    """Reserve quota + get a PUT URL for an object the client uploads directly."""
+
+    name: str = Field(min_length=1, max_length=255)
+    content_type: str = Field("application/octet-stream", max_length=128)
+    size_bytes: int = Field(gt=0, le=5 * 1024 * 1024 * 1024)  # single PUT ceiling
+
+
+class PresignUploadResponse(BaseModel):
+    id: uuid.UUID
+    key: str
+    url: str
+    method: str = "PUT"
+    headers: dict[str, str]
+    expires_in: int
 
 
 class PresignResponse(BaseModel):

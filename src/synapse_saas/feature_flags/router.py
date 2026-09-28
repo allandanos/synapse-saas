@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 
+from synapse_saas.core.pagination import PageDep, paginate_in_memory
 from synapse_saas.feature_flags.schemas import (
     FlagCheck,
     FlagCreate,
@@ -29,8 +30,11 @@ router = APIRouter(prefix="/feature-flags", tags=["feature-flags"])
 
 
 @router.get("", response_model=list[FlagRead])
-async def list_flags(platform: PlatformAdminDep, session: SessionDep) -> list[FlagRead]:
-    return [FlagRead.model_validate(f) for f in await FeatureFlagService(session).list_flags()]
+async def list_flags(
+    platform: PlatformAdminDep, session: SessionDep, page: PageDep, response: Response
+) -> list[FlagRead]:
+    flags = await FeatureFlagService(session).list_flags()
+    return [FlagRead.model_validate(f) for f in paginate_in_memory(flags, page, response)]
 
 
 @router.post("", response_model=FlagRead, status_code=status.HTTP_201_CREATED)
@@ -56,9 +60,11 @@ async def update_flag(
 
 
 @router.get("/{key}/overrides", response_model=list[OverrideRead])
-async def list_overrides(key: str, platform: PlatformAdminDep, session: SessionDep) -> list[OverrideRead]:
+async def list_overrides(
+    key: str, platform: PlatformAdminDep, session: SessionDep, page: PageDep, response: Response
+) -> list[OverrideRead]:
     overrides = await FeatureFlagService(session).list_overrides(key)
-    return [OverrideRead.model_validate(o) for o in overrides]
+    return [OverrideRead.model_validate(o) for o in paginate_in_memory(overrides, page, response)]
 
 
 @router.post("/{key}/overrides", response_model=OverrideRead, status_code=status.HTTP_201_CREATED)

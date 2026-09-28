@@ -27,6 +27,13 @@ x-api-base: &api-base
     SYNAPSE_PAYMONGO_SECRET_KEY: ${SYNAPSE_PAYMONGO_SECRET_KEY:-}
     SYNAPSE_PAYMONGO_WEBHOOK_SECRET: ${SYNAPSE_PAYMONGO_WEBHOOK_SECRET:-}
     SYNAPSE_MANUAL_WEBHOOK_TOKEN: ${SYNAPSE_MANUAL_WEBHOOK_TOKEN:-dev-manual-token}
+    # Object storage: unset bucket ⇒ local disk under /data/storage (per container).
+    # `--profile extras` brings MinIO up and creates the bucket; point these at it.
+    SYNAPSE_S3_ENDPOINT_URL: ${SYNAPSE_S3_ENDPOINT_URL:-}
+    SYNAPSE_S3_REGION: ${SYNAPSE_S3_REGION:-us-east-1}
+    SYNAPSE_S3_BUCKET: ${SYNAPSE_S3_BUCKET:-}
+    SYNAPSE_S3_ACCESS_KEY_ID: ${SYNAPSE_S3_ACCESS_KEY_ID:-}
+    SYNAPSE_S3_SECRET_ACCESS_KEY: ${SYNAPSE_S3_SECRET_ACCESS_KEY:-}
 
 services:
   postgres:
@@ -142,11 +149,36 @@ services:
     image: minio/minio:latest
     profiles: [extras]
     command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Creates the bucket once MinIO is healthy, so SYNAPSE_S3_BUCKET works out of the box:
+  #   SYNAPSE_S3_ENDPOINT_URL=http://minio:9000 SYNAPSE_S3_BUCKET=synapse
+  #   SYNAPSE_S3_ACCESS_KEY_ID=minioadmin SYNAPSE_S3_SECRET_ACCESS_KEY=minioadmin
+  minio-init:
+    image: minio/mc:latest
+    profiles: [extras]
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}
+        && mc mb --ignore-existing local/${SYNAPSE_S3_BUCKET:-synapse}
+        && echo "bucket ready: ${SYNAPSE_S3_BUCKET:-synapse}"
+    restart: "no"
 
 volumes:
   pgdata:

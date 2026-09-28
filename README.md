@@ -69,8 +69,9 @@ usage meters) works locally out of the box.
 | OpenTelemetry tracing (request spans, trace-correlated logs + problem docs) | ✅ Phase 5 |
 | Outbound webhooks (signed, retried) + transactional outbox | ✅ Phase 2 |
 | Background jobs (arq worker) | ✅ Phase 2 |
-| Notifications, storage, feature flags | 🔜 Phase 3 (interfaces only) |
-| Admin console, SDKs, K8s/Terraform | 🔜 Phase 3+ |
+| Invoicing engine (drafts, numbering, overage, proration, PDF + email) | ✅ Phase 2 |
+| Admin console (Next.js), SDKs (Python/TypeScript/Go/Java), K8s/Terraform | ✅ Phase 3–5 |
+| Row-level security as a real boundary (`make test-rls`) | ✅ Hardening |
 
 ## Plans are configuration, not code
 

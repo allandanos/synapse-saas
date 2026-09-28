@@ -457,6 +457,24 @@ async def purge_expired(ctx: dict[str, Any]) -> int:
             text("DELETE FROM audit_logs WHERE created_at < now() - make_interval(days => :days)"),
             {"days": get_settings().audit_retention_days},
         )
+        # Presigned uploads never completed: give the reserved bytes back
+        stale = (
+            await session.execute(
+                text(
+                    "UPDATE stored_files SET deleted_at = now() "
+                    "WHERE status = 'pending' AND deleted_at IS NULL "
+                    "AND created_at < now() - make_interval(secs => :ttl) "
+                    "RETURNING organization_id, size_bytes"
+                ),
+                {"ttl": get_settings().storage_presign_seconds * 2},
+            )
+        ).all()
+        if stale:
+            from synapse_saas.usage.service import UsageService
+
+            usage = UsageService(session)
+            for org_id, size_bytes in stale:
+                await usage.adjust_gauge(org_id, "storage_bytes", -int(size_bytes), enforce=False)
         await session.execute(
             text(
                 "DELETE FROM usage_idempotency_keys WHERE created_at < now() - make_interval(days => :days)"

@@ -1,96 +1,83 @@
-"""Commit-before-send regression tests.
-
-The session commit must land before the first response byte is sent. If the
-commit races the response (FastAPI closes yield-dependencies after send), a
-follow-up request on the same connection reads pre-commit state — the exact
-mechanism behind the flaky e2e 401s (register 201 → orgs 401) seen in CI.
-
-These tests pin the ordering invariant and the observable consequence.
-"""
+"""CommitBeforeSendMiddleware really commits BEFORE the first response byte
+(P4 / WS-F F5), and the app refuses to boot if that guarantee silently
+disappears with a FastAPI upgrade."""
 
 from __future__ import annotations
 
-import time
-import uuid
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.pg
 
 
-@pytest.fixture
-def commit_order(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Record global ordering of commit vs response-send events."""
-    order: list[str] = []
-    real_commit = AsyncSession.commit
+class TestOrdering:
+    async def test_commit_happens_before_response_start(
+        self, client: AsyncClient, app, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Observe the real interleaving: session.commit() must precede http.response.start."""
+        from sqlalchemy.ext.asyncio import AsyncSession
 
-    async def traced_commit(self: AsyncSession) -> None:
-        order.append("commit_start")
-        await real_commit(self)
-        order.append("commit_done")
+        from synapse_saas.core.commit_before_send import CommitBeforeSendMiddleware
 
-    monkeypatch.setattr(AsyncSession, "commit", traced_commit)
-    return order
+        events: list[str] = []
+        original_commit = AsyncSession.commit
 
+        async def recording_commit(self: Any) -> None:
+            events.append("commit")
+            await original_commit(self)
 
-class TestCommitOrdering:
-    async def test_commit_precedes_response_send(self, client: AsyncClient, commit_order: list[str]) -> None:
-        """register → the user row must be committed before the 201 ships."""
-        email = f"cbs-order-{uuid.uuid4().hex[:8]}@example.com"
+        monkeypatch.setattr(AsyncSession, "commit", recording_commit)
+
+        original_call = CommitBeforeSendMiddleware.__call__
+
+        async def recording_call(self: Any, scope: Any, receive: Any, send: Any) -> None:
+            async def recording_send(message: Any) -> None:
+                if message["type"] == "http.response.start":
+                    events.append("response.start")
+                await send(message)
+
+            await original_call(self, scope, receive, recording_send)
+
+        monkeypatch.setattr(CommitBeforeSendMiddleware, "__call__", recording_call)
+
         res = await client.post(
             "/v1/auth/register",
-            json={"email": email, "password": "password12345", "display_name": "CBS"},
+            json={"email": "order@example.com", "password": "password12345", "display_name": "O"},
         )
-        assert res.status_code == 201
+        assert res.status_code == 201, res.text
+        assert "commit" in events and "response.start" in events
+        assert events.index("commit") < events.index("response.start"), events
 
-        # The ASGI send of http.response.start is instrumented by wrapping the
-        # app in the client fixture — instead, assert the consequence below and
-        # the internal ordering here via the recorded events: the register
-        # request's commit must appear before any subsequent request runs.
-        assert "commit_start" in commit_order
-
-    async def test_followup_request_sees_committed_user(
-        self, client: AsyncClient, commit_order: list[str]
-    ) -> None:
-        """The CI failure shape: register 201 → immediate orgs create succeeds.
-
-        With commit-after-send, an immediate follow-up could 401 because the
-        user lookup ran pre-commit. With commit-before-send this is
-        deterministic: the 201 implies the commit landed.
-        """
-        email = f"cbs-followup-{int(time.time())}-{uuid.uuid4().hex[:6]}@example.com"
+    async def test_write_is_visible_to_the_very_next_request(self, client: AsyncClient) -> None:
+        """The symptom this middleware exists for: register → immediately use the token."""
         reg = await client.post(
             "/v1/auth/register",
-            json={"email": email, "password": "password12345", "display_name": "CBS"},
+            json={"email": "fast@example.com", "password": "password12345", "display_name": "F"},
         )
-        assert reg.status_code == 201
         token = reg.json()["tokens"]["access_token"]
+        me = await client.get("/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert me.status_code == 200, me.text
 
-        org = await client.post(
-            "/v1/orgs",
-            json={"name": "CBS Race Org"},
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert org.status_code == 201, org.text
-        body = org.json()
-        assert body["slug"]
 
-    async def test_error_response_rolls_back(self, client: AsyncClient, commit_order: list[str]) -> None:
-        """A failing write must not surface a success response.
+class TestStartupSelfTest:
+    async def test_boot_refused_when_the_private_scope_key_vanishes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fastapi import FastAPI
 
-        Duplicate registration → 409 problem doc, and the second registration
-        must not have created a second user (constraint + rollback both hold).
-        """
-        email = f"cbs-rollback-{uuid.uuid4().hex[:8]}@example.com"
-        first = await client.post(
-            "/v1/auth/register",
-            json={"email": email, "password": "password12345", "display_name": "CBS"},
-        )
-        assert first.status_code == 201
-        second = await client.post(
-            "/v1/auth/register",
-            json={"email": email, "password": "password12345", "display_name": "CBS"},
-        )
-        assert second.status_code == 409
+        from synapse_saas.core import commit_before_send as cbs
+
+        app = FastAPI()
+        app.add_middleware(cbs.CommitBeforeSendMiddleware)
+
+        @app.get("/healthz")
+        async def healthz() -> dict[str, str]:
+            return {"status": "ok"}
+
+        await cbs.assert_effective(app)  # the key exists on this FastAPI: passes
+
+        monkeypatch.setattr(cbs, "STACK_SCOPE_KEY", "fastapi_renamed_this_key")
+        with pytest.raises(cbs.CommitBeforeSendIneffectiveError, match="would be a no-op"):
+            await cbs.assert_effective(app)

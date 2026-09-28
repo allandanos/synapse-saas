@@ -19,6 +19,8 @@ class StoredFile(Base, TenantMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(128), default="application/octet-stream")
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    # pending: a presigned PUT was issued and the quota reserved; ready: bytes verified
+    status: Mapped[str] = mapped_column(String(16), default="ready", server_default="ready", nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 

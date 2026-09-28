@@ -46,7 +46,7 @@ their own package; only `api`/`worker` compose everything.
 | `subscriptions` | plans, catalog YAML, sync, subscription state machine |
 | `entitlements` | grant table + pure resolver → effective features/limits |
 | `usage` | events (partitioned), counters, atomic limit enforcement |
-| `billing` | BillingProvider protocol + 4 providers, customers, invoices, webhook ingest |
+| `billing` | BillingProvider protocol + 5 providers (Stripe, Paddle, Xendit, PayMongo, Manual), customers, invoicing engine, webhook ingest |
 | `webhooks` | outbound endpoints + signed deliveries with backoff |
 | `audit` | append-only log + outbox + provider event ledger |
 | `worker` | arq cron jobs (dispatch, deliver, rollup, expire, purge) |
@@ -77,17 +77,14 @@ their own package; only `api`/`worker` compose everything.
 6. `get_session` commits; the worker later drains the outbox
 
 
-## pgvector (Phase 4 prep)
+## pgvector
 
-The Postgres diagram in the original design includes pgvector for agent
-knowledge/memory. The framework deliberately does not enable it yet — no
-current table uses vectors — but the migration to do so is one line when
-Phase 4 (Agentic) lands:
-
-```python
-# migration
-op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-```
+Migration `0012_agents` enables the `vector` extension alongside the agents
+registry (ADR 0007). No framework table stores embeddings today — the
+extension is there so a domain app (or the sibling agentic runtime) can add
+`vector` columns without a schema-owner ceremony. The compose image is
+`pgvector/pgvector:pg17`; managed offerings (Cloud SQL, RDS, Supabase) all
+support it.
 
 Managed Postgres offerings (Cloud SQL, RDS, Supabase) all support it; nothing
 in the current schema blocks it.

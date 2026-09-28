@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 
 from synapse_saas.api_keys.schemas import ApiKeyCreate, ApiKeyCreated, ApiKeyRead
 from synapse_saas.api_keys.service import ApiKeyService
 from synapse_saas.authorization.dependencies import require_permission
 from synapse_saas.authorization.permissions import PERMISSION_KEYS
 from synapse_saas.core import context
+from synapse_saas.core.pagination import PageDep, paginate_in_memory
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.tenancy.dependencies import TenantDep
 
@@ -18,10 +19,12 @@ router = APIRouter(prefix="/api-keys", tags=["api-keys"])
 
 
 @router.get("", response_model=list[ApiKeyRead])
-async def list_keys(tenant: TenantDep, session: SessionDep, user: CurrentUser) -> list[ApiKeyRead]:
+async def list_keys(
+    tenant: TenantDep, session: SessionDep, user: CurrentUser, page: PageDep, response: Response
+) -> list[ApiKeyRead]:
     await require_permission("apikey:manage", user, session, tenant)
     keys = await ApiKeyService(session).list_keys(tenant.organization_id)
-    return [ApiKeyRead.model_validate(k) for k in keys]
+    return [ApiKeyRead.model_validate(k) for k in paginate_in_memory(keys, page, response)]
 
 
 @router.post("", response_model=ApiKeyCreated, status_code=status.HTTP_201_CREATED)

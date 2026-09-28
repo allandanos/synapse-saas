@@ -33,11 +33,15 @@ Details (rolling-update order, autoscaling, what's deliberately absent) in
 cd infrastructure/terraform/cloudrun
 terraform init && terraform validate
 terraform apply -var='project_id=…' -var='database_url=…' -var='secret_key=…' \
-                -var='api_image=…'
-gcloud run jobs execute synapse-worker-tick --region asia-southeast1 --wait
+                -var='api_image=…' -var='web_image=…'
+gcloud run jobs execute synapse-migrate --region asia-southeast1 --wait
 ```
 
-Full flow (per-deploy, worker scheduling options) in that directory's README.
+The module deploys the API and the console as Cloud Run services, a
+`synapse-migrate` job (run once per deploy) and a `synapse-worker-tick` job
+that Cloud Scheduler runs every 5 minutes (`synapse-cli jobs run-once --all`:
+outbox, deliveries, renewals, partitions, retention). No always-on worker
+process is needed on Cloud Run. Full flow in that directory's README.
 
 ## Production checklist
 
@@ -100,4 +104,9 @@ image + schema + config. Recommended drill cadence: quarterly.
 - `usage_events` is monthly-partitioned; the worker pre-creates next month.
   Long retention = drop old partitions (instant) rather than DELETE.
 - Audit logs: BRIN-indexed, retention via `SYNAPSE_AUDIT_RETENTION_DAYS`.
-- Webhook deliveries purge at 30 days by the worker's `purge_expired`.
+- Webhook deliveries purge at 30 days (exhausted ones at 90), published outbox
+  rows at 7, audit logs per `SYNAPSE_AUDIT_RETENTION_DAYS`, abandoned
+  presigned uploads after twice the presign window — all by `purge_expired`.
+- **Object storage**: the local-disk fallback is per container. Any deployment
+  with more than one API replica needs `SYNAPSE_S3_BUCKET` (S3, R2, MinIO);
+  the K8s manifests mount an `emptyDir` so single-replica trials work.

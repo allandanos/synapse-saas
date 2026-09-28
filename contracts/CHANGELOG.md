@@ -44,6 +44,18 @@ Not a path change, but a semantic one clients may observe:
   unless the configured provider declares `client_confirm` (only the manual
   provider does). Hosted-checkout providers activate via their webhook only.
 
+### Infrastructure, pagination, presigned uploads (P4 WS-F)
+
+- **Added** `POST /v1/files/presign-upload` and `POST /v1/files/{id}/complete`
+  (S3-compatible backends; local disk answers 409 `presign_unsupported`;
+  mismatched uploads answer 409 `upload_incomplete`). `FileRead` gains `status`.
+- **Changed** every list route accepts `?limit=` (1–100) and `?offset=` and
+  sets `X-Total-Count` (exposed through CORS); bodies stay plain arrays.
+  `GET /v1/files` no longer hard-caps at 200 rows. `GET /v1/webhooks/deliveries`
+  replaces its ad-hoc `limit` with the same pair.
+- CLI: `synapse-cli jobs run-once [--all | NAME…]` runs worker jobs on demand
+  (what the Cloud Run worker job executes).
+
 ### Reliability and observability (P3 WS-D/WS-E, ADR 0005 amendment)
 
 - **Changed** `GET /readyz` answers **503** (same body) when the database or a

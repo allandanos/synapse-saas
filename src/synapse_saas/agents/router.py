@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from synapse_saas.agents.schemas import AgentCreate, AgentRead, AgentUpdate
 from synapse_saas.agents.service import AgentService
 from synapse_saas.authorization.dependencies import require_permission
+from synapse_saas.core.pagination import PageDep, paginate_in_memory
 from synapse_saas.entitlements.dependencies import require_feature
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
 from synapse_saas.tenancy.dependencies import TenantDep
@@ -28,10 +29,12 @@ router = APIRouter(
 
 
 @router.get("", response_model=list[AgentRead])
-async def list_agents(tenant: TenantDep, session: SessionDep, user: CurrentUser) -> list[AgentRead]:
+async def list_agents(
+    tenant: TenantDep, session: SessionDep, user: CurrentUser, page: PageDep, response: Response
+) -> list[AgentRead]:
     await require_permission("agents:read", user, session, tenant)
     agents = await AgentService(session).list_for_org(tenant.organization_id)
-    return [AgentRead.model_validate(a) for a in agents]
+    return [AgentRead.model_validate(a) for a in paginate_in_memory(agents, page, response)]
 
 
 @router.post("", response_model=AgentRead, status_code=status.HTTP_201_CREATED)

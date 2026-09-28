@@ -62,6 +62,6 @@ mvn -q compile exec:java -Dexec.mainClass=dev.synapse.example.<Sample>
 
 ## Verification status
 
-All 16 cells build/typecheck: Python (`ast`), TypeScript (`tsc --strict`,
+All 20 cells build/typecheck: Python (`ast`), TypeScript (`tsc --strict`,
 clean installs), Go (`go vet` + `go build`), Java (`mvn compile`). Each
 SDK's unit tests (30 total) live in `sdk/`.

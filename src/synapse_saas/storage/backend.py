@@ -116,6 +116,22 @@ class S3Storage:
             )
             return url
 
+    async def head(self, *, key: str) -> int | None:
+        """Size of the stored object, or None when it does not exist (yet)."""
+        validate_key(key)
+        try:
+            async with self._session.client("s3", **self._client_kwargs()) as s3:
+                meta = await s3.head_object(Bucket=self._bucket, Key=key)
+                return int(meta.get("ContentLength", 0))
+        except Exception as exc:
+            if "404" in str(exc) or "Not Found" in str(exc) or "NoSuchKey" in str(exc):
+                return None
+            raise StorageError(f"S3 head failed: {exc}") from exc
+
+    @property
+    def supports_presigned_upload(self) -> bool:
+        return True
+
 
 class LocalDiskStorage:
     """Zero-config fallback: files under SYNAPSE_STORAGE_ROOT/{org_id}/…."""
@@ -163,6 +179,14 @@ class LocalDiskStorage:
     async def presign_put(self, *, key: str, content_type: str) -> str:
         self._path(key)
         raise StorageError("Presigned URLs require an S3-compatible backend")
+
+    async def head(self, *, key: str) -> int | None:
+        path = self._path(key)
+        return path.stat().st_size if path.is_file() else None
+
+    @property
+    def supports_presigned_upload(self) -> bool:
+        return False
 
 
 _backend: S3Storage | LocalDiskStorage | None = None

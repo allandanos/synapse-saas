@@ -58,6 +58,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             if settings.is_production:
                 raise
 
+    # Refuse to boot if the commit-before-send guarantee silently stopped working
+    # (it depends on a FastAPI-private scope key — see core/commit_before_send.py)
+    from synapse_saas.core.commit_before_send import assert_effective
+
+    await assert_effective(app)
+
     yield
     await close_redis()
     await dispose_engine()
@@ -83,7 +89,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Request-Id", "Retry-After", "Content-Disposition"],
+        expose_headers=["X-Request-Id", "Retry-After", "Content-Disposition", "X-Total-Count"],
     )
     app.add_middleware(AuthRateLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
