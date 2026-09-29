@@ -7,6 +7,11 @@ language ports code against. Every change to it is listed here with intent.
 
 ### Findings from the ports' milestone 4 (P7)
 
+- The `invoice.email` handler resolves its recipient through the same chain
+  as every other billing mail (billing customer → `settings.billing_email`
+  → org owner). Framework-drafted invoices carry no billing customer, so on
+  the manual flow the mail was silently dropped unless the org had set a
+  billing email.
 - Xendit amounts (`"499.99"` major units) are converted to minor units with
   decimal arithmetic; the float path turned 0.29 into 28 (ADR 0006).
 - `POST /v1/billing/invoices/{id}/finalize` on an already-open invoice is a

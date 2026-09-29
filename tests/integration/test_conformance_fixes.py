@@ -236,3 +236,33 @@ class TestNodePortMilestone4Findings:
         assert second.json()["issued_at"] == first.json()["issued_at"]
         listed = await client.get("/v1/billing/invoices", headers=headers)
         assert [i["number"] for i in listed.json()] == [first.json()["number"]]
+
+
+class TestJavaPortMilestone4Findings:
+    async def test_invoice_email_falls_back_to_the_owner(
+        self, client: AsyncClient, org_and_tokens, monkeypatch
+    ) -> None:
+        """Framework-drafted invoices have no billing customer; the mail used to be dropped
+        unless settings.billing_email was set, while every other billing email fell back
+        to the owner."""
+        from synapse_saas.notifications import handlers
+
+        sent: list[dict] = []
+
+        class RecordingNotifier:
+            async def send(self, *, to, subject, body, attachments=None):
+                sent.append({"to": to, "subject": subject, "attachments": list(attachments or [])})
+
+        monkeypatch.setattr(handlers, "get_notifier", RecordingNotifier)
+        headers = org_headers(org_and_tokens)
+        draft = await client.post("/v1/billing/invoices/draft", headers=headers, json={})
+        assert draft.status_code == 201, draft.text
+        finalized = await client.post(f"/v1/billing/invoices/{draft.json()['id']}/finalize", headers=headers)
+        assert finalized.status_code == 200, finalized.text
+
+        await handlers.handle_event(
+            "invoice.email", {"invoice_id": draft.json()["id"], "reason": "finalized"}
+        )
+        assert len(sent) == 1, sent
+        assert sent[0]["to"] == "owner@example.com"  # the fixture's org owner
+        assert sent[0]["attachments"][0].filename.endswith(".pdf")

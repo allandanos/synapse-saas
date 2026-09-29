@@ -128,15 +128,16 @@ async def _send_invoice_email(invoice_id: str) -> None:
             )
             org = await session.get(Organization, invoice.organization_id)
             org_name = org.name if org else "Customer"
-            org_settings = org.settings if org else {}
 
             billing_email: str | None = None
             if invoice.billing_customer_id is not None:
                 customer = await session.get(BillingCustomer, invoice.billing_customer_id)
                 billing_email = str(customer.email) if customer and customer.email else None
-            settings_recipient = org_settings.get("billing_email")
-            recipient = billing_email or (settings_recipient if isinstance(settings_recipient, str) else None)
-            if not recipient or not isinstance(recipient, str):
+            # Framework-drafted invoices carry no billing customer: fall through
+            # the same chain as every other billing email (customer → settings
+            # → owner) instead of dropping the mail on the floor.
+            recipient = billing_email or await _recipient_in(session, str(invoice.organization_id))
+            if not recipient:
                 logger.info("invoice_email_no_recipient", invoice_id=invoice_id)
                 return None
 
@@ -189,29 +190,35 @@ def _pay_to() -> str | None:
 
 async def billing_recipient(organization_id: str) -> str | None:
     """Who gets money/quota mail for an org: billing customer → settings.billing_email → owner."""
+    from synapse_saas.core.db import get_owner_session_factory
+
+    async with get_owner_session_factory()() as session:
+        return await _recipient_in(session, organization_id)
+
+
+async def _recipient_in(session: Any, organization_id: str) -> str | None:
+    """The recipient chain on an open session (shared by every billing email)."""
     from sqlalchemy import select
 
     from synapse_saas.billing.models import BillingCustomer
-    from synapse_saas.core.db import get_owner_session_factory
     from synapse_saas.identity.models import User
     from synapse_saas.tenancy.models import Organization
 
-    async with get_owner_session_factory()() as session:
-        customer = (
-            await session.execute(
-                select(BillingCustomer.email).where(BillingCustomer.organization_id == organization_id)
-            )
-        ).scalar_one_or_none()
-        if customer:
-            return str(customer)
-        org = await session.get(Organization, organization_id)
-        if org is None:
-            return None
-        from_settings = (org.settings or {}).get("billing_email")
-        if isinstance(from_settings, str) and from_settings:
-            return from_settings
-        if org.owner_user_id is not None:
-            owner = await session.get(User, org.owner_user_id)
-            if owner is not None and owner.email:
-                return str(owner.email)
+    customer = (
+        await session.execute(
+            select(BillingCustomer.email).where(BillingCustomer.organization_id == organization_id)
+        )
+    ).scalar_one_or_none()
+    if customer:
+        return str(customer)
+    org = await session.get(Organization, organization_id)
+    if org is None:
+        return None
+    from_settings = (org.settings or {}).get("billing_email")
+    if isinstance(from_settings, str) and from_settings:
+        return from_settings
+    if org.owner_user_id is not None:
+        owner = await session.get(User, org.owner_user_id)
+        if owner is not None and owner.email:
+            return str(owner.email)
     return None
