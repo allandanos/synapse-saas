@@ -305,10 +305,6 @@ jobs:
           --health-interval 2s
           --health-timeout 3s
           --health-retries 20
-      openfga:
-        image: openfga/openfga:latest
-        ports:
-          - 8081:8080
     env:
       SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@localhost:5434/synapse_test
       SYNAPSE_REDIS_URL: ""
@@ -322,8 +318,18 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Install dependencies
         run: uv sync --all-groups --frozen
+      # Not a `services:` entry: the openfga image needs the `run` argument
+      # (its entrypoint alone prints the CLI help and exits), and job services
+      # cannot pass a command. Same in-memory datastore as docker-compose.yml.
+      - name: Start OpenFGA (in-memory datastore)
+        run: docker run -d --name openfga -p 8081:8080 openfga/openfga:latest run
       - name: Wait for OpenFGA
-        run: for i in $(seq 1 30); do curl -sf http://localhost:8081/healthz && break; sleep 1; done
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8081/healthz >/dev/null && exit 0
+            sleep 1
+          done
+          echo "OpenFGA did not become healthy"; docker logs openfga; exit 1
       - name: Parity + end-to-end against OpenFGA
         run: uv run pytest -m fga --no-cov -q
 
