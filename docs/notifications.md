@@ -39,7 +39,7 @@ and read every sent email in its UI.
 | Event | Recipient | Content |
 |---|---|---|
 | `member.invited` | invitee | org name + one-time acceptance link (`/register?invite=…`) |
-| `user.password_reset_link` | account owner | 30-minute reset link (`/login?reset=…`) |
+| `user.password_reset_link` | account owner | 30-minute reset link (`/reset-password?reset=…`) |
 
 Unknown events are ignored — email is opt-in per event type. Soft/hard usage
 limits currently go to audit + webhooks; org billing-contact routing is the
