@@ -5,6 +5,14 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
+### Findings from the ports' milestone 4 (P7)
+
+- Xendit amounts (`"499.99"` major units) are converted to minor units with
+  decimal arithmetic; the float path turned 0.29 into 28 (ADR 0006).
+- `POST /v1/billing/invoices/{id}/finalize` on an already-open invoice is a
+  no-op (same number, same `issued_at`, no second `invoice.created` /
+  `invoice.email`); it used to re-number the invoice.
+
 ### Findings from the ports' milestone 3 (P7)
 
 - `GET /v1/usage/summary?period=` and `POST /v1/billing/invoices/draft`

@@ -14,6 +14,7 @@ import base64
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 import httpx
@@ -37,6 +38,16 @@ from synapse_saas.core.errors import BillingProviderError, WebhookSignatureInval
 from synapse_saas.core.security import constant_time_equals
 
 XENDIT_API_BASE = "https://api.xendit.co"
+
+
+def minor_units(amount: object) -> int:
+    """Major units as Xendit sends them (`"499.99"`, `499.99`, `500`) → integer
+    minor units, exactly. Going through a float turns 0.29 into 28 (ADR 0006)."""
+    try:
+        value = Decimal(str(amount))
+    except (InvalidOperation, ValueError) as exc:
+        raise BillingProviderError(f"Unparseable amount from Xendit: {amount!r}") from exc
+    return int((value * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
 
 class XenditBillingProvider(BillingProvider):
@@ -178,7 +189,7 @@ class XenditBillingProvider(BillingProvider):
 
         amount_cents = None
         if data.get("amount") is not None:
-            amount_cents = int(float(data["amount"]) * 100)  # Xendit sends major units
+            amount_cents = minor_units(data["amount"])  # Xendit sends major units
 
         occurred = datetime.now(UTC)
         if data.get("created") and str(data["created"]).replace("-", "").isdigit():
@@ -203,7 +214,7 @@ class XenditBillingProvider(BillingProvider):
             provider_invoice_id=data.get("id", ""),
             number=data.get("external_id"),
             status="paid" if data.get("status") == "PAID" else "open",
-            total_cents=int(float(data.get("amount", 0)) * 100),
+            total_cents=minor_units(data.get("amount", 0)),
             currency=data.get("currency", self._currency),
             hosted_url=data.get("invoice_url"),
         )

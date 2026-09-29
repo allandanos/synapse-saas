@@ -219,3 +219,20 @@ class TestJavaPortFindings:
         assert (
             await client.get("/v1/usage/summary", headers=headers, params={"period": "2026-12"})
         ).status_code == 200
+
+
+class TestNodePortMilestone4Findings:
+    async def test_finalize_is_idempotent(self, client: AsyncClient, org_and_tokens) -> None:
+        """A second finalize used to re-number the invoice and bump issued_at."""
+        headers = org_headers(org_and_tokens)
+        draft = await client.post("/v1/billing/invoices/draft", headers=headers, json={})
+        assert draft.status_code == 201, draft.text
+        invoice_id = draft.json()["id"]
+        first = await client.post(f"/v1/billing/invoices/{invoice_id}/finalize", headers=headers)
+        assert first.status_code == 200 and first.json()["number"], first.text
+        second = await client.post(f"/v1/billing/invoices/{invoice_id}/finalize", headers=headers)
+        assert second.status_code == 200, second.text
+        assert second.json()["number"] == first.json()["number"]
+        assert second.json()["issued_at"] == first.json()["issued_at"]
+        listed = await client.get("/v1/billing/invoices", headers=headers)
+        assert [i["number"] for i in listed.json()] == [first.json()["number"]]

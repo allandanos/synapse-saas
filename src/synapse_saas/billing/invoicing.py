@@ -193,6 +193,8 @@ class InvoicingService:
 
     async def finalize(self, invoice_id: UUID, organization_id: UUID) -> Invoice:
         invoice = await self._get_scoped(invoice_id, organization_id)
+        if invoice.status == "open":
+            return invoice  # already finalized: keep its number and issued_at, emit nothing twice
         _assert_invoice_transition(invoice.status, "open")
         # Serialize numbering per org: two finalizes racing would otherwise
         # count the same prior invoices and collide on uq_invoices_org_number.
