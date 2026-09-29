@@ -29,6 +29,7 @@ DEV_ROLE_USERS: tuple[tuple[str, str], ...] = (
     ("member@acme.example.com", "member"),
 )
 
+DEV_SEAT_LIMIT = 10  # the demo org's `users` limit grant (free plan ships 3)
 DEV_OWNER_EMAIL = "owner@acme.example.com"
 DEV_MEMBER_EMAIL = "member@acme.example.com"
 
@@ -95,6 +96,19 @@ async def seed_dev(session: AsyncSession) -> None:
         )
         # Auto-accept the dev invite so the user can log in and see the org
         await org_service.accept_invite_by_email(org.id, email)
+
+    # Five demo users on a free plan (3 seats) would show an over-quota seat
+    # meter out of the box; grant the seats the way an operator would.
+    from synapse_saas.entitlements.service import EntitlementService
+
+    await EntitlementService(session).grant(
+        org.id,
+        feature_key="limit:users",
+        source="override",  # operator-style grant (the allowed sources are constrained)
+        limit_value=DEV_SEAT_LIMIT,
+        note="dev seed: one demo user per system role",
+        created_by_user_id=owner.id,
+    )
 
     logger.info(
         "dev_seeded",

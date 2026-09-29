@@ -154,6 +154,39 @@ export async function mailhogMessages(
   }));
 }
 
+/**
+ * The base64 body of the first `application/pdf` MIME part, or null.
+ *
+ * Deliberately tolerant of how the part is spelled: Python's EmailMessage
+ * writes `Content-Type: application/pdf` + a quoted `filename=` + a per-part
+ * `MIME-Version`, nodemailer writes `application/pdf; name=…` and no
+ * `MIME-Version`, JavaMail folds long headers. The contract is "a PDF is
+ * attached", not one library's serialisation — the ports must pass this too.
+ */
+export function pdfAttachmentBase64(raw: string): string | null {
+  const flat = raw.replace(/\r\n/g, "\n");
+  for (const part of flat.split(/\n--[^\n]+\n/)) {
+    const sep = part.indexOf("\n\n");
+    if (sep === -1) continue;
+    const headers = part.slice(0, sep).replace(/\n[ \t]+/g, " "); // unfold
+    if (!/content-type:\s*application\/pdf/i.test(headers)) continue;
+    if (!/content-transfer-encoding:\s*base64/i.test(headers)) continue;
+    const body = part.slice(sep + 2).split(/\n--/)[0]; // stop at the next boundary
+    return body.replace(/\s+/g, "");
+  }
+  return null;
+}
+
+/** The reset token in a password-reset email (the console's `/reset-password?reset=…` link). */
+export function resetTokenFromEmail(raw: string): string | null {
+  // The body is quoted-printable: soft line breaks (`=\n`) split the long link
+  // and `=` itself is spelled `=3D`. Decode before matching.
+  const decoded = raw
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9A-F]{2})/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  return decoded.match(/\/reset-password\?reset=([A-Za-z0-9_-]+)/)?.[1] ?? null;
+}
+
 /** Poll until a message matching `predicate` lands (worker dispatch is async). */
 export async function waitForEmail(
   request: APIRequestContext,

@@ -1,4 +1,6 @@
-import { test, expect, emailFor, createStackContext, API_URL } from "./fixtures";
+import { test, expect, emailFor, createStackContext,
+  resetTokenFromEmail,
+  waitForEmail, API_URL } from "./fixtures";
 
 test.describe("auth journeys", () => {
   test("register → onboarding → first dashboard", async ({ page }) => {
@@ -45,22 +47,37 @@ test.describe("auth journeys", () => {
     const forgot = await request.post(`${API_URL}/v1/auth/forgot-password`, {
       data: { email: ctx.email },
     });
-    expect(forgot.ok()).toBeTruthy();
+    expect(forgot.status(), "forgot-password is an opaque 202").toBe(202);
 
-    // Pull the token from the outbox (dev path: worker would email it)
-    const login = await request.post(`${API_URL}/v1/auth/login`, {
-      data: { email: ctx.email, password: "password12345" },
-    });
-    expect(login.ok()).toBeTruthy();
-    const admin = (await login.json()).tokens.access_token;
+    // The token rides the internal outbox → worker → SMTP: read it from MailHog
+    // exactly as the user would, and follow the link the email contains.
+    const mail = await waitForEmail(
+      request,
+      (m) => m.to === ctx.email && /reset your password/i.test(m.subject),
+    );
+    const token = resetTokenFromEmail(mail.raw);
+    expect(token, "reset link with a token in the email").toBeTruthy();
 
-    // Direct DB is not available to e2e; use the seeded worker dispatch path:
-    // the token rides the outbox, so run the dispatch job via the API-less
-    // route is not available — instead assert the opaque 202 shape only here.
-    await page.goto("/reset-password?reset=not-a-real-token");
+    await page.goto(`/reset-password?reset=${token}`);
     await page.getByLabel(/new password/i).fill("new-password-123");
     await page.getByRole("button", { name: /set new password/i }).click();
-    // Invalid/expired token surfaces as a problem, not a crash
+    await page.waitForURL(/\/login\?reset=done/);
+    await expect(page.getByText(/password updated/i)).toBeVisible();
+
+    // The new password works, the old one does not
+    const fresh = await request.post(`${API_URL}/v1/auth/login`, {
+      data: { email: ctx.email, password: "new-password-123" },
+    });
+    expect(fresh.ok(), `login with the new password: ${fresh.status()}`).toBeTruthy();
+    const stale = await request.post(`${API_URL}/v1/auth/login`, {
+      data: { email: ctx.email, password: "password12345" },
+    });
+    expect(stale.status()).toBe(401);
+
+    // A bogus token surfaces as a problem, not a crash
+    await page.goto("/reset-password?reset=not-a-real-token");
+    await page.getByLabel(/new password/i).fill("another-password-123");
+    await page.getByRole("button", { name: /set new password/i }).click();
     await expect(page.locator("text=/invalid|expired|not found/i").first()).toBeVisible();
   });
 

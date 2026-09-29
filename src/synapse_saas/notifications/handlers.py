@@ -49,7 +49,7 @@ async def handle_event(event_type: str, payload: dict[str, Any]) -> None:
         token = payload.get("token")
         if not email or not token:
             return
-        link = _web_url(f"/login?reset={token}")  # console routes to reset form
+        link = _web_url(f"/reset-password?reset={token}")  # the console's reset form reads ?reset=
         await notifier.send(
             to=str(email),
             subject="Reset your password",

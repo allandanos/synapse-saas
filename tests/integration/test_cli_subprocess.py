@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import sys
 
 import pytest
+from sqlalchemy import text
 
 from tests.integration.conftest import owner_session_factory
 
@@ -49,6 +51,39 @@ class TestSeed:
         again = run_cli("seed")
         assert again.returncode == 0
         assert "permissions" in again.stdout
+
+    def test_seed_dev_grants_the_demo_org_its_seats(self) -> None:
+        """Five demo users on the free plan's three seats: the seed grants the seats."""
+        result = run_cli("seed", "--dev")
+        assert result.returncode == 0, result.stderr
+
+        from synapse_saas.core.db import dispose_engine
+        from synapse_saas.entitlements.service import EntitlementService
+        from synapse_saas.identity.models import User  # noqa: F401 — completes the mapper registry
+        from synapse_saas.tenancy.models import Organization
+
+        factory = owner_session_factory()
+
+        async def seats() -> tuple[int | None, int]:
+            from sqlalchemy import select
+
+            async with factory() as session:
+                org = (
+                    await session.execute(select(Organization).where(Organization.slug == "acme"))
+                ).scalar_one()
+                effective = await EntitlementService(session).effective_for_org(org.id)
+                members = await session.execute(
+                    text(
+                        "SELECT count(*) FROM memberships WHERE organization_id = :org AND status = 'active'"
+                    ),
+                    {"org": str(org.id)},
+                )
+                return effective.limit_value("users"), int(members.scalar_one())
+
+        limit, active = asyncio.run(seats())
+        asyncio.run(dispose_engine())
+        assert active == 5
+        assert limit is not None and limit >= active
 
     def test_seed_dev_creates_demo_org_with_one_user_per_role(self) -> None:
         result = run_cli("seed", "--dev")

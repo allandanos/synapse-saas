@@ -14,6 +14,7 @@ import {
   loginConsole,
   api,
   waitForEmail,
+  pdfAttachmentBase64,
   platformApi,
   API_URL,
 } from "./fixtures";
@@ -82,15 +83,13 @@ test.describe("invoice delivery", () => {
     );
     expect(email.to).toContain("ap@example.com");
     expect(email.subject).toMatch(/^Invoice /);
-    // Attachment: base64 application/pdf part decoding to %PDF-
-    expect(email.raw).toContain("application/pdf");
+    // Attachment: an application/pdf part named after the invoice, decoding to %PDF-.
+    // Any MIME spelling is fine (Python, nodemailer, JavaMail all differ) — see
+    // pdfAttachmentBase64; the contract is the attachment, not the serialiser.
     expect(email.raw).toContain(`invoice-${finalized.number}.pdf`);
-    const flat = email.raw.replace(/\r\n/g, "\n");
-    const b64 = flat.match(
-      /Content-Type: application\/pdf\nContent-Transfer-Encoding: base64\nContent-Disposition: attachment; filename="invoice-[^"]+\.pdf"\nMIME-Version: 1\.0\n\n([A-Za-z0-9+/=\n]+)/,
-    )?.[1];
-    expect(b64, "base64 PDF part present").toBeTruthy();
-    const decoded = Buffer.from((b64 ?? "").replace(/\n/g, ""), "base64");
+    const b64 = pdfAttachmentBase64(email.raw);
+    expect(b64, "base64 application/pdf part present").toBeTruthy();
+    const decoded = Buffer.from(b64 ?? "", "base64");
     expect(decoded.subarray(0, 5).toString()).toBe("%PDF-");
   });
 

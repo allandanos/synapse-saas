@@ -24,7 +24,7 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
-    API_URL: process.env.E2E_API_URL ?? "http://localhost:8000",
+    // The API base is read by the fixtures from E2E_API_URL (not a Playwright option).
 
     // Video for every test — watchable on green runs, evidence on red ones.
     video: "on",

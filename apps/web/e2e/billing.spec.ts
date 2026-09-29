@@ -6,7 +6,6 @@ import {
   api,
   emailFor,
   platformApi,
-  API_URL,
 } from "./fixtures";
 
 test.describe("money path (manual provider — the whole loop runs locally)", () => {
@@ -15,7 +14,6 @@ test.describe("money path (manual provider — the whole loop runs locally)", ()
     request,
   }) => {
     const ctx = await createStackContext(request, "quota");
-    const client = api(request, ctx);
     await loginConsole(page, ctx);
 
     await page.goto("/dashboard/members");
@@ -44,7 +42,6 @@ test.describe("money path (manual provider — the whole loop runs locally)", ()
 
   test("plan change issues an invoice the console lists", async ({ page, request }) => {
     const ctx = await createStackContext(request, "invoice");
-    const client = api(request, ctx);
     await loginConsole(page, ctx);
 
     await page.goto("/dashboard/billing");
@@ -62,7 +59,6 @@ test.describe("money path (manual provider — the whole loop runs locally)", ()
     request,
   }) => {
     const ctx = await createStackContext(request, "trial");
-    const client = api(request, ctx);
     await loginConsole(page, ctx);
 
     await page.goto("/dashboard");
@@ -97,7 +93,7 @@ test.describe("money path (manual provider — the whole loop runs locally)", ()
     await expect(page.getByText(/10,000/).first()).toBeVisible(); // free-plan cap
   });
 
-  test("billing invoices endpoint stays tenant-scoped", async ({ page, request }) => {
+  test("billing invoices endpoint stays tenant-scoped", async ({ request }) => {
     const ctxA = await createStackContext(request, "invA");
     const ctxB = await createStackContext(request, "invB");
 

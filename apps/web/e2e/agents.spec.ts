@@ -3,7 +3,7 @@
  * the paywall, the registry lifecycle in the console, and AI metering
  * moving the console's usage meters.
  */
-import { test, expect, createStackContext, loginConsole, api, API_URL } from "./fixtures";
+import { test, expect, createStackContext, loginConsole, api } from "./fixtures";
 
 test.describe("agents", () => {
   test("free org hits the upgrade wall, pro unblocks the registry", async ({
