@@ -148,7 +148,6 @@ _Generated from `core/events.py` by `scripts/check_docs.py --fix`; do not edit b
 - `webhook.delivery_failed`
 - `webhook.endpoint_created`
 - `webhook.endpoint_deleted`
-- `webhook.endpoint_updated`
 
 **Internal** — consumed in-process only (email handlers); never delivered to a webhook:
 

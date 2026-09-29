@@ -41,8 +41,8 @@ class OverrideCreate(BaseModel):
 
     @model_validator(mode="after")
     def _require_scope(self) -> OverrideCreate:
-        if self.organization_id is None and self.user_id is None:
-            raise ValueError("override requires organization_id or user_id")
+        if (self.organization_id is None) == (self.user_id is None):
+            raise ValueError("override requires exactly one of organization_id or user_id")
         return self
 
 

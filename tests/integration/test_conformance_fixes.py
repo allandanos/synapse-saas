@@ -266,3 +266,63 @@ class TestJavaPortMilestone4Findings:
         assert len(sent) == 1, sent
         assert sent[0]["to"] == "owner@example.com"  # the fixture's org owner
         assert sent[0]["attachments"][0].filename.endswith(".pdf")
+
+
+class TestNodePortMilestone5Findings:
+    async def test_file_and_endpoint_events_reach_the_outbox(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        """events.json advertised file.* and webhook.endpoint_* but nothing emitted them."""
+        from sqlalchemy import select
+
+        from synapse_saas.audit.models import OutboxEvent
+        from synapse_saas.testing.fixtures import owner_session_factory
+
+        headers = org_headers(org_and_tokens)
+        up = await client.post("/v1/files", headers=headers, files={"file": ("e.txt", b"ev", "text/plain")})
+        assert up.status_code == 201, up.text
+        assert (await client.delete(f"/v1/files/{up.json()['id']}", headers=headers)).status_code == 204
+        ep = await client.post(
+            "/v1/webhooks/endpoints",
+            headers=headers,
+            json={"url": "https://hooks.example.com/x", "events": []},
+        )
+        assert ep.status_code == 201, ep.text
+        assert (
+            await client.delete(f"/v1/webhooks/endpoints/{ep.json()['id']}", headers=headers)
+        ).status_code == 204
+
+        async with owner_session_factory()() as session:
+            rows = (
+                await session.execute(
+                    select(OutboxEvent.event_type, OutboxEvent.audience, OutboxEvent.payload)
+                )
+            ).all()
+        types = {r.event_type for r in rows}
+        assert {
+            "file.uploaded",
+            "file.deleted",
+            "webhook.endpoint_created",
+            "webhook.endpoint_deleted",
+        } <= types
+        assert all(
+            r.audience == "public" for r in rows if r.event_type.startswith(("file.", "webhook.endpoint"))
+        )
+        assert all("secret" not in r.payload for r in rows if r.event_type.startswith("webhook.endpoint"))
+
+    async def test_endpoint_pages_never_overlap(self, client: AsyncClient, org_and_tokens) -> None:
+        headers = org_headers(org_and_tokens)
+        for i in range(5):
+            res = await client.post(
+                "/v1/webhooks/endpoints",
+                headers=headers,
+                json={"url": f"https://hooks.example.com/{i}", "events": []},
+            )
+            assert res.status_code == 201
+        seen: list[str] = []
+        for offset in (0, 2, 4):
+            page = await client.get(
+                "/v1/webhooks/endpoints", headers=headers, params={"limit": 2, "offset": offset}
+            )
+            seen.extend(e["id"] for e in page.json())
+        assert len(seen) == 5 and len(set(seen)) == 5

@@ -39,6 +39,15 @@ async def test_admin_crud_and_overrides(api: AsyncClient, tenant: Tenant, platfo
     on = await api.get(f"/v1/feature-flags/check/{key}", headers=tenant.headers)
     assert on.json()["enabled"] is True
 
+    both_scopes = await api.post(
+        f"/v1/feature-flags/{key}/overrides",
+        headers=platform,
+        json={"organization_id": tenant["org_id"], "user_id": tenant["user_id"], "enabled": True},
+    )
+    assert_problem(both_scopes, 422)
+    no_scope = await api.post(f"/v1/feature-flags/{key}/overrides", headers=platform, json={"enabled": True})
+    assert_problem(no_scope, 422)
+
     overrides = assert_page(await api.get(f"/v1/feature-flags/{key}/overrides", headers=platform))
     assert [o["id"] for o in overrides] == [override.json()["id"]]
 

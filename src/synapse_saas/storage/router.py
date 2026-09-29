@@ -13,13 +13,16 @@ from uuid import UUID
 from fastapi import APIRouter, Request, Response, status
 from starlette.datastructures import UploadFile
 
+from synapse_saas.audit.service import AuditService
 from synapse_saas.authorization.dependencies import require_permission
+from synapse_saas.core import events
 from synapse_saas.core.errors import (
     NotFoundError,
     PresignUnsupportedError,
     StorageError,
     UploadIncompleteError,
 )
+from synapse_saas.core.outbox import append_outbox
 from synapse_saas.core.pagination import PageDep, paginate
 from synapse_saas.entitlements.service import EntitlementService
 from synapse_saas.identity.dependencies import CurrentUser, SessionDep
@@ -105,6 +108,7 @@ async def upload_file(
     )
     session.add(row)
     await session.flush()
+    _record_file_event(session, events.FILE_UPLOADED, row)
     return FileRead.model_validate(row)
 
 
@@ -173,6 +177,7 @@ async def complete_upload(
         )
     row.status = "ready"
     await session.flush()
+    _record_file_event(session, events.FILE_UPLOADED, row)
     return FileRead.model_validate(row)
 
 
@@ -214,6 +219,29 @@ async def delete_file(file_id: UUID, tenant: TenantDep, session: SessionDep, use
     row.deleted_at = datetime.now(UTC)
     await get_storage().delete(key=row.key)
     await UsageService(session).adjust_gauge(tenant.organization_id, "storage_bytes", -int(row.size_bytes))
+    _record_file_event(session, events.FILE_DELETED, row)
+
+
+def _record_file_event(session: SessionDep, event_type: str, row: StoredFile) -> None:
+    """`file.uploaded` / `file.deleted` are in the public catalog: emit them and
+    leave an audit row, in the same transaction as the index change."""
+    payload = {
+        "file_id": str(row.id),
+        "name": row.name,
+        "content_type": row.content_type,
+        "size_bytes": int(row.size_bytes),
+    }
+    append_outbox(
+        session,
+        event_type=event_type,
+        aggregate_type="file",
+        aggregate_id=row.id,
+        organization_id=row.organization_id,
+        payload=payload,
+    )
+    AuditService(session).log(
+        event_type, organization_id=row.organization_id, target_type="file", target_id=row.id, diff=payload
+    )
 
 
 async def _get_scoped(

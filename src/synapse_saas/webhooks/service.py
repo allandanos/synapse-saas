@@ -14,9 +14,12 @@ from cryptography.fernet import Fernet
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from synapse_saas.audit.service import AuditService
+from synapse_saas.core import events
 from synapse_saas.core.config import get_settings
 from synapse_saas.core.errors import WebhookDeliveryNotFoundError, WebhookEndpointNotFoundError
 from synapse_saas.core.logging import get_logger
+from synapse_saas.core.outbox import append_outbox
 from synapse_saas.core.security import sign_payload
 from synapse_saas.webhooks.models import (
     DELIVERY_BACKOFF_SECONDS,
@@ -76,13 +79,18 @@ class WebhookService:
         )
         self.session.add(endpoint)
         await self.session.flush()
+        self._record_endpoint_event(events.WEBHOOK_ENDPOINT_CREATED, endpoint)
         return endpoint, secret
 
     async def list_endpoints(self, organization_id: UUID) -> list[WebhookEndpoint]:
+        # Deterministic order: the router pages this list in memory, and an
+        # unordered scan could repeat or skip a row between pages.
         return list(
             (
                 await self.session.execute(
-                    select(WebhookEndpoint).where(WebhookEndpoint.organization_id == organization_id)
+                    select(WebhookEndpoint)
+                    .where(WebhookEndpoint.organization_id == organization_id)
+                    .order_by(WebhookEndpoint.created_at.desc(), WebhookEndpoint.id)
                 )
             )
             .scalars()
@@ -97,7 +105,31 @@ class WebhookService:
 
     async def delete_endpoint(self, endpoint_id: UUID, organization_id: UUID) -> None:
         endpoint = await self.get_endpoint(endpoint_id, organization_id)
+        self._record_endpoint_event(events.WEBHOOK_ENDPOINT_DELETED, endpoint)
         await self.session.delete(endpoint)
+
+    def _record_endpoint_event(self, event_type: str, endpoint: WebhookEndpoint) -> None:
+        """Catalogued `webhook.endpoint_*` events + an audit row (never the secret)."""
+        payload = {
+            "endpoint_id": str(endpoint.id),
+            "url": endpoint.url,
+            "events": list(endpoint.events or []),
+        }
+        append_outbox(
+            self.session,
+            event_type=event_type,
+            aggregate_type="webhook_endpoint",
+            aggregate_id=endpoint.id,
+            organization_id=endpoint.organization_id,
+            payload=payload,
+        )
+        AuditService(self.session).log(
+            event_type,
+            organization_id=endpoint.organization_id,
+            target_type="webhook_endpoint",
+            target_id=endpoint.id,
+            diff=payload,
+        )
 
     # ── Deliveries ──────────────────────────────────────────────────────────────
 

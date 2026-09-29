@@ -5,6 +5,20 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
+### Findings from the ports' milestone 5 (P7)
+
+- `file.uploaded`, `file.deleted`, `webhook.endpoint_created` and
+  `webhook.endpoint_deleted` were in the public event catalog but nothing
+  emitted them, and the matching actions left no audit rows. They now fire
+  (outbox + audit, in the same transaction; endpoint payloads never carry the
+  secret). `webhook.endpoint_updated` is **removed** from the catalog: no
+  route updates an endpoint. The conformance suite asserts the audit rows.
+- `POST /v1/feature-flags/{key}/overrides` requires exactly one scope:
+  both `organization_id` and `user_id` is 422 (it was silently stored as a
+  user override).
+- `GET /v1/webhooks/endpoints` is ordered (`created_at` desc, id) so pages
+  never repeat or skip a row.
+
 ### Findings from the ports' milestone 4 (P7)
 
 - The `invoice.email` handler resolves its recipient through the same chain

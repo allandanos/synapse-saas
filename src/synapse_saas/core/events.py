@@ -62,7 +62,6 @@ API_KEY_AUTHENTICATED = "api_key.authenticated"
 
 # ── Webhooks ───────────────────────────────────────────────────────────────────
 WEBHOOK_ENDPOINT_CREATED = "webhook.endpoint_created"
-WEBHOOK_ENDPOINT_UPDATED = "webhook.endpoint_updated"
 WEBHOOK_ENDPOINT_DELETED = "webhook.endpoint_deleted"
 WEBHOOK_DELIVERED = "webhook.delivered"
 WEBHOOK_DELIVERY_FAILED = "webhook.delivery_failed"

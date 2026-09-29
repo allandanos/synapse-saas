@@ -27,6 +27,8 @@ async def test_upload_download_delete(api: AsyncClient, tenant: Tenant, platform
 
     downloaded = await api.get(f"/v1/files/{file_id}", headers=tenant.headers)
     assert downloaded.status_code == 200 and downloaded.content == b"hello"
+    uploaded_rows = await api.get("/v1/audit", headers=tenant.headers, params={"event_type": "file.uploaded"})
+    assert [r["target_id"] for r in uploaded_rows.json()["data"]] == [file_id]
     assert downloaded.headers["content-type"].startswith("text/plain")
 
     summary = await api.get("/v1/usage/summary", headers=tenant.headers)
@@ -40,6 +42,8 @@ async def test_upload_download_delete(api: AsyncClient, tenant: Tenant, platform
 
     assert (await api.delete(f"/v1/files/{file_id}", headers=tenant.headers)).status_code == 204
     assert_problem(await api.get(f"/v1/files/{file_id}", headers=tenant.headers), 404)
+    deleted_rows = await api.get("/v1/audit", headers=tenant.headers, params={"event_type": "file.deleted"})
+    assert [r["target_id"] for r in deleted_rows.json()["data"]] == [file_id]
     summary = await api.get("/v1/usage/summary", headers=tenant.headers)
     assert next(m for m in summary.json()["metrics"] if m["metric"] == "storage_bytes")["used"] == 0
 

@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from synapse_saas.core.cache import VersionedCache, defer_bump
-from synapse_saas.core.errors import ConflictError, FeatureFlagNotFoundError
+from synapse_saas.core.errors import ConflictError, FeatureFlagNotFoundError, ValidationFailedError
 from synapse_saas.core.logging import get_logger
 from synapse_saas.feature_flags.models import FeatureFlag, FeatureFlagOverride
 
@@ -147,8 +147,8 @@ class FeatureFlagService:
         flag = await self._flag(flag_key)
         if flag is None or flag.archived_at is not None:
             raise FeatureFlagNotFoundError(f"Flag {flag_key!r} not found")
-        if organization_id is None and user_id is None:
-            raise FeatureFlagNotFoundError("Override requires an organization_id or user_id")
+        if (organization_id is None) == (user_id is None):
+            raise ValidationFailedError("Override requires exactly one of organization_id or user_id")
 
         existing = await self._override(flag_key, organization_id=organization_id, user_id=user_id)
         if existing is not None:

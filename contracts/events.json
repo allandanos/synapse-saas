@@ -49,8 +49,7 @@
     "webhook.delivery_exhausted",
     "webhook.delivery_failed",
     "webhook.endpoint_created",
-    "webhook.endpoint_deleted",
-    "webhook.endpoint_updated"
+    "webhook.endpoint_deleted"
   ],
   "internal": [
     "authz.tuples_changed",
