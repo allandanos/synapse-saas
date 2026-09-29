@@ -9,6 +9,7 @@ haven't seen. Without Redis, an in-process TTL dict keeps the framework running.
 from __future__ import annotations
 
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from synapse_saas.core.logging import get_logger
@@ -172,7 +173,36 @@ async def flush_deferred_bumps(session: Any) -> int:
     return len(pending)
 
 
+_AFTER_COMMIT_KEY = "synapse_after_commit"
+
+
+def defer_after_commit(session: Any, action: Callable[[], Awaitable[Any]], *, name: str = "") -> None:
+    """Queue best-effort work for after the transaction commits (e.g. converging
+    an external system to rows that are not visible until then). Failures are
+    logged, never raised: the durable path (outbox) is the source of truth."""
+    pending: list[tuple[str, Callable[[], Awaitable[Any]]]] = session.info.setdefault(_AFTER_COMMIT_KEY, [])
+    pending.append((name or getattr(action, "__name__", "action"), action))
+
+
+def discard_after_commit(session: Any) -> None:
+    session.info.pop(_AFTER_COMMIT_KEY, None)
+
+
+async def run_after_commit(session: Any) -> int:
+    """Run the actions queued with `defer_after_commit`. Call after `commit()`."""
+    pending: list[tuple[str, Callable[[], Awaitable[Any]]]] = session.info.pop(_AFTER_COMMIT_KEY, [])
+    if pending:
+        logger.debug("after_commit_actions", count=len(pending), actions=[name for name, _ in pending])
+    for name, action in pending:
+        try:
+            await action()
+        except Exception as exc:
+            logger.warning("after_commit_action_failed", action=name, error=str(exc))
+    return len(pending)
+
+
 async def commit_and_flush_bumps(session: Any) -> None:
-    """Jobs/CLI helper: commit, then run the deferred invalidations."""
+    """Jobs/CLI helper: commit, then run the deferred invalidations and actions."""
     await session.commit()
     await flush_deferred_bumps(session)
+    await run_after_commit(session)

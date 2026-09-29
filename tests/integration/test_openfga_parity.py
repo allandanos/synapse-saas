@@ -146,3 +146,33 @@ class TestEndToEnd:
                 await session.execute(text("SELECT count(*) FROM outbox_events WHERE dead_at IS NOT NULL"))
             ).scalar_one()
         assert dead == 0
+
+
+class TestEagerConvergence:
+    async def test_new_owner_is_allowed_before_any_worker_pass(
+        self, client: AsyncClient, store: FgaClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Milestone-7 port finding: converging only through the worker left a fresh
+        org's owner denied for the dispatch interval plus the decision cache."""
+        from synapse_saas.authorization.fga_model import relation_for
+        from synapse_saas.authorization.sync import org_object, user_object
+        from synapse_saas.core.config import get_settings
+
+        monkeypatch.setenv("SYNAPSE_AUTHZ_BACKEND", "openfga")
+        get_settings.cache_clear()
+
+        reg = await client.post(
+            "/v1/auth/register",
+            json={"email": "eager@example.com", "password": "password12345", "display_name": "Eager"},
+        )
+        assert reg.status_code == 201, reg.text
+        bearer = {"Authorization": f"Bearer {reg.json()['tokens']['access_token']}"}
+        org = await client.post("/v1/orgs", headers=bearer, json={"name": "Eager Org", "slug": "eager-org"})
+        assert org.status_code == 201, org.text
+        # No dispatch_outbox call here: the after-commit hook already wrote the tuples
+        allowed = await store.check(
+            user_object(reg.json()["user"]["id"]), relation_for("org:delete"), org_object(org.json()["id"])
+        )
+        assert allowed is True
+        gated = await client.get("/v1/orgs/current", headers={**bearer, "X-Org-Id": org.json()["id"]})
+        assert gated.status_code == 200, gated.text

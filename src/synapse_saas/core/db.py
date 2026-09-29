@@ -283,7 +283,12 @@ async def get_session() -> AsyncIterator[AsyncSession]:
     DomainError → rollback (the exception handler still renders the problem doc).
     Any other exception → rollback and re-raise for the 500 handler.
     """
-    from synapse_saas.core.cache import discard_deferred_bumps, flush_deferred_bumps
+    from synapse_saas.core.cache import (
+        discard_after_commit,
+        discard_deferred_bumps,
+        flush_deferred_bumps,
+        run_after_commit,
+    )
 
     session = get_session_factory()()
     try:
@@ -291,12 +296,15 @@ async def get_session() -> AsyncIterator[AsyncSession]:
     except DomainError:
         await session.rollback()
         discard_deferred_bumps(session)
+        discard_after_commit(session)
         raise
     except Exception:
         await session.rollback()
         discard_deferred_bumps(session)
+        discard_after_commit(session)
         raise
     else:
         await session.commit()
         # Cache invalidation only once the change is durable (core/cache.py)
         await flush_deferred_bumps(session)
+        await run_after_commit(session)

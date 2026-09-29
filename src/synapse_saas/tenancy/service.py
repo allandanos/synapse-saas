@@ -95,6 +95,11 @@ class OrganizationService:
         membership.permission_keys = (
             sorted(p.key for p in owner_role.permissions) if owner_role.permissions else []
         )
+        # OpenFGA: the owner's tuples must exist before their first gated request
+        # (no-op under the rbac backend) — ports found new orgs unreachable without it.
+        from synapse_saas.authorization.sync import queue_tuple_sync
+
+        queue_tuple_sync(self.session, organization_id=org.id, user_id=owner.id)
 
         self._audit(
             events.ORG_CREATED,

@@ -62,15 +62,24 @@ def desired_tuples(
 def queue_tuple_sync(session: AsyncSession, *, organization_id: UUID, user_id: UUID | None) -> None:
     """Record that this member's tuples must be recomputed (no-op without OpenFGA)."""
     if user_id is None or get_settings().authz_backend != "openfga":
+        logger.debug("fga_sync_not_queued", backend=get_settings().authz_backend, user=str(user_id))
         return
+    payload = {"organization_id": str(organization_id), "user_id": str(user_id)}
     append_outbox(
         session,
         event_type=events.AUTHZ_TUPLES_CHANGED,
         aggregate_type="membership",
         aggregate_id=uuid_v7(),
         organization_id=organization_id,
-        payload={"organization_id": str(organization_id), "user_id": str(user_id)},
+        payload=payload,
     )
+    # Converge eagerly once the rows are durable: without this the member who
+    # just gained a role is denied for the dispatch interval plus the decision
+    # cache TTL. The outbox event still guarantees convergence (retries,
+    # dead-lettering); the worker's pass then finds an empty diff.
+    from synapse_saas.core.cache import defer_after_commit
+
+    defer_after_commit(session, lambda: apply_tuple_sync(payload), name="fga_tuple_sync")
 
 
 async def apply_tuple_sync(payload: dict[str, Any], *, client: FgaClient | None = None) -> dict[str, int]:

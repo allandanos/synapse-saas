@@ -231,3 +231,60 @@ class TestPasswordFormForSsoUsers:
         assert res.status_code == 401, res.text
         assert res.json()["sso_url"] == "/v1/auth/oidc/start"
         assert res.json()["identity_provider"] == "keycloak"
+
+
+class TestPasswordGrantOptIn:
+    """`SYNAPSE_KEYCLOAK_ALLOW_PASSWORD_GRANT=true`: the password form proxies to
+    Keycloak (ROPC) for unknown or SSO-only accounts — the setting used to be dead."""
+
+    async def test_login_proxies_to_keycloak_when_enabled(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from synapse_saas.core.config import get_settings
+        from synapse_saas.identity import provider as provider_module
+        from synapse_saas.identity.service import IdentityService
+
+        monkeypatch.setenv("SYNAPSE_KEYCLOAK_ALLOW_PASSWORD_GRANT", "true")
+        get_settings.cache_clear()
+
+        # An SSO-only account Keycloak knows about
+        async with owner_session_factory()() as session:
+            user = await IdentityService(session).link_or_create_oidc_user(
+                {"sub": "kc-ropc-1", "email": "ropc@example.com", "email_verified": True, "name": "Ropc"}
+            )
+            await session.commit()
+            user_id = user.id
+
+        class StubProvider:
+            calls: list[tuple[str, str]] = []
+
+            async def verify_credentials(self, email: str, password: str):
+                self.calls.append((email, password))
+                return user_id if password == "kc-password" else None
+
+        monkeypatch.setattr(provider_module, "get_identity_provider", StubProvider)
+
+        ok = await client.post(
+            "/v1/auth/login", json={"email": "ropc@example.com", "password": "kc-password"}
+        )
+        assert ok.status_code == 200, ok.text
+        assert ok.json()["user"]["id"] == str(user_id) and ok.json()["tokens"]["access_token"]
+        assert StubProvider.calls == [("ropc@example.com", "kc-password")]
+
+        bad = await client.post(
+            "/v1/auth/login", json={"email": "ropc@example.com", "password": "nope-nope-1"}
+        )
+        assert bad.status_code == 401 and bad.json()["title"] == "invalid credentials", bad.text
+
+    async def test_sso_only_still_points_at_sso_when_disabled(self, client: AsyncClient) -> None:
+        from synapse_saas.identity.service import IdentityService
+
+        async with owner_session_factory()() as session:
+            await IdentityService(session).link_or_create_oidc_user(
+                {"sub": "kc-ropc-2", "email": "ssoonly@example.com", "email_verified": True}
+            )
+            await session.commit()
+        res = await client.post(
+            "/v1/auth/login", json={"email": "ssoonly@example.com", "password": "whatever-123"}
+        )
+        assert res.status_code == 401 and res.json()["sso_url"] == "/v1/auth/oidc/start", res.text

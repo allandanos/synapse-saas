@@ -75,7 +75,17 @@ class IdentityService:
 
     async def login(self, *, email: str, password: str) -> User:
         user = (await self.session.execute(select(User).where(User.email == email))).scalar_one_or_none()
-        if user is not None and user.identity_provider != "local" and user.password_hash is None:
+        sso_only = user is not None and user.identity_provider != "local" and user.password_hash is None
+        settings = get_settings()
+        if (
+            settings.identity_provider == "keycloak"
+            and settings.keycloak_allow_password_grant
+            and (user is None or sso_only)
+        ):
+            # Opt-in ROPC (ADR 0010): the password form proxies to Keycloak, which
+            # links or creates the account; the code flow stays the default.
+            return await self._login_via_password_grant(email, password)
+        if sso_only and user is not None:
             # SSO-only account: the password form cannot sign it in — point at the flow that can
             verify_password(password, _dummy_hash())
             raise AuthenticationError(
@@ -93,6 +103,21 @@ class IdentityService:
 
         user.last_login_at = datetime.now(UTC)
         self._audit(events.USER_LOGIN_SUCCEEDED, user_id=user.id)
+        _inc_auth("login_succeeded")
+        return user
+
+    async def _login_via_password_grant(self, email: str, password: str) -> User:
+        from synapse_saas.identity.provider import get_identity_provider
+
+        verified_id = await get_identity_provider().verify_credentials(email, password)
+        if verified_id is None:
+            _inc_auth("login_failed")
+            raise InvalidCredentialsError("Invalid email or password")
+        user = await self.session.get(User, verified_id)
+        if user is None or not user.is_active:
+            raise InvalidCredentialsError("Invalid email or password")
+        user.last_login_at = datetime.now(UTC)
+        self._audit(events.USER_LOGIN_SUCCEEDED, user_id=user.id, diff={"via": "keycloak_password_grant"})
         _inc_auth("login_succeeded")
         return user
 

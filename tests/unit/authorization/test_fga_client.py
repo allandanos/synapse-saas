@@ -83,6 +83,28 @@ class TestWrite:
 
 
 class TestStoresAndModels:
+    async def test_missing_delete_is_tolerated_in_openfga_1x_wording(self) -> None:
+        """OpenFGA 1.x says "cannot delete a tuple which does not exist", not "not found"."""
+        import httpx
+        import respx
+
+        from synapse_saas.authorization.fga import FgaClient, Tuple
+
+        with respx.mock(base_url="http://fga") as mock:
+            mock.post("/stores/s1/write").mock(
+                return_value=httpx.Response(
+                    400,
+                    json={
+                        "code": "write_failed_due_to_invalid_input",
+                        "message": "cannot delete a tuple which does not exist: user:u1 owner org:o1",
+                    },
+                )
+            )
+            client = FgaClient(
+                url="http://fga", store_id="s1", model_id="m1", api_token="", http=httpx.AsyncClient()
+            )
+            await client.write(deletes=[Tuple("user:u1", "owner", "organization:o1")])  # no raise
+
     @respx.mock
     async def test_create_store_and_write_model(self) -> None:
         respx.post(f"{URL}/stores").mock(return_value=Response(201, json={"id": "new-store"}))

@@ -17,11 +17,16 @@ test.describe("single sign-on", () => {
     // Keycloak's login form (realm import: sso@acme.example.com / password123)
     await page.waitForURL(/realms\/synapse\/protocol\/openid-connect\/auth/);
     await page.getByLabel(/username|email/i).fill("sso@acme.example.com");
-    await page.getByLabel(/password/i).fill("password123");
+    // By role + exact name: Keycloak ≥ 23 also renders a "Show password" toggle, so a
+    // label regex on "password" resolves to two elements (strict-mode violation).
+    await page.getByRole("textbox", { name: "Password", exact: true }).fill("password123");
     await page.getByRole("button", { name: /sign in/i }).click();
 
-    // API callback → console /auth/callback → dashboard (or onboarding for a brand-new user)
+    // API callback → console /auth/callback → dashboard, or onboarding for a brand-new
+    // user (the realm's sso@ user has no org: the dev seed does not create one for it)
     await page.waitForURL(/dashboard|onboarding/, { timeout: 20_000 });
-    await expect(page.getByText(/sso@acme\.example\.com|welcome|dashboard/i).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /create your organization|dashboard|welcome/i }).first(),
+    ).toBeVisible();
   });
 });

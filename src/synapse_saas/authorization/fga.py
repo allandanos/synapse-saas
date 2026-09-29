@@ -118,7 +118,9 @@ class FgaClient:
                     self._store_path("/write"), self._body({"deletes": {"tuple_keys": [tup.as_key()]}})
                 )
             except FgaError as exc:
-                if "not found" not in str(exc.extras.get("body", "")).lower():
+                body = str(exc.extras.get("body", "")).lower()
+                # OpenFGA 1.x: "cannot delete a tuple which does not exist"; older builds: "not found"
+                if "not found" not in body and "does not exist" not in body:
                     raise
 
     def _body(self, body: dict[str, Any]) -> dict[str, Any]:

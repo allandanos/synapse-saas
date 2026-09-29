@@ -63,6 +63,14 @@ export SYNAPSE_AUTHZ_BACKEND=openfga
 
 ### Tuple sync
 
+Tuples converge twice: eagerly right after the mutating transaction commits
+(an after-commit action, best effort, so a member who just gained a role is
+not denied for the dispatch interval plus the decision cache), and durably
+through the internal `authz.tuples_changed` outbox event the worker consumes
+(retries, dead-lettering). The worker's pass normally finds an empty diff.
+Organization creation queues the owner's tuples like every other role change.
+
+
 Every membership or role change (invite accepted, roles replaced, member
 suspended/removed, custom role edited) appends the internal outbox event
 `authz.tuples_changed`; the worker recomputes the member's desired tuples

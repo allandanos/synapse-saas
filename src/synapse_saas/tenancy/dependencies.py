@@ -14,7 +14,6 @@ from uuid import UUID
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from synapse_saas.core.cache import VersionedCache
 from synapse_saas.core.context import TenantContext, current_tenant, set_tenant
 from synapse_saas.core.db import get_session, set_rls_platform, set_rls_tenant
 from synapse_saas.core.errors import AuthenticationError, OrganizationSuspendedError, TenantNotResolvedError
@@ -25,8 +24,6 @@ from synapse_saas.tenancy.models import Organization
 from synapse_saas.tenancy.repository import MembershipRepository, OrganizationRepository
 
 logger = get_logger(__name__)
-
-_membership_cache = VersionedCache("member", ttl=60)
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 

@@ -5,6 +5,23 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
+### Findings from the ports' milestone 7 (P7)
+
+No path changes. Behaviour fixes the ports surfaced:
+
+- OpenFGA: tuples now converge eagerly after the mutating transaction commits
+  (in addition to the outbox event), and organization creation queues the
+  owner's tuples — a new org's owner used to be denied in `openfga` mode until
+  a manual `authz fga sync`. A missing delete is tolerated in OpenFGA 1.x's
+  wording ("cannot delete a tuple which does not exist"), not only "not found".
+- `SYNAPSE_KEYCLOAK_ALLOW_PASSWORD_GRANT=true` now does what it says: the
+  password form proxies unknown or SSO-only accounts to Keycloak (ROPC) and
+  links/creates them; it was a dead setting.
+- The console's SSO journey works on Keycloak 26 (the version the nightly job
+  pins): the password field is addressed by role, and a brand-new SSO user is
+  expected to land on onboarding.
+- Dead `member` cache namespace removed from tenant resolution.
+
 ### Findings from the ports' milestone 5 (P7)
 
 - `file.uploaded`, `file.deleted`, `webhook.endpoint_created` and
