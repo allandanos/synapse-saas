@@ -1,6 +1,6 @@
 [project]
 name = "synapse-saas"
-version = "0.1.0"
+version = "0.2.0"
 description = "Synapse SaaS Framework — an open-source multi-tenant SaaS framework with plans, entitlements, usage metering, and pluggable billing."
 readme = "README.md"
 license = { text = "Apache-2.0" }

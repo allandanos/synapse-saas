@@ -35,6 +35,28 @@ class TestProductionGuardrails:
                 auth_rate_limit_per_identity=5,
             )
 
+    @pytest.mark.parametrize("key", ["", "short", "y" * 31])
+    def test_prod_rejects_blank_or_short_secret(self, key: str) -> None:
+        with pytest.raises(ValidationError, match="shorter than 32 characters"):
+            Settings(
+                env="production",
+                secret_key=key,
+                auth_rate_limit_per_ip=20,
+                auth_rate_limit_per_identity=5,
+            )
+
+    def test_prod_accepts_secret_of_minimum_length(self) -> None:
+        s = Settings(
+            env="production",
+            secret_key="z" * Settings.PRODUCTION_MIN_SECRET_KEY_LENGTH,
+            auth_rate_limit_per_ip=20,
+            auth_rate_limit_per_identity=5,
+        )
+        assert s.is_production
+
+    def test_dev_accepts_short_secret(self) -> None:
+        assert Settings(env="development", secret_key="short").secret_key == "short"
+
     def test_prod_accepts_hardened_values(self) -> None:
         s = Settings(
             env="production",

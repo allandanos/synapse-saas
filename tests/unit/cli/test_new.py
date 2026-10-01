@@ -6,10 +6,21 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from synapse_saas.cli import cli
-from synapse_saas.scaffold import framework_migration_head, generate, list_templates, package_name
+from synapse_saas.scaffold import (
+    framework_migration_head,
+    framework_version,
+    generate,
+    list_templates,
+    package_name,
+)
+
+# Compose interpolation (`${VAR:-default}`) is the only `$` a rendered file may
+# contain; anything else is a template variable string.Template left behind.
+COMPOSE_VARIABLE = re.compile(r"\$\{[A-Z][A-Z0-9_]*(:-[^}]*)?\}")
 
 
 class TestHelpers:
@@ -37,10 +48,15 @@ class TestGenerate:
             ".python-version",
             "README.md",
             ".env.example",
+            ".dockerignore",
+            ".gitignore",
             "Makefile",
             "Dockerfile",
             "docker-compose.yml",
             "config/plans.yaml",
+            "branding/branding.yaml",
+            "branding/logo.svg",
+            "branding/favicon.svg",
             "src/gym_booking/__init__.py",
             "src/gym_booking/app.py",
             "src/gym_booking/models.py",
@@ -72,6 +88,59 @@ class TestGenerate:
             text = rendered.read_text()
             assert "$package" not in text and "$product" not in text, rendered
             assert "${package}" not in text, rendered
+
+    def test_compose_runs_the_product_and_the_published_console(self, tmp_path: Path) -> None:
+        root = tmp_path / "gym-booking"
+        generate("gym-booking", destination=root)
+        text = (root / "docker-compose.yml").read_text()
+        compose = yaml.safe_load(text)
+        services = compose["services"]
+        assert set(services) == {"postgres", "redis", "migrate", "api", "worker", "web"}
+
+        for name in ("migrate", "api", "worker"):
+            service = services[name]
+            assert service["build"] == "."
+            assert "./branding:/branding:ro" in service["volumes"], name
+            assert service["environment"]["SYNAPSE_BRANDING_FILE"] == "/branding/branding.yaml"
+        assert services["migrate"]["command"] == [
+            "synapse-cli branding validate && python -m gym_booking.migrate upgrade heads && synapse-cli seed"
+        ]
+        assert services["worker"]["command"] == ["python", "-m", "gym_booking.worker"]
+        assert services["api"]["depends_on"]["migrate"] == {"condition": "service_completed_successfully"}
+
+        web = services["web"]
+        assert "build" not in web
+        assert "synapse-saas-web" in web["image"]
+        assert web["image"].endswith(f"${{SYNAPSE_VERSION:-{framework_version()}}}"), web["image"]
+        assert web["environment"]["SYNAPSE_API_URL"] == "${SYNAPSE_API_URL:-http://localhost:8000}"
+        assert web["environment"]["SYNAPSE_API_INTERNAL_URL"] == "http://api:8000"
+
+    def test_no_stray_dollar_in_compose_or_env(self, tmp_path: Path) -> None:
+        root = tmp_path / "gym-booking"
+        generate("gym-booking", destination=root)
+        for name in ("docker-compose.yml", ".env.example"):
+            leftover = COMPOSE_VARIABLE.sub("", (root / name).read_text())
+            assert "$" not in leftover, f"{name}: {leftover}"
+        env = (root / ".env.example").read_text()
+        assert "SYNAPSE_BRANDING_FILE=branding/branding.yaml" in env
+        assert "SYNAPSE_API_URL=http://localhost:8000" in env
+
+    def test_image_and_repo_never_carry_local_env_files(self, tmp_path: Path) -> None:
+        root = tmp_path / "gym-booking"
+        generate("gym-booking", destination=root)
+        dockerignore = (root / ".dockerignore").read_text().splitlines()
+        assert {".env", ".env.*", "!.env.example", ".venv", ".git"} <= set(dockerignore)
+        gitignore = (root / ".gitignore").read_text().splitlines()
+        assert {".env", ".venv/", "__pycache__/"} <= set(gitignore)
+
+    def test_branding_kit_is_named_after_the_product_and_valid(self, tmp_path: Path) -> None:
+        from synapse_saas.branding.loader import load_branding
+
+        root = tmp_path / "gym-booking"
+        generate("gym-booking", destination=root)
+        brand = load_branding(root / "branding" / "branding.yaml")
+        assert brand.name == "Gym Booking"
+        assert brand.served_assets == {"logo": "logo.svg", "favicon": "favicon.svg"}
 
     def test_framework_path_adds_a_uv_source(self, tmp_path: Path) -> None:
         generate("demo", destination=tmp_path / "demo", framework_path=str(tmp_path))

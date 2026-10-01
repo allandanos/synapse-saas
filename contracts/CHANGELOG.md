@@ -5,6 +5,21 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.2.0 (tag pending)
+
+First tagged release; it carries every entry below down to the baseline.
+`info.version` is `0.2.0`. The `0.1.0` Docker images were a manual snapshot
+of `b581b33` (contract as of "Findings from the ports' milestone 7") and do not
+serve the branding paths.
+
+### Distribution (P3)
+
+No path changes. Production now refuses a `SYNAPSE_SECRET_KEY` shorter than 32
+characters (blank included), alongside the dev-default check. Images are
+published by `release.yml` on `v*` tags; `deploy/compose/` runs them.
+
 ### White-label branding (P1)
 
 - **New paths** (public, no auth, no tenant): `GET /v1/branding` →

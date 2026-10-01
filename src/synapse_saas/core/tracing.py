@@ -11,6 +11,7 @@ trace id your APM shows.
 
 from __future__ import annotations
 
+import importlib.metadata
 from typing import Any
 
 from synapse_saas.core.config import get_settings
@@ -19,6 +20,13 @@ from synapse_saas.core.logging import get_logger
 logger = get_logger(__name__)
 
 _configured = False
+
+
+def _framework_version() -> str:
+    try:
+        return importlib.metadata.version("synapse-saas")
+    except importlib.metadata.PackageNotFoundError:  # running from an uninstalled source tree
+        return "unknown"
 
 
 def configure_tracing() -> None:
@@ -42,7 +50,7 @@ def configure_tracing() -> None:
     resource = Resource.create(
         {
             "service.name": settings.otel_service_name,
-            "service.version": "0.1.0",
+            "service.version": _framework_version(),
             "deployment.environment": settings.env,
         }
     )

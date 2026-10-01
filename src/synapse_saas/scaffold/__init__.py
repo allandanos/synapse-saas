@@ -2,7 +2,8 @@
 
 A template is a directory of files under `templates/<name>/`; every file is
 rendered with `string.Template` (`$product`, `$package`, `$framework_spec`,
-`$framework_head`, …) and written under the destination. The generated project
+`$framework_version`, `$framework_head`, …; a literal `$` is written `$$`)
+and written under the destination. The generated project
 is not a fork: its `pyproject.toml` depends on the published package, its
 migrations are an Alembic branch that `depends_on` the framework head, and its
 tests run on the framework's public pytest plugin.
@@ -47,12 +48,17 @@ def package_name(product: str) -> str:
     return package
 
 
-def framework_version_spec() -> str:
-    """`>=0.1.0,<0.2` for 0.x (minor is breaking), `>=1.2.0,<2` afterwards."""
+def framework_version() -> str:
+    """The installed framework release (also the tag of the published images)."""
     try:
-        version = importlib.metadata.version("synapse-saas")
-    except importlib.metadata.PackageNotFoundError:
-        version = "0.1.0"
+        return importlib.metadata.version("synapse-saas")
+    except importlib.metadata.PackageNotFoundError as exc:  # a bare source tree on sys.path
+        raise RuntimeError("synapse-saas is not installed (run `uv sync`); cannot pin the scaffold") from exc
+
+
+def framework_version_spec() -> str:
+    """`>=0.2.0,<0.3` for 0.x (minor is breaking), `>=1.2.0,<2` afterwards."""
+    version = framework_version()
     major, minor, *_ = [*version.split("."), "0", "0"][:3]
     base = f"{major}.{minor}.0"
     upper = f"{major}.{int(minor) + 1}" if major == "0" else str(int(major) + 1)
@@ -86,6 +92,8 @@ def render_context(product: str, *, framework_path: str | None = None) -> dict[s
         "package": package,
         "package_title": package.replace("_", " ").title(),
         "framework_spec": framework_version_spec(),
+        # Published console image tag (synapse-saas-web): same release as the package.
+        "framework_version": framework_version(),
         "framework_head": framework_migration_head(),
         "framework_versions_dir": framework_versions_dir(),
         "uv_source": uv_source,

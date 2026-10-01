@@ -29,6 +29,20 @@ pytest plugin (`synapse_saas.testing.fixtures`), a compose stack and a
 Dockerfile. `--list-templates` shows what is available;
 `--framework-path` points at a local checkout instead of PyPI.
 
+The generated `docker-compose.yml` runs the whole product with
+`cp .env.example .env && docker compose up --build`: `migrate`
+(`python -m <package>.migrate upgrade heads && synapse-cli seed`), `api` and
+`worker` are built from your repository; `web` is the framework's console
+from the **published** `synapse-saas-web` image (tag = the framework release
+you generated against, override with `SYNAPSE_IMAGE_PREFIX` /
+`SYNAPSE_VERSION`). You never build or fork frontend code to get a console
+with your name on it: the generated `branding/` kit (`branding.yaml` named
+after your product, plus logo and favicon) is mounted into api, worker and
+migrate, and the console reads it from `GET /v1/branding` at runtime. Edit
+it, `docker compose restart api worker`, and the console follows within a
+minute — see [Branding](branding.md), including the fork guide for when a
+reskin is not enough.
+
 ## Model 1 — In-process extension (Python)
 
 Your domain code imports framework primitives directly. This is the "your

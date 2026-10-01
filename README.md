@@ -3,10 +3,14 @@
 [![CI](https://github.com/allandanos/synapse-saas/actions/workflows/ci.yml/badge.svg)](https://github.com/allandanos/synapse-saas/actions/workflows/ci.yml)
 [![E2E](https://github.com/allandanos/synapse-saas/actions/workflows/e2e.yml/badge.svg)](https://github.com/allandanos/synapse-saas/actions/workflows/e2e.yml)
 
-An open-source, multi-tenant SaaS framework: clone → define your domain → configure plans → deploy.
+**Multi-tenancy, plans, and billing. Your product is the only thing left to build.**
+
+An open-source, multi-tenant SaaS framework: organizations, RBAC, audit, entitlements, usage
+metering, and pluggable billing — configured in YAML, not code. Define your domain, configure
+plans, deploy, and ship it under your own brand.
 
 You get tenancy, identity, RBAC, audit, plans, entitlements, subscriptions, trials, usage metering,
-billing, and webhooks — so your product code only contains your product.
+billing, webhooks, and a white-label admin console — so your product code only contains your product.
 
 ```python
 # Your domain model. That's it — tenant scoping is inherited.
@@ -46,6 +50,37 @@ The stack runs with the **Manual billing provider** — no Stripe/Xendit/PayMong
 Register a user, create an organization, and the full freemium loop (plans, limits, upgrade,
 usage meters) works locally out of the box.
 
+## Run the published images
+
+No checkout, no build — API, worker, console, Postgres and Redis from Docker Hub
+(`synapse-saas-{api,worker,web}`, linux/amd64 + arm64):
+
+```bash
+git clone --depth 1 https://github.com/allandanos/synapse-saas.git
+cd synapse-saas/deploy/compose   # self-contained: copy this directory anywhere you like
+cp .env.example .env             # set SYNAPSE_SECRET_KEY: openssl rand -base64 32
+docker compose up -d --wait      # console :3000, API :8000
+```
+
+Nothing is built — the clone is only for the kit's three files and `branding/`. See
+[`deploy/compose/README.md`](deploy/compose/README.md), including how to build the images
+locally until `v0.2.0` is published.
+
+## White-label it
+
+Your name, logo, favicon, colours and links on the console, your sender name and footer on
+emails, your issuer block on invoice PDFs, your title on the API docs — from one
+`branding.yaml`, at runtime, on the published images:
+
+```bash
+synapse-cli branding init --dir branding     # commented starter kit
+synapse-cli branding validate --file branding/branding.yaml
+# mount it on api/worker/migrate and set SYNAPSE_BRANDING_FILE=/branding/branding.yaml
+```
+
+Need more than a reskin? The console is built to be forked. [Branding guide](docs/branding.md)
+(schema reference, assets, tokens, fork guide) · [ADR 0013](docs/adr/0013-white-labelling.md).
+
 ## What's inside
 
 | Capability | Status |
@@ -71,6 +106,7 @@ usage meters) works locally out of the box.
 | Background jobs (arq worker) | ✅ Phase 2 |
 | Invoicing engine (drafts, numbering, overage, proration, PDF + email) | ✅ Phase 2 |
 | Admin console (Next.js), SDKs (Python/TypeScript/Go/Java), K8s/Terraform | ✅ Phase 3–5 |
+| White-label branding (console, emails, invoices, API docs) + published images | ✅ 0.2.0 |
 | Row-level security as a real boundary (`make test-rls`) | ✅ Hardening |
 
 ## Build a product on it
@@ -114,7 +150,8 @@ usage.within_limit("api_requests")     # checked against the effective, overridd
 - [Webhooks](docs/webhooks.md)
 - [Extending the framework](docs/extending.md) (in-process vs. domain service)
 - [Observability](docs/observability.md)
-- [Deployment & HA](docs/deployment.md)
+- [Branding & white-labelling](docs/branding.md)
+- [Deployment & HA](docs/deployment.md) · [published-images kit](deploy/compose/README.md)
 - [API reference](docs/api.md) (live: `/docs`)
 - [ADRs](docs/adr/)
 - [Porting guide](ports/README.md) — contract-first sibling ports [`synapse-saas-java`](https://github.com/allandanos/synapse-saas-java) and [`synapse-saas-node`](https://github.com/allandanos/synapse-saas-node), ADR 0012

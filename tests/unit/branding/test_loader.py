@@ -17,7 +17,12 @@ from synapse_saas.branding.loader import (
 )
 from synapse_saas.core.errors import BrandingInvalidError, NotFoundError
 
-REPO_KIT = Path(__file__).resolve().parents[3] / "config" / "branding"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_KIT = REPO_ROOT / "config" / "branding"
+# Copies of the default kit that ship elsewhere: the published-images compose kit
+# and the scaffold (whose branding.yaml is a template with `name: $package_title`).
+COMPOSE_KIT = REPO_ROOT / "deploy" / "compose" / "branding"
+SCAFFOLD_KIT = REPO_ROOT / "src" / "synapse_saas" / "scaffold" / "templates" / "hello-saas" / "branding"
 
 
 def _kit(tmp_path: Path, yaml_text: str, files: dict[str, bytes] | None = None) -> Path:
@@ -188,6 +193,27 @@ class TestPackagedKit:
                 f"config/branding/{name} and src/synapse_saas/config/branding/{name} differ — "
                 "copy the edited one over the other"
             )
+
+    def test_compose_kit_is_a_copy_of_the_default(self) -> None:
+        """deploy/compose/branding/ is what `docker compose up` mounts: the default kit, byte for byte."""
+        names = sorted(p.name for p in COMPOSE_KIT.iterdir() if p.is_file())
+        assert names == ["branding.yaml", "favicon.svg", "logo.svg"]
+        for name in names:
+            assert (COMPOSE_KIT / name).read_bytes() == (REPO_KIT / name).read_bytes(), (
+                f"deploy/compose/branding/{name} differs from config/branding/{name} — copy it over"
+            )
+
+    def test_scaffold_kit_is_the_default_with_a_templated_name(self) -> None:
+        names = sorted(p.name for p in SCAFFOLD_KIT.iterdir() if p.is_file())
+        assert names == ["branding.yaml.tmpl", "favicon.svg", "logo.svg"]
+        for name in ("favicon.svg", "logo.svg"):
+            assert (SCAFFOLD_KIT / name).read_bytes() == (REPO_KIT / name).read_bytes(), name
+        template = (SCAFFOLD_KIT / "branding.yaml.tmpl").read_text(encoding="utf-8")
+        default = (REPO_KIT / "branding.yaml").read_text(encoding="utf-8")
+        assert "\nname: $package_title\n" in template
+        assert template.replace("\nname: $package_title\n", "\nname: Synapse\n") == default, (
+            "the scaffold's branding.yaml.tmpl drifted from config/branding/branding.yaml"
+        )
 
     def test_default_settings_point_at_the_packaged_kit(self) -> None:
         from synapse_saas.core.config import DEFAULT_BRANDING_FILE

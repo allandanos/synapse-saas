@@ -1,0 +1,100 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Branding kit — white-label a Synapse SaaS deployment without forking it.
+#
+# Start your own with `synapse-cli branding init --dir branding`, edit this
+# file, drop your assets next to it, then point the API and the worker at it:
+#
+#     SYNAPSE_BRANDING_FILE=/path/to/branding/branding.yaml
+#
+# Check it with `synapse-cli branding validate --file <path>`. The API and the
+# worker refuse to start on an invalid file. Branding is read once per process:
+# restart the API and the worker to apply a change (consoles pick it up within
+# a minute). Unknown keys are rejected, so a typo fails loudly.
+#
+# Assets (logo, logo_dark, favicon, custom_css, invoice.logo) are bare file
+# names in THIS directory: letters, digits, ".", "_" and "-", up to 64
+# characters, no sub-directories, no leading dot. Every referenced asset must
+# exist. The API serves logo, logo_dark, favicon and custom_css at
+# /v1/branding/assets/<name>?v=<content hash>; invoice.logo is only read by
+# the invoice PDF renderer.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Schema version. Required; the only allowed value is 1.
+version: 1
+
+# Product name. Required, 1–60 characters. Shown in the console, email bodies,
+# the sender display name (unless email.from_name is set), the invoice
+# wordmark and the API docs title ("<name> API").
+name: $package_title
+
+# One-line description. Optional, up to 160 characters. Shown on the console's
+# landing page and used as the API docs description.
+tagline: Open-source multi-tenant SaaS framework
+
+# Console logo: .svg or .png. Optional — without one the console shows a
+# letter tile.
+logo: logo.svg
+
+# Logo variant for dark surfaces: .svg or .png. Optional.
+# logo_dark: logo-dark.svg
+
+# Browser tab icon: .ico, .png or .svg. Optional.
+favicon: favicon.svg
+
+# Extra stylesheet linked last in the console's <head>: .css. Optional. It is
+# trusted configuration (it can restyle anything), not a user upload.
+# custom_css: custom.css
+
+# Console theme tokens. Every key is optional; the values below are the defaults.
+colors:
+  # Primary actions (buttons, active navigation, focus rings): "#RRGGBB".
+  primary: "#18181b"
+  # Text and icons drawn on top of `primary`: "#RRGGBB".
+  primary_foreground: "#ffffff"
+  # Secondary highlight colour: "#RRGGBB".
+  accent: "#2563eb"
+  # Corner radius of cards and controls: a number with px, rem or em.
+  radius: 0.5rem
+
+# Links shown in the console footer and email footers. Every key is optional;
+# URLs must start with http:// or https://.
+links:
+  website: https://github.com/allandanos/synapse-saas
+  docs: https://github.com/allandanos/synapse-saas/tree/main/docs
+  # terms: https://example.com/terms
+  # privacy: https://example.com/privacy
+  # Support address (a valid email address).
+  # support_email: support@example.com
+
+# Transactional email (plain text). Every key is optional.
+email:
+  # Sender display name, 1–80 characters. The address itself stays
+  # SYNAPSE_SMTP_FROM. Default: a display name in SYNAPSE_SMTP_FROM, else `name`.
+  # from_name: Synapse
+  # Footer appended to every email, up to 500 characters.
+  # Default: "— <name>" followed by links.website when set.
+  # footer: |
+  #   Synapse · https://github.com/allandanos/synapse-saas
+
+# Invoice PDF issuer block. Every key is optional.
+invoice:
+  # Legal entity on the invoice, 1–120 characters. Default: `name`.
+  # legal_name: Synapse Software Inc.
+  # Postal address, up to 6 lines of up to 120 characters each.
+  # address_lines:
+  #   - 1 Example Street
+  #   - Makati City, Metro Manila 1200
+  # Tax registration number, up to 60 characters.
+  # tax_id: TIN 000-000-000-000
+  # Line printed in every page footer, up to 200 characters.
+  # footer: Thank you for your business.
+  # Logo for the PDF only: .svg or .png. Default: `logo`; when neither renders,
+  # the PDF prints `name` as a wordmark. PNG is the most faithful choice.
+  # logo: invoice-logo.png
+
+# What the console's "/" shows: `page` (brand landing with Sign in / Create
+# account) or `redirect` (straight to /login).
+landing: page
+
+# Show "Powered by Synapse" in the console footer: true or false.
+powered_by: true

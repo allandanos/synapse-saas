@@ -200,6 +200,8 @@ class Settings(BaseSettings):
     # from one IP; a baked .env or a copy-pasted override must not reach prod.
     PRODUCTION_MAX_AUTH_PER_IP: ClassVar[int] = 100
     PRODUCTION_MAX_AUTH_PER_IDENTITY: ClassVar[int] = 20
+    # `openssl rand -base64 32` yields 44 characters; anything under 32 is a typo or a placeholder.
+    PRODUCTION_MIN_SECRET_KEY_LENGTH: ClassVar[int] = 32
 
     @model_validator(mode="after")
     def _production_guardrails(self) -> "Settings":
@@ -218,6 +220,11 @@ class Settings(BaseSettings):
             )
         if self.secret_key.startswith("dev-only-"):
             problems.append("SYNAPSE_SECRET_KEY is the dev default")
+        elif len(self.secret_key) < self.PRODUCTION_MIN_SECRET_KEY_LENGTH:
+            problems.append(
+                f"SYNAPSE_SECRET_KEY is shorter than {self.PRODUCTION_MIN_SECRET_KEY_LENGTH} "
+                "characters (generate one with `openssl rand -base64 32`)"
+            )
         if problems:
             raise ValueError("Refusing to start in production: " + "; ".join(problems))
         return self

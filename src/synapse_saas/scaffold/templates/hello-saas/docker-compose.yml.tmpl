@@ -1,4 +1,22 @@
+# $package_title — local stack: your API + worker (built from this repo), the
+# framework's console from the published image, white-labelled by ./branding/.
+#
+#   cp .env.example .env && docker compose up --build
+#
+# Console http://localhost:3000 · API http://localhost:8000/docs
 name: $package
+
+x-product: &product
+  build: .
+  env_file: .env
+  environment:
+    SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@postgres:5432/synapse
+    SYNAPSE_REDIS_URL: redis://redis:6379/0
+    SYNAPSE_BRANDING_FILE: /branding/branding.yaml
+  volumes:
+    # Product name, logo, colours, links, email + invoice identity. Read once
+    # per process: `docker compose restart api worker` after editing.
+    - ./branding:/branding:ro
 
 services:
   postgres:
@@ -18,18 +36,67 @@ services:
   redis:
     image: redis:7-alpine
     ports: ["6380:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: check branding/, run framework migrations + this product's branch,
+  # then seed permissions, system roles and the plan catalog.
+  migrate:
+    <<: *product
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["synapse-cli branding validate && python -m $package.migrate upgrade heads && synapse-cli seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   api:
-    build: .
+    <<: *product
     command: ["uvicorn", "$package.app:app", "--host", "0.0.0.0", "--port", "8000"]
-    env_file: .env
-    environment:
-      SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:synapse@postgres:5432/synapse
-      SYNAPSE_REDIS_URL: redis://redis:6379/0
     ports: ["8000:8000"]
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    <<: *product
+    command: ["python", "-m", "$package.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # The framework's console, unchanged: it reads its API URL at runtime and its
+  # name, logo and colours from GET /v1/branding — nothing to build.
+  web:
+    image: $${SYNAPSE_IMAGE_PREFIX:-allandanos}/synapse-saas-web:$${SYNAPSE_VERSION:-$framework_version}
+    environment:
+      SYNAPSE_API_URL: $${SYNAPSE_API_URL:-http://localhost:8000}
+      SYNAPSE_API_INTERNAL_URL: http://api:8000
+    ports: ["3000:3000"]
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   pgdata:

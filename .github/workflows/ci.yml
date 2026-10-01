@@ -375,6 +375,14 @@ jobs:
           uv sync
           uv run python -m demo_product.migrate upgrade heads
           uv run pytest -q -m ""
+      - name: The product's compose file (api, worker, migrate, published console) is valid
+        working-directory: /tmp/demo-product
+        run: |
+          cp .env.example .env
+          docker compose config -q
+          services="$(docker compose config --services | sort | tr '\n' ' ')"
+          echo "services: $services"
+          test "$services" = "api migrate postgres redis web worker "
 
   # ── Images: no secrets baked, correct entrypoints, writable storage ────────
   docker-image:
@@ -428,6 +436,97 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://localhost:3000/healthz && break; sleep 1; done
           curl -sf http://localhost:3000/healthz
           docker rm -f web
+
+  # ── Published-images kit: deploy/compose runs as shipped, rebranded at runtime ──
+  compose-kit-smoke:
+    name: Compose kit smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SYNAPSE_IMAGE_PREFIX: ci
+      SYNAPSE_VERSION: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The kit runs api, worker and migrate from the api image (the worker
+      # image differs only in its CMD), so only two images are needed here.
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          load: true
+          tags: ci/synapse-saas-api:ci
+          cache-from: type=gha,scope=synapse-saas-api
+          cache-to: type=gha,mode=max,scope=synapse-saas-api
+
+      - name: Build console image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          load: true
+          tags: ci/synapse-saas-web:ci
+          cache-from: type=gha,scope=synapse-saas-web
+          cache-to: type=gha,mode=max,scope=synapse-saas-web
+
+      - name: Configure the kit (.env from the example, a real secret, a new brand name)
+        working-directory: deploy/compose
+        run: |
+          cp .env.example .env
+          echo "SYNAPSE_SECRET_KEY=$(openssl rand -base64 48)" >> .env
+          sed -i 's/^name: .*/name: Acme Widgets/' branding/branding.yaml
+          grep -q '^name: Acme Widgets$' branding/branding.yaml
+
+      - name: Start the stack
+        working-directory: deploy/compose
+        run: docker compose up -d --wait --wait-timeout 300
+
+      # Here-strings rather than `curl | grep -q`: grep exiting early would
+      # SIGPIPE curl and trip pipefail. GET with -D, not -I: the asset route
+      # answers GET only (HEAD is a 405 problem).
+      - name: API serves the mounted branding
+        run: |
+          set -euo pipefail
+          curl -sf http://localhost:8000/healthz
+          test "$(curl -sf http://localhost:8000/v1/branding | jq -r .name)" = "Acme Widgets"
+          test "$(curl -sf http://localhost:8000/v1/meta | jq -r .product)" = "Acme Widgets"
+          logo_headers="$(curl -sf -D - -o /dev/null http://localhost:8000/v1/branding/assets/logo.svg)"
+          grep -qi '^content-type: image/svg+xml' <<<"$logo_headers"
+          grep -qi '^x-content-type-options: nosniff' <<<"$logo_headers"
+          # Anything the YAML does not reference is a 404 problem document.
+          nope_headers="$(curl -s -D - -o /tmp/nope.json http://localhost:8000/v1/branding/assets/nope.svg)"
+          grep -q '^HTTP/[0-9.]* 404' <<<"$nope_headers"
+          grep -qi '^content-type: application/json' <<<"$nope_headers"
+          jq -e '.status == 404 and (.type | startswith("https://synapse-saas.dev/problems/"))' /tmp/nope.json
+
+      - name: Console renders the brand from the API (no rebuild)
+        run: |
+          set -euo pipefail
+          curl -sf http://localhost:3000/healthz
+          # A console's very first render falls back to the neutral "Console"
+          # if the first branding fetch exceeds 2 s; the next render has it.
+          for i in $(seq 1 10); do
+            login="$(curl -sf http://localhost:3000/login)"
+            grep -q "Acme Widgets" <<<"$login" && break
+            sleep 2
+          done
+          grep -q "Acme Widgets" <<<"$login"
+          grep -q -- "--brand-primary" <<<"$login"
+          landing="$(curl -sf http://localhost:3000/)"
+          grep -q "Powered by" <<<"$landing"
+
+      - name: Logs
+        if: always()
+        working-directory: deploy/compose
+        run: docker compose logs --no-color | tail -200
+
+      - name: Tear down
+        if: always()
+        working-directory: deploy/compose
+        run: docker compose down -v
 
   # ── Terraform: validate is not enough (dynamic blocks are unevaluated), so
   #    also plan against a mock provider config where possible.

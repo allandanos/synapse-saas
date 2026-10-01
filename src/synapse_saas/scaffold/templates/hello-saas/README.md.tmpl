@@ -1,9 +1,22 @@
 # $package_title
 
 A product on the [Synapse SaaS Framework](https://github.com/allandanos/synapse-saas):
-auth, tenancy, RBAC, plans, entitlements, usage metering, billing, webhooks
-and the console come from the package; this repository holds only the
-product — a Projects CRUD to start from.
+auth, tenancy, RBAC, plans, entitlements, usage metering, billing and webhooks
+come from the package; this repository holds only the product — a Projects
+CRUD to start from. The console runs from the published `synapse-saas-web`
+image, white-labelled by `branding/` (no frontend code to build or fork).
+
+## Run everything in Docker
+
+```bash
+cp .env.example .env
+docker compose up --build                 # postgres, redis, migrate, api, worker, web
+```
+
+Console: http://localhost:3000 · API docs: http://localhost:8000/docs.
+`migrate` runs both migration branches and `synapse-cli seed` on every `up`.
+
+## Develop locally
 
 ```bash
 uv sync                                   # installs synapse-saas + this package
@@ -15,6 +28,17 @@ make dev                                  # http://localhost:8000/docs
 make test
 ```
 
+## Make it yours
+
+Edit `branding/branding.yaml` (every key is documented in the file) and drop
+your logo and favicon next to it, then `docker compose restart api worker` —
+the console follows within a minute. Check a change with
+`uv run synapse-cli branding validate --file branding/branding.yaml`. The
+console's name, logo, colours, links, emails and invoice PDFs all read it; see
+the framework's `docs/branding.md`. Need more than a reskin? Fork the
+console (`apps/web` in the framework repo) and point the `web` service at your
+own image.
+
 ## Layout
 
 | Path | What |
@@ -25,9 +49,12 @@ make test
 | `src/$package/worker.py` | your cron jobs, on the framework's arq worker |
 | `migrations/` | an Alembic **branch** (`$package`) that depends on the framework head; run via `python -m $package.migrate` |
 | `config/plans.yaml` | your pricing (start from the framework's default catalog) |
+| `branding/` | `branding.yaml` + logo + favicon: the white-label kit the API serves to the console |
 | `tests/` | run on the framework's public pytest plugin |
 
 ## Upgrading the framework
 
-Bump `synapse-saas` in `pyproject.toml`, `uv sync`, `make migrate`. Your
-migrations never touch framework tables; the framework's never touch yours.
+Bump `synapse-saas` in `pyproject.toml`, `uv sync`, `make migrate`, and move
+the `web` image tag in `docker-compose.yml` (or `SYNAPSE_VERSION`) to the same
+release. Your migrations never touch framework tables; the framework's never
+touch yours.

@@ -1,0 +1,121 @@
+# Synapse SaaS from the published images — no checkout, no build.
+#
+#   cp .env.example .env               # then set SYNAPSE_SECRET_KEY (see README.md)
+#   docker compose up -d --wait
+#
+# Console http://localhost:3000 · API http://localhost:8000/docs
+# Rebrand by editing ./branding/ and `docker compose restart api worker`.
+# Configuration lives in .env (every SYNAPSE_* setting reaches api/worker/migrate);
+# this file only wires the services together.
+name: synapse
+
+x-backend: &backend
+  image: ${SYNAPSE_IMAGE_PREFIX:-allandanos}/synapse-saas-api:${SYNAPSE_VERSION:-0.2.0}
+  # Create it first: cp .env.example .env (Compose stops with a clear error otherwise).
+  env_file: .env
+  environment: &backend-env
+    # Stack wiring; everything else comes from .env.
+    SYNAPSE_DATABASE_URL: postgresql+asyncpg://synapse:${POSTGRES_PASSWORD:-synapse}@postgres:5432/synapse
+    SYNAPSE_REDIS_URL: redis://redis:6379/0
+    SYNAPSE_BRANDING_FILE: /branding/branding.yaml
+  volumes:
+    # White-label kit: branding.yaml + logo/favicon/custom.css. Read once per
+    # process — restart api and worker after editing.
+    - ./branding:/branding:ro
+    # Local-disk file storage (invoice PDFs, uploads) shared by api and worker.
+    # Set SYNAPSE_S3_BUCKET in .env to use object storage instead.
+    - storage:/data/storage
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-synapse}
+      POSTGRES_DB: synapse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapse -d synapse"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # One-shot: check the branding kit, apply migrations, seed permissions,
+  # system roles and the plan catalog. Idempotent; runs on every `up`.
+  migrate:
+    <<: *backend
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["synapse-cli branding validate && synapse-cli migrate && synapse-cli seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    command: ["synapse-api"]
+    ports:
+      - "${SYNAPSE_API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    <<: *backend
+    command: ["synapse-worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: ${SYNAPSE_IMAGE_PREFIX:-allandanos}/synapse-saas-web:${SYNAPSE_VERSION:-0.2.0}
+    environment:
+      # Runtime config — one image serves every deployment.
+      # Browsers call SYNAPSE_API_URL (API calls, SSO, logo, favicon); the
+      # console's server fetches /v1/branding over the compose network.
+      SYNAPSE_API_URL: ${SYNAPSE_API_URL:-http://localhost:8000}
+      SYNAPSE_API_INTERNAL_URL: http://api:8000
+    ports:
+      - "${SYNAPSE_WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      # busybox wget ships in node:22-alpine; 127.0.0.1 because Next binds IPv4.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:

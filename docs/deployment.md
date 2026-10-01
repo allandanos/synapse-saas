@@ -1,13 +1,33 @@
 # Deployment
 
-Three tiers: local compose (already in the quickstart), Kubernetes, and Cloud
-Run. All use the same images and the same `SYNAPSE_*` configuration surface.
+Four paths: the contributor compose stack (the quickstart), the
+published-images compose kit, Kubernetes, and Cloud Run. All use the same
+images and the same `SYNAPSE_*` configuration surface, and all white-label
+the same way: mount a branding kit and point `SYNAPSE_BRANDING_FILE` at it
+on the API, the worker and the migrate step ([Branding](branding.md)).
 
-| Path | Files | Best for |
-|---|---|---|
-| Local | `docker-compose.yml` | dev, demos |
-| Kubernetes | `infrastructure/kubernetes/` | full control, any cloud |
-| Cloud Run | `infrastructure/terraform/cloudrun/` | GCP, scale-to-zero-ish, minimal ops |
+| Path | Files | Images | Branding kit | Best for |
+|---|---|---|---|---|
+| Contributor stack | `docker-compose.yml` | built from this checkout | `./config/branding` → `/branding` | developing the framework |
+| Published-images kit | [`deploy/compose/`](../deploy/compose/) | `${SYNAPSE_IMAGE_PREFIX:-allandanos}/synapse-saas-{api,worker,web}:${SYNAPSE_VERSION}` | `./branding` → `/branding` | trials, demos, single-host installs |
+| Kubernetes | `infrastructure/kubernetes/` | your registry (`image:` refs) | `synapse-branding` ConfigMap → `/branding` (commented in the manifests) | full control, any cloud |
+| Cloud Run | `infrastructure/terraform/cloudrun/` | `api_image` / `web_image` vars | bake into a derived API image or mount a Secret/volume; set `SYNAPSE_BRANDING_FILE` | GCP, scale-to-zero-ish, minimal ops |
+
+## Published images (no checkout)
+
+```bash
+cd deploy/compose
+cp .env.example .env          # set SYNAPSE_SECRET_KEY: openssl rand -base64 32
+docker compose up -d --wait   # postgres, redis, migrate, api, worker, web
+```
+
+`migrate` validates the branding kit, applies migrations and seeds
+permissions, roles and the plan catalog, then exits; api and worker start
+after it succeeds. The kit runs with `SYNAPSE_ENV=production`, so the API
+refuses a blank or short secret. Details, rebranding and pointing at your own
+registry: [`deploy/compose/README.md`](../deploy/compose/README.md). Images
+are published by `.github/workflows/release.yml` on `v*` tags
+(linux/amd64 + linux/arm64).
 
 ## Kubernetes
 
@@ -62,12 +82,14 @@ console at `/healthz` — it answers without the API.
 
 If you add a Content-Security-Policy in front of the console, allow the API
 origin in `img-src` (logo, favicon) and `style-src` (optional `custom.css`).
+Everything about the branding kit itself is in [Branding](branding.md).
 
 ## Production checklist
 
 ### Before first exposure
 
-- [ ] `SYNAPSE_SECRET_KEY` rotated from the default — rotating it later
+- [ ] `SYNAPSE_SECRET_KEY` rotated from the default (production refuses the
+      dev default and anything under 32 characters) — rotating it later
       invalidates stored webhook endpoint secrets (documented in [webhooks](webhooks.md))
 - [ ] TLS terminated in front of the API (ingress/Cloud Run HTTPS)
 - [ ] `SYNAPSE_WEB_ORIGIN` set to the real console origin (CORS)
@@ -75,6 +97,9 @@ origin in `img-src` (logo, favicon) and `style-src` (optional `custom.css`).
       `SYNAPSE_API_INTERNAL_URL` to the private one, if different)
 - [ ] Billing provider configured and its webhook secrets set
 - [ ] `SYNAPSE_MANUAL_WEBHOOK_TOKEN` set if the manual provider is reachable
+- [ ] Branding kit mounted on API, worker and migrate, and
+      `synapse-cli branding validate` green (the API and worker refuse to
+      start on an invalid kit)
 - [ ] Auth rate limits sized for real traffic (`_PER_IP` defaults to 20/min)
 - [ ] `SYNAPSE_TENANT_ISOLATION=app_and_rls` with the API on a `synapse-cli db provision-app-role` role and the worker on the owner DSN (`SYNAPSE_WORKER_DATABASE_URL`) — the API refuses to start if they disagree
 
