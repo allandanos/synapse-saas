@@ -36,6 +36,12 @@ spec:
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+        # White-label (optional): mount your branding kit from a ConfigMap —
+        #   kubectl create configmap synapse-branding -n synapse --from-file=branding/
+        # and uncomment this volume, the mount and the env var below.
+        # - name: branding
+        #   configMap:
+        #     name: synapse-branding
       containers:
         - name: api
           image: synapse-saas/api:latest # replace with your registry
@@ -47,6 +53,9 @@ spec:
                 name: synapse-config
             - secretRef:
                 name: synapse-secrets
+          # env:
+          #   - name: SYNAPSE_BRANDING_FILE
+          #     value: /branding/branding.yaml
           resources:
             requests:
               cpu: 250m
@@ -64,6 +73,9 @@ spec:
               mountPath: /data/storage
             - name: tmp
               mountPath: /tmp
+            # - name: branding
+            #   mountPath: /branding
+            #   readOnly: true
           readinessProbe:
             httpGet:
               path: /readyz

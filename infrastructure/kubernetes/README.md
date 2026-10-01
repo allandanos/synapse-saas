@@ -20,6 +20,30 @@ kubectl apply -f 13-web.yaml
 kubectl apply -f 20-ingress.yaml   # adjust hosts + TLS issuer first
 ```
 
+## White-label (branding)
+
+The console image carries no brand: it reads name, logo, favicon, colours and
+links from the API (`GET /v1/branding`), and the API and worker read them from
+a branding kit (`branding.yaml` + assets — start one with
+`synapse-cli branding init --dir branding`). Ship the kit as a ConfigMap and
+uncomment the `branding` volume, mount and `SYNAPSE_BRANDING_FILE` env in
+`10-api.yaml`, `11-migrate-job.yaml` and `12-worker.yaml`:
+
+```bash
+synapse-cli branding validate --file branding/branding.yaml
+kubectl create configmap synapse-branding -n synapse --from-file=branding/ \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl rollout restart deployment/synapse-api deployment/synapse-worker -n synapse
+```
+
+Branding is read once per process, hence the restart; consoles pick the change
+up within a minute (no web rollout needed). ConfigMaps cap at 1 MiB — keep
+logos small (SVG, or an optimised PNG).
+
+The console itself needs only `SYNAPSE_API_URL` (the public API origin) and,
+optionally, `SYNAPSE_API_INTERNAL_URL` (in-cluster Service URL) — see
+`13-web.yaml`. Its probes hit `/healthz`, which doesn't depend on the API.
+
 ## Rolling updates
 
 Migrations are additive and backward-compatible by policy (no destructive

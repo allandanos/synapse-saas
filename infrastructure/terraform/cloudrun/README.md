@@ -63,6 +63,13 @@ slow safety net (e.g. hourly) or drop the scheduler.
 
 ## Console (web)
 
-Deployed by the module as `synapse-web` with `NEXT_PUBLIC_API_URL` set to the
-API URL. Set `web_origin` to the console's public URL so CORS and cookies
-match (`terraform output web_url` after the first apply, then re-apply).
+Deployed by the module as `synapse-web` with `SYNAPSE_API_URL` set to the API
+URL at runtime — the console image has nothing baked in, so the published
+`synapse-saas-web` image works as is. Its startup probe hits `/healthz`. Set
+`web_origin` to the console's public URL so CORS and cookies match
+(`terraform output web_url` after the first apply, then re-apply).
+
+The console's name, logo, favicon and colours come from the API
+(`GET /v1/branding`), which reads `SYNAPSE_BRANDING_FILE`. To white-label,
+bake your branding kit into your API image (or mount it from a Secret/volume)
+and set `SYNAPSE_BRANDING_FILE` on the API and the worker job.

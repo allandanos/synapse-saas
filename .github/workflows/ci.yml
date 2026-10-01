@@ -185,6 +185,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        run: pnpm lint
+
+      # No API in this job: the build must never need one (runtime config).
       - name: Build
         run: pnpm build
 
@@ -411,6 +415,19 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://localhost:8000/healthz && break; sleep 1; done
           curl -sf http://localhost:8000/healthz
           docker rm -f api
+
+      - name: Build console image
+        run: docker build -f apps/web/Dockerfile -t synapse-web:ci .
+
+      - name: Console image bakes in no API URL (runtime config only)
+        run: docker run --rm synapse-web:ci sh -c 'test -d .next/static && ! grep -rl "localhost:8000" .next/static'
+
+      - name: Console image starts without an API (health)
+        run: |
+          docker run -d --name web -p 3000:3000 -e SYNAPSE_API_URL=http://localhost:8000 synapse-web:ci
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/healthz && break; sleep 1; done
+          curl -sf http://localhost:3000/healthz
+          docker rm -f web
 
   # ── Terraform: validate is not enough (dynamic blocks are unevaluated), so
   #    also plan against a mock provider config where possible.

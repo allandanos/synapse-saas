@@ -27,7 +27,7 @@ export function UsageMeter({ check }: { check: UsageCheck }) {
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-100" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100} aria-label={check.metric}>
         <div
           className={`h-full rounded-full transition-all ${
-            hard ? "bg-red-500" : soft ? "bg-amber-500" : "bg-zinc-900"
+            hard ? "bg-red-500" : soft ? "bg-amber-500" : "bg-primary"
           }`}
           style={{ width: `${unlimited ? 4 : Math.max(pct, 2)}%` }}
         />

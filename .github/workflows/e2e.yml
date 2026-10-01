@@ -64,7 +64,7 @@ jobs:
       SYNAPSE_SMTP_HOST: localhost
       SYNAPSE_SMTP_PORT: "1025"
       SYNAPSE_SMTP_FROM: billing@synapse.test
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      SYNAPSE_API_URL: http://localhost:8000
       E2E_BASE_URL: http://localhost:3000
       E2E_API_URL: http://localhost:8000
       MAILHOG_API_URL: http://localhost:8025

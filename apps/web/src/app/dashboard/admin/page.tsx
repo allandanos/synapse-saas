@@ -126,7 +126,7 @@ export default function AdminPage() {
             placeholder="Organization UUID"
             value={orgQuery}
             onChange={(e) => setOrgQuery(e.target.value)}
-            className="w-72 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            className="w-72 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <button
             onClick={() => orgQuery.trim() && suspendOrg.mutate(orgQuery.trim())}
@@ -165,14 +165,14 @@ export default function AdminPage() {
             placeholder="organization id"
             value={grantOrg}
             onChange={(e) => setGrantOrg(e.target.value)}
-            className="w-80 rounded-lg border border-zinc-300 px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            className="w-80 rounded-lg border border-zinc-300 px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <input
             aria-label="Feature key"
             placeholder="feature key, e.g. advanced_reports"
             value={grantFeature}
             onChange={(e) => setGrantFeature(e.target.value)}
-            className="w-64 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            className="w-64 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <input
             aria-label="Days"
@@ -181,12 +181,12 @@ export default function AdminPage() {
             placeholder="days"
             value={grantDays}
             onChange={(e) => setGrantDays(e.target.value)}
-            className="w-24 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            className="w-24 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <button
             type="submit"
             disabled={grantEntitlement.isPending}
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {grantEntitlement.isPending ? "Granting…" : "Grant (promo)"}
           </button>

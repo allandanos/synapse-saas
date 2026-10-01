@@ -43,6 +43,26 @@ that Cloud Scheduler runs every 5 minutes (`synapse-cli jobs run-once --all`:
 outbox, deliveries, renewals, partitions, retention). No always-on worker
 process is needed on Cloud Run. Full flow in that directory's README.
 
+## Console runtime configuration
+
+The console image (`apps/web/Dockerfile`) has nothing environment-specific
+baked in — one image serves every deployment. It reads, at runtime:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SYNAPSE_API_URL` | `http://localhost:8000` | The API origin as **browsers** reach it: API calls, SSO redirects, branding assets |
+| `SYNAPSE_API_INTERNAL_URL` | `SYNAPSE_API_URL` | The API origin as the console's **server** reaches it (e.g. `http://api:8000` in compose, the Service DNS name in Kubernetes) |
+
+Name, logo, favicon, colours and footer links come from the API's
+`GET /v1/branding` (fetched over the internal URL, memoised for 60 s per
+console process; a neutral "Console" fallback while the API is unreachable).
+Rebranding is an API-side change (`SYNAPSE_BRANDING_FILE`, then restart the
+API and the worker); consoles follow within a minute, no rebuild. Probe the
+console at `/healthz` — it answers without the API.
+
+If you add a Content-Security-Policy in front of the console, allow the API
+origin in `img-src` (logo, favicon) and `style-src` (optional `custom.css`).
+
 ## Production checklist
 
 ### Before first exposure
@@ -51,6 +71,8 @@ process is needed on Cloud Run. Full flow in that directory's README.
       invalidates stored webhook endpoint secrets (documented in [webhooks](webhooks.md))
 - [ ] TLS terminated in front of the API (ingress/Cloud Run HTTPS)
 - [ ] `SYNAPSE_WEB_ORIGIN` set to the real console origin (CORS)
+- [ ] Console `SYNAPSE_API_URL` set to the public API origin (and
+      `SYNAPSE_API_INTERNAL_URL` to the private one, if different)
 - [ ] Billing provider configured and its webhook secrets set
 - [ ] `SYNAPSE_MANUAL_WEBHOOK_TOKEN` set if the manual provider is reachable
 - [ ] Auth rate limits sized for real traffic (`_PER_IP` defaults to 20/min)

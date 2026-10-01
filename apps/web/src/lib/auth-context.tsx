@@ -72,7 +72,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    loadSession().finally(() => setLoading(false));
+    // Session bootstrap is asynchronous (refresh → /me → entitlements); run it
+    // as a callback so every setState happens after the effect, never during it.
+    let active = true;
+    Promise.resolve()
+      .then(loadSession)
+      // A failed /me or entitlements call after a good refresh leaves the
+      // session signed out (me stays null) — not an unhandled rejection.
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [loadSession]);
 
   const login = useCallback(

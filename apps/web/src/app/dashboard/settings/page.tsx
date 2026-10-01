@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -16,21 +16,27 @@ interface OrgRead {
 export default function SettingsPage() {
   const { activeOrgId, entitlements } = useAuth();
   const queryClient = useQueryClient();
-  const [name, setName] = useState("");
+  // Unsaved edit, scoped to the org it was typed for: switching orgs discards
+  // it, so Save can never PATCH one org with another org's name.
+  const [draft, setDraft] = useState<{ orgId: string | null; value: string } | null>(null);
 
   const { data: org } = useQuery({
-    queryKey: ["org"],
+    queryKey: ["org", activeOrgId],
     queryFn: () => api<OrgRead>("/v1/orgs/current"),
+    enabled: Boolean(activeOrgId),
   });
 
-  useEffect(() => {
-    if (org) setName(org.name);
-  }, [org]);
+  const pendingEdit = draft?.orgId === activeOrgId ? draft.value : null;
+  const name = pendingEdit ?? org?.name ?? "";
 
   const save = useMutation({
     mutationFn: () =>
       api("/v1/orgs/current", { method: "PATCH", body: JSON.stringify({ name }) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["org"] }),
+    onSuccess: async () => {
+      // Prefix match: also refreshes billing's ["org"] query.
+      await queryClient.invalidateQueries({ queryKey: ["org"] });
+      setDraft(null);
+    },
   });
 
   if (!activeOrgId) return null;
@@ -56,6 +62,7 @@ export default function SettingsPage() {
       )}
 
       <form
+        key={activeOrgId}
         onSubmit={(e) => {
           e.preventDefault();
           save.mutate();
@@ -71,13 +78,13 @@ export default function SettingsPage() {
             required
             minLength={2}
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            onChange={(e) => setDraft({ orgId: activeOrgId, value: e.target.value })}
+            className="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <button
             type="submit"
             disabled={save.isPending || name === org?.name}
-            className="rounded-lg bg-zinc-900 px-5 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+            className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {save.isPending ? "Saving…" : save.isSuccess ? "Saved" : "Save"}
           </button>

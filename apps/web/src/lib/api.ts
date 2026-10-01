@@ -1,7 +1,18 @@
 /* API client: single 401→refresh→retry, active org via X-Org-Id, typed helpers.
  * Access token lives in memory only; the refresh token is an httpOnly cookie. */
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+/* The API origin is runtime configuration (SYNAPSE_API_URL, read on the
+ * server and handed to the browser by RuntimeConfigProvider before any child
+ * renders) — never inlined at build time, so one image serves every deployment. */
+let apiUrl = "";
+
+export function setApiUrl(url: string) {
+  apiUrl = url.replace(/\/+$/, "");
+}
+
+export function getApiUrl(): string {
+  return apiUrl;
+}
 
 let accessToken: string | null = null;
 let orgId: string | null = null;
@@ -30,7 +41,7 @@ async function rawRequest(path: string, init: RequestInit): Promise<Response> {
   headers.set("Content-Type", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   if (orgId) headers.set("X-Org-Id", orgId);
-  return fetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" });
+  return fetch(`${getApiUrl()}${path}`, { ...init, headers, credentials: "include" });
 }
 
 let refreshPromise: Promise<boolean> | null = null;
@@ -39,7 +50,7 @@ export async function refreshTokens(): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {
-        const res = await fetch(`${API_URL}/v1/auth/refresh`, {
+        const res = await fetch(`${getApiUrl()}/v1/auth/refresh`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: "{}",

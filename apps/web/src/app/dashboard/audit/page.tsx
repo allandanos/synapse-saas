@@ -41,7 +41,7 @@ export default function AuditPage() {
           placeholder="Filter event type, e.g. member."
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="w-72 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          className="w-72 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 

@@ -61,7 +61,7 @@ function ResetForm() {
           autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         />
         <p className="mt-1 text-xs text-zinc-400">At least 10 characters.</p>
       </div>
@@ -75,7 +75,7 @@ function ResetForm() {
       <button
         type="submit"
         disabled={busy}
-        className="w-full rounded-lg bg-zinc-900 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+        className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
       >
         {busy ? "Resetting…" : "Set new password"}
       </button>
@@ -85,30 +85,21 @@ function ResetForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-sm font-bold text-white">
-            S
-          </div>
-          <span className="font-semibold tracking-tight">Synapse</span>
-        </div>
+    <>
+      <h1 className="text-2xl font-semibold tracking-tight">Choose a new password</h1>
+      <p className="mt-1 text-sm text-zinc-500">
+        All active sessions will be signed out once it&apos;s changed.
+      </p>
 
-        <h1 className="text-2xl font-semibold tracking-tight">Choose a new password</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          All active sessions will be signed out once it&apos;s changed.
-        </p>
+      <Suspense fallback={<p className="mt-8 text-sm text-zinc-400">Loading…</p>}>
+        <ResetForm />
+      </Suspense>
 
-        <Suspense fallback={<p className="mt-8 text-sm text-zinc-400">Loading…</p>}>
-          <ResetForm />
-        </Suspense>
-
-        <p className="mt-6 text-sm text-zinc-500">
-          <Link href="/login" className="font-medium text-zinc-900 underline">
-            Back to sign in
-          </Link>
-        </p>
-      </div>
-    </main>
+      <p className="mt-6 text-sm text-zinc-500">
+        <Link href="/login" className="font-medium text-zinc-900 underline">
+          Back to sign in
+        </Link>
+      </p>
+    </>
   );
 }

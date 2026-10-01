@@ -47,7 +47,7 @@ jobs:
       SYNAPSE_KEYCLOAK_CLIENT_ID: synapse-web
       SYNAPSE_KEYCLOAK_CLIENT_SECRET: dev-client-secret
       SYNAPSE_WEB_ORIGIN: http://localhost:3000
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      SYNAPSE_API_URL: http://localhost:8000
       E2E_BASE_URL: http://localhost:3000
       E2E_API_URL: http://localhost:8000
       E2E_KEYCLOAK: "1"

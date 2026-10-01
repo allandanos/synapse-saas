@@ -523,8 +523,11 @@ resource "google_cloud_run_v2_service" "web" {
       ports {
         container_port = 3000
       }
+      # Runtime config (nothing is baked into the image): the API as browsers
+      # reach it. The console's server fetches GET /v1/branding from the same
+      # URL (SYNAPSE_API_INTERNAL_URL defaults to it).
       env {
-        name  = "NEXT_PUBLIC_API_URL"
+        name  = "SYNAPSE_API_URL"
         value = google_cloud_run_v2_service.api.uri
       }
       env {
@@ -539,7 +542,7 @@ resource "google_cloud_run_v2_service" "web" {
       }
       startup_probe {
         http_get {
-          path = "/login"
+          path = "/healthz"
           port = 3000
         }
         initial_delay_seconds = 5

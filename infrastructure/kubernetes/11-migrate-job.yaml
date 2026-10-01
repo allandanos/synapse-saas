@@ -18,6 +18,13 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
+      # White-label (optional): mount the same branding kit as the api/worker so
+      # a broken branding.yaml fails here, before the rollout. Uncomment the
+      # volume, the mount and the env var.
+      # volumes:
+      #   - name: branding
+      #     configMap:
+      #       name: synapse-branding
       containers:
         - name: migrate
           image: synapse-saas/api:latest # same image as the api
@@ -27,6 +34,13 @@ spec:
                 name: synapse-config
             - secretRef:
                 name: synapse-secrets
+          # env:
+          #   - name: SYNAPSE_BRANDING_FILE
+          #     value: /branding/branding.yaml
+          # volumeMounts:
+          #   - name: branding
+          #     mountPath: /branding
+          #     readOnly: true
           resources:
             requests:
               cpu: 100m

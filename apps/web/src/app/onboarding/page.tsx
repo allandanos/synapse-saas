@@ -48,7 +48,7 @@ export default function OnboardingPage() {
               minLength={2}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
           <div>
@@ -61,7 +61,7 @@ export default function OnboardingPage() {
               placeholder="acme"
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <p className="mt-1 text-xs text-zinc-400">
               Lowercase letters, digits, dashes. Auto-generated from the name if blank.
@@ -77,7 +77,7 @@ export default function OnboardingPage() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-lg bg-zinc-900 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+            className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {busy ? "Creating…" : "Create organization"}
           </button>

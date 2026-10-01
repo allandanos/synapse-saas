@@ -53,7 +53,8 @@ test.describe("auth journeys", () => {
     // exactly as the user would, and follow the link the email contains.
     const mail = await waitForEmail(
       request,
-      (m) => m.to === ctx.email && /reset your password/i.test(m.subject),
+      // The subject carries the product name ("Reset your <name> password").
+      (m) => m.to === ctx.email && /^reset your .*password$/i.test(m.subject),
     );
     const token = resetTokenFromEmail(mail.raw);
     expect(token, "reset link with a token in the email").toBeTruthy();

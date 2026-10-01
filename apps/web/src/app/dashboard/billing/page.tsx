@@ -141,13 +141,13 @@ export default function BillingPage() {
             <div
               key={plan.key}
               className={`flex flex-col rounded-xl border p-6 ${
-                isCurrent ? "border-zinc-900 ring-1 ring-zinc-900" : "border-zinc-200"
+                isCurrent ? "border-primary ring-1 ring-primary" : "border-zinc-200"
               }`}
             >
               <div className="flex items-baseline justify-between">
                 <h2 className="font-semibold">{plan.name}</h2>
                 {isCurrent && (
-                  <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-xs font-medium text-white">
+                  <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
                     Current
                   </span>
                 )}
@@ -172,7 +172,7 @@ export default function BillingPage() {
                 className={`mt-6 rounded-lg py-2 text-sm font-medium ${
                   isCurrent
                     ? "cursor-default bg-zinc-100 text-zinc-400"
-                    : "bg-zinc-900 text-white hover:bg-zinc-700"
+                    : "bg-primary text-primary-foreground hover:bg-primary/90"
                 }`}
               >
                 {isCurrent ? "Active" : changePlan.isPending ? "Working…" : "Switch plan"}
@@ -223,7 +223,7 @@ export default function BillingPage() {
             value={emailValue}
             onChange={(e) => setBillingEmail(e.target.value)}
             placeholder="accounts@yourcompany.com"
-            className="flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+            className="flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           />
           <button
             type="submit"
@@ -232,7 +232,7 @@ export default function BillingPage() {
               emailValue === savedBillingEmail ||
               (emailValue === "" && savedBillingEmail === "")
             }
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-default disabled:bg-zinc-100 disabled:text-zinc-400"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:bg-zinc-100 disabled:text-zinc-400"
           >
             {saveBillingEmail.isPending ? "Saving…" : "Save"}
           </button>
@@ -277,7 +277,7 @@ export default function BillingPage() {
                     <button
                       onClick={() => downloadPdf(inv.id)}
                       disabled={downloadingId === inv.id}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-400 hover:text-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50"
                       aria-label={`Download invoice PDF${inv.paid_at ? " (paid)" : ""}`}
                     >
                       <Download className="h-3.5 w-3.5" aria-hidden />

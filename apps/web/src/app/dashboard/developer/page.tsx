@@ -8,6 +8,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, Copy, Flag, Terminal } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useRuntimeConfig } from "@/lib/runtime-config";
 
 interface ApiKey {
   id: string;
@@ -89,8 +90,7 @@ export default function DeveloperPage() {
     },
   });
 
-  const apiBase =
-    typeof window !== "undefined" ? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000" : "";
+  const { apiUrl: apiBase } = useRuntimeConfig();
   const keyPlaceholder = activeKey ? "sk_…your secret from API keys" : "sk_your_key_here";
   const hasApiAccess = entitlements?.features.includes("api_access") ?? false;
 
@@ -166,7 +166,7 @@ usage = client.get("/v1/usage/summary").json()`;
           <button
             onClick={() => probe.mutate()}
             disabled={probe.isPending}
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {probe.isPending ? "Probing…" : "Send GET /v1/meta"}
           </button>
@@ -205,7 +205,7 @@ usage = client.get("/v1/usage/summary").json()`;
             placeholder="e.g. new-editor"
             value={flagKey}
             onChange={(e) => setFlagKey(e.target.value)}
-            className="w-64 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            className="w-64 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <button
             type="submit"

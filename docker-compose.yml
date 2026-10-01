@@ -134,7 +134,10 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # Runtime config, not build args: browsers call SYNAPSE_API_URL; the
+      # console's server fetches /v1/branding over the compose network.
+      SYNAPSE_API_URL: ${SYNAPSE_API_URL:-http://localhost:8000}
+      SYNAPSE_API_INTERNAL_URL: http://api:8000
       NODE_ENV: production
     ports:
       - "3000:3000"
