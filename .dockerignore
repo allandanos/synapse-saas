@@ -23,7 +23,7 @@ htmlcov
 .storage
 .idea
 .vscode
-.DS_Store
+**/.DS_Store
 *.txt
 !prompt.txt
 apps/web/test-results

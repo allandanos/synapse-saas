@@ -14,7 +14,7 @@
 .coverage
 htmlcov
 .storage
-.DS_Store
+**/.DS_Store
 *.txt
 apps/web
 sdk
