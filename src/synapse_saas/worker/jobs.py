@@ -550,7 +550,11 @@ class WorkerSettings:
 
     @staticmethod
     async def on_startup(ctx: dict[str, Any]) -> None:
+        from synapse_saas.branding.loader import get_branding
+
         configure_logging()
+        # Fail fast: emails and invoice PDFs render with it; a broken kit stops the worker.
+        get_branding()
         logger.info("worker_started")
 
     @staticmethod

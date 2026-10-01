@@ -178,6 +178,12 @@ class CatalogInvalidError(DomainError):
     title = "plan_catalog_invalid"
 
 
+class BrandingInvalidError(DomainError):
+    """branding.yaml (or an asset it names) is missing or invalid — a startup error."""
+
+    title = "branding_invalid"
+
+
 class SubscriptionNotFoundError(DomainError):
     status = 404
     title = "subscription_not_found"

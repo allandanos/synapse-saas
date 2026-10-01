@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from pathlib import Path
 from typing import Any
 
+import pytest
 import pytest_asyncio
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
@@ -190,6 +192,54 @@ def org_headers(fixture: dict[str, str]) -> dict[str, str]:
     return {"Authorization": f"Bearer {fixture['access_token']}", "X-Org-Id": fixture["org_id"]}
 
 
+# ── Branding ──────────────────────────────────────────────────────────────────
+
+
+def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+@pytest.fixture
+def custom_branding(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., Path]]:
+    """Factory: `custom_branding(name="Acme", colors={"primary": "#ff0000"}, files={"x.png": b"…"})`.
+
+    Writes the packaged kit with the overrides deep-merged into branding.yaml
+    (a top-level `None` deletes the key) plus any extra `files`, points
+    SYNAPSE_BRANDING_FILE at it and clears the settings + branding caches.
+    Returns the branding.yaml path; caches are cleared again on teardown.
+    """
+    import yaml
+
+    from synapse_saas.branding.loader import reset_branding, write_starter_kit
+    from synapse_saas.core.config import get_settings
+
+    counter = iter(range(1_000_000))
+
+    def make(*, files: dict[str, bytes] | None = None, **overrides: Any) -> Path:
+        kit = tmp_path / f"branding-{next(counter)}"
+        write_starter_kit(kit)
+        path = kit / "branding.yaml"
+        raw = _deep_merge(yaml.safe_load(path.read_text(encoding="utf-8")), overrides)
+        raw = {key: value for key, value in raw.items() if value is not None}
+        path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+        for name, content in (files or {}).items():
+            (kit / name).write_bytes(content)
+        monkeypatch.setenv("SYNAPSE_BRANDING_FILE", str(path))
+        get_settings.cache_clear()
+        reset_branding()
+        return path
+
+    yield make
+    get_settings.cache_clear()
+    reset_branding()
+
+
 # ── Platform operator helpers ─────────────────────────────────────────────────
 # Grants and money movements are operator actions (ADR 0008). Tests that use
 # them as *setup* call these; tests proving the tenant CANNOT call the routes.
@@ -244,6 +294,7 @@ __all__ = [
     "app",
     "clean_db",
     "client",
+    "custom_branding",
     "database_url",
     "db_session",
     "grant_as_platform",

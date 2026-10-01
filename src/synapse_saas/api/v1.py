@@ -9,6 +9,7 @@ from synapse_saas.api_keys.router import router as api_keys_router
 from synapse_saas.audit.router import router as audit_router
 from synapse_saas.authorization.router import router as roles_router
 from synapse_saas.billing.router import router as billing_router
+from synapse_saas.branding.router import router as branding_router
 from synapse_saas.entitlements.router import admin_router as entitlements_admin_router
 from synapse_saas.entitlements.router import router as entitlements_router
 from synapse_saas.feature_flags.router import router as feature_flags_router
@@ -34,3 +35,4 @@ api_v1.include_router(feature_flags_router)
 api_v1.include_router(api_keys_router)
 api_v1.include_router(audit_router)
 api_v1.include_router(agents_router)
+api_v1.include_router(branding_router)

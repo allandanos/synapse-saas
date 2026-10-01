@@ -10,8 +10,10 @@ from __future__ import annotations
 import contextlib
 import smtplib
 from email.message import EmailMessage
+from email.utils import formataddr, parseaddr
 from typing import TYPE_CHECKING
 
+from synapse_saas.branding.loader import get_branding
 from synapse_saas.core.config import get_settings
 from synapse_saas.core.logging import get_logger
 
@@ -53,7 +55,7 @@ class SmtpNotifier:
             return
         try:
             message = EmailMessage()
-            message["From"] = settings.smtp_from
+            message["From"] = sender(settings.smtp_from)
             message["To"] = to
             message["Subject"] = subject
             message.set_content(body)
@@ -78,6 +80,18 @@ class SmtpNotifier:
         except Exception as exc:
             logger.warning("email_send_failed", to=to, subject=subject, error=str(exc))
             _inc_email("failed")
+
+
+def sender(smtp_from: str) -> str:
+    """`From` header: the branded display name on the configured address.
+
+    Precedence: branding `email.from_name` → a display name already in
+    SYNAPSE_SMTP_FROM → the brand `name`.
+    """
+    brand = get_branding()
+    configured_name, address = parseaddr(smtp_from)
+    display = brand.email.from_name or configured_name or brand.name
+    return formataddr((display, address or smtp_from))
 
 
 async def _send_message(

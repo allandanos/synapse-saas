@@ -17,6 +17,12 @@
       "BillingProviderNotConfiguredError"
     ]
   },
+  "branding_invalid": {
+    "status": 400,
+    "classes": [
+      "BrandingInvalidError"
+    ]
+  },
   "checkout_confirm_not_allowed": {
     "status": 409,
     "classes": [

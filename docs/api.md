@@ -161,6 +161,18 @@ agentic runtime. Every route is behind the `agents` feature (403 with
 | POST | `/agents/{id}/enable` | (`agents:manage`) |
 | POST | `/agents/{id}/disable` | kill switch (`agents:manage`) |
 
+## Branding
+
+Public — no auth, no tenant. The console renders its name, logo, favicon,
+colours and links from it; emails and invoice PDFs read the same kit
+in-process. Configured per deployment by `branding.yaml`
+(`SYNAPSE_BRANDING_FILE`; `synapse-cli branding init|validate`).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/branding` | `{name, tagline, assets, colors, links, landing, powered_by}`; `assets.*` are origin-relative URLs (`/v1/branding/assets/<name>?v=<sha256[:8]>`) or null; `Cache-Control: public, max-age=60`. Email and invoice settings are never exposed |
+| GET | `/branding/assets/{name}` | only the files `branding.yaml` names as `logo`, `logo_dark`, `favicon`, `custom_css`; anything else is a 404 `not_found` problem. `nosniff`, a day of caching (the `?v=` digest busts it); SVG adds `Content-Security-Policy: default-src 'none'` |
+
 ## Health
 
 | Method | Path |

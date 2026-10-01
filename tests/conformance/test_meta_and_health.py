@@ -9,7 +9,10 @@ async def test_meta_describes_the_deployment(api: AsyncClient) -> None:
     res = await api.get("/v1/meta")
     assert res.status_code == 200, res.text
     meta = res.json()
-    assert {"version", "billing_provider", "identity_provider", "tenant_isolation"} <= set(meta), meta
+    assert {"version", "product", "billing_provider", "identity_provider", "tenant_isolation"} <= set(meta), (
+        meta
+    )
+    assert isinstance(meta["product"], str) and meta["product"]
     assert meta["tenant_isolation"] in {"app", "app_and_rls"}
 
 

@@ -34,16 +34,35 @@ Local dev: `docker compose --profile extras up` runs MailHog on
 http://localhost:8025 — set `SYNAPSE_SMTP_HOST=localhost SYNAPSE_SMTP_PORT=1025`
 and read every sent email in its UI.
 
+## Branding
+
+Every email is plain text and carries the deployment's branding
+(`branding.yaml`, see `SYNAPSE_BRANDING_FILE`):
+
+- **Sender display name** — `From: <display> <address>`. The address is always
+  `SYNAPSE_SMTP_FROM`; the display name is `email.from_name`, else a display
+  name already in `SYNAPSE_SMTP_FROM` (`Ops <ops@example.com>`), else the
+  brand `name`. Precedence, highest first: `email.from_name` →
+  `SYNAPSE_SMTP_FROM` display name → `name` — so an operator's existing
+  sender name survives the upgrade unless branding sets `from_name`.
+- **Product name** — each body (and the invite/reset subjects) names the
+  product: "invited you to Acme on *Widgets Cloud*".
+- **Footer** — `email.footer` is appended verbatim; without one the footer is
+  `— <name>` followed by `links.website` when set.
+
+Branding is read once per process: restart the worker after editing it.
+
 ## Emails today
 
 | Event | Recipient | Content |
 |---|---|---|
-| `member.invited` | invitee | org name + one-time acceptance link (`/register?invite=…`) |
+| `member.invite_email` (internal; `member.invited` is the public twin and sends nothing) | invitee | org + product name, one-time acceptance link (`/register?invite=…`) |
 | `user.password_reset_link` | account owner | 30-minute reset link (`/reset-password?reset=…`) |
+| `invoice.email` | billing contact | invoice number + total, the PDF attached (rendered at send time with the branded issuer block); "Paid" variant once settled |
+| `usage.soft_limit_reached` | billing contact | metric usage vs limit + the billing page link |
 
-Unknown events are ignored — email is opt-in per event type. Soft/hard usage
-limits currently go to audit + webhooks; org billing-contact routing is the
-next refinement.
+Billing contact = billing customer email → org `settings.billing_email` →
+the owner. Unknown events are ignored — email is opt-in per event type.
 
 ## Security properties (tested)
 

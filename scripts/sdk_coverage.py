@@ -26,7 +26,8 @@ SDK_SOURCES = {
     "java": [ROOT / "sdk/java/src/main/java/dev/synapse/client/SynapseClient.java"],
 }
 
-# Not SDK surface: browser redirects, provider webhooks, probes, scraping.
+# Not SDK surface: browser redirects, provider webhooks, probes, scraping, and
+# the console presentation surface (branding JSON + assets the browser loads).
 EXEMPT = {
     ("GET", "/v1/auth/oidc/start"),
     ("GET", "/v1/auth/oidc/callback"),
@@ -34,6 +35,8 @@ EXEMPT = {
     ("GET", "/healthz"),
     ("GET", "/readyz"),
     ("GET", "/metrics"),
+    ("GET", "/v1/branding"),
+    ("GET", "/v1/branding/assets/{name}"),
 }
 
 

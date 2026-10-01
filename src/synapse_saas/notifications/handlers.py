@@ -2,12 +2,15 @@
 
 The worker's outbox dispatch invokes `handle_event` for user-facing events.
 Every handler is best-effort: an email problem must never fail the dispatch.
+Bodies are plain text, carry the deployment's product name, and end with the
+branding footer (`email.footer`, else "— <name>" plus the website link).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from synapse_saas.branding.loader import get_branding
 from synapse_saas.core.config import get_settings
 from synapse_saas.core.logging import get_logger
 from synapse_saas.notifications.smtp import get_notifier
@@ -19,6 +22,24 @@ def _web_url(path: str = "") -> str:
     settings = get_settings()
     base = settings.web_origin.rstrip("/")
     return f"{base}{path}"
+
+
+def _product() -> str:
+    return get_branding().name
+
+
+def _footer() -> str:
+    brand = get_branding()
+    if brand.email.footer:
+        return brand.email.footer.strip()
+    lines = [f"— {brand.name}"]
+    if brand.links.website:
+        lines.append(brand.links.website)
+    return "\n".join(lines)
+
+
+def _with_footer(body: str) -> str:
+    return f"{body}\n\n{_footer()}"
 
 
 async def handle_event(event_type: str, payload: dict[str, Any]) -> None:
@@ -36,9 +57,9 @@ async def handle_event(event_type: str, payload: dict[str, Any]) -> None:
         link = _web_url(f"/register?invite={token}")
         await notifier.send(
             to=str(email),
-            subject=f"You've been invited to {org}",
-            body=(
-                f"Someone invited you to {org}.\n\n"
+            subject=f"You've been invited to {org} on {_product()}",
+            body=_with_footer(
+                f"Someone invited you to {org} on {_product()}.\n\n"
                 f"Accept your invitation by registering with this link:\n{link}\n\n"
                 "If you weren't expecting this, you can ignore this email."
             ),
@@ -52,9 +73,9 @@ async def handle_event(event_type: str, payload: dict[str, Any]) -> None:
         link = _web_url(f"/reset-password?reset={token}")  # the console's reset form reads ?reset=
         await notifier.send(
             to=str(email),
-            subject="Reset your password",
-            body=(
-                "A password reset was requested for your account.\n\n"
+            subject=f"Reset your {_product()} password",
+            body=_with_footer(
+                f"A password reset was requested for your {_product()} account.\n\n"
                 f"Reset it here (valid 30 minutes):\n{link}\n\n"
                 "If you didn't request this, ignore this email."
             ),
@@ -86,8 +107,9 @@ async def handle_event(event_type: str, payload: dict[str, Any]) -> None:
         await notifier.send(
             to=recipient,
             subject=f"You're approaching your {metric} limit",
-            body=(
-                f"Your organization has used {total} of {limit} {metric} for this period.\n\n"
+            body=_with_footer(
+                f"Your organization has used {total} of {limit} {metric} on {_product()} "
+                "for this period.\n\n"
                 f"Upgrade or add capacity here: {_web_url('/dashboard/billing')}"
             ),
         )
@@ -151,17 +173,7 @@ async def _send_invoice_email(invoice_id: str) -> None:
             )
             number = invoice.number or str(invoice.id)
             total = f"{invoice.total_cents / 100:,.2f} {invoice.currency}"
-            if invoice.status == "paid":
-                subject = f"Paid: Invoice {number}"
-                body = (
-                    f"Your payment for invoice {number} ({total}) has been received. "
-                    "The invoice is attached for your records."
-                )
-            else:
-                subject = f"Invoice {number}: {total} due"
-                body = (
-                    f"Invoice {number} for {total} is attached. Payment instructions are included in the PDF."
-                )
+            subject, body = invoice_message(number, total, paid=invoice.status == "paid")
             attachment = Attachment(
                 filename=f"invoice-{number}.pdf",
                 content=pdf_bytes,
@@ -178,6 +190,19 @@ async def _send_invoice_email(invoice_id: str) -> None:
         subject=subject,
         body=body,
         attachments=[attachment] if attachment else None,
+    )
+
+
+def invoice_message(number: str, total: str, *, paid: bool) -> tuple[str, str]:
+    """Subject + body of the invoice delivery email (the PDF rides as an attachment)."""
+    if paid:
+        return f"Paid: Invoice {number}", _with_footer(
+            f"Your payment for {_product()} invoice {number} ({total}) has been received. "
+            "The invoice is attached for your records."
+        )
+    return f"Invoice {number}: {total} due", _with_footer(
+        f"Your {_product()} invoice {number} for {total} is attached. "
+        "Payment instructions are included in the PDF."
     )
 
 

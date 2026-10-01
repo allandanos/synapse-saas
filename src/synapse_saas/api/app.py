@@ -27,6 +27,10 @@ from synapse_saas.identity.rate_limit import AuthRateLimitMiddleware
 
 logger = get_logger(__name__)
 
+# The framework release (pyproject `version`); bumped with it, asserted by a unit test.
+FRAMEWORK_VERSION = "0.1.0"
+DEFAULT_API_DESCRIPTION = "Multi-tenant SaaS framework: tenancy, plans, entitlements, usage, billing."
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -154,11 +158,15 @@ def _install_problem_handlers(app: FastAPI) -> None:
 
 
 def create_app() -> FastAPI:
+    from synapse_saas.branding.loader import get_branding
+
     settings = get_settings()
+    # Fail fast: a broken branding kit stops the API before it binds a port.
+    brand = get_branding()
     app = FastAPI(
-        title="Synapse SaaS Framework",
-        version="0.1.0",
-        description="Multi-tenant SaaS framework: tenancy, plans, entitlements, usage, billing.",
+        title=f"{brand.name} API",
+        version=FRAMEWORK_VERSION,
+        description=brand.tagline or DEFAULT_API_DESCRIPTION,
         lifespan=lifespan,
         docs_url="/docs",
         openapi_url="/openapi.json",
@@ -228,7 +236,8 @@ def create_app() -> FastAPI:
     async def meta() -> dict[str, str]:
         return {
             "framework": "synapse-saas",
-            "version": "0.1.0",
+            "product": brand.name,
+            "version": FRAMEWORK_VERSION,
             "billing_provider": settings.billing_provider,
             "identity_provider": settings.identity_provider,
             "tenant_isolation": settings.tenant_isolation,

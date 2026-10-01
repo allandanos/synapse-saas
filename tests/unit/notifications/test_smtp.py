@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from email.message import EmailMessage
+from pathlib import Path
+
 import pytest
+
+from synapse_saas.core.config import get_settings
 
 pytestmark = []
 
@@ -255,3 +261,88 @@ class TestNotifierSeam:
             body="b",
             attachments=[Attachment("x.pdf", b"%PDF-", "application/pdf")],
         )
+
+
+# ── Branding: sender display name, product name, footer ──────────────────────
+
+
+class TestBrandedEmail:
+    def test_from_carries_the_brand_name(self, custom_branding: Callable[..., Path]) -> None:
+        from synapse_saas.notifications.smtp import sender
+
+        custom_branding(name="Acme Widgets")
+        assert sender("noreply@acme.example.com") == "Acme Widgets <noreply@acme.example.com>"
+
+    def test_from_name_beats_the_configured_display_name(self, custom_branding: Callable[..., Path]) -> None:
+        from synapse_saas.notifications.smtp import sender
+
+        custom_branding(email={"from_name": "Acme Billing"})
+        assert sender("Ops <ops@acme.example.com>") == "Acme Billing <ops@acme.example.com>"
+
+    def test_configured_display_name_beats_the_brand_name(self, custom_branding: Callable[..., Path]) -> None:
+        from synapse_saas.notifications.smtp import sender
+
+        custom_branding(name="Acme")
+        assert sender("Ops Team <ops@acme.example.com>") == "Ops Team <ops@acme.example.com>"
+
+    async def test_sent_message_has_the_display_name(
+        self, monkeypatch: pytest.MonkeyPatch, custom_branding: Callable[..., Path]
+    ) -> None:
+        from synapse_saas.notifications import smtp as smtp_module
+
+        custom_branding(name="Acme Widgets")
+        monkeypatch.setenv("SYNAPSE_SMTP_HOST", "smtp.example.test")
+        monkeypatch.setenv("SYNAPSE_SMTP_FROM", "noreply@example.test")
+        get_settings.cache_clear()
+        captured: list[EmailMessage] = []
+
+        async def fake_send(message: EmailMessage, *args: object, **kwargs: object) -> None:
+            captured.append(message)
+
+        monkeypatch.setattr(smtp_module, "_send_message", fake_send)
+        await smtp_module.SmtpNotifier().send(to="u@example.com", subject="s", body="b")
+        get_settings.cache_clear()
+        assert captured[0]["From"] == "Acme Widgets <noreply@example.test>"
+
+    async def test_every_email_names_the_product_and_ends_with_the_footer(
+        self, monkeypatch: pytest.MonkeyPatch, custom_branding: Callable[..., Path]
+    ) -> None:
+        from synapse_saas.notifications import handlers
+
+        custom_branding(name="Acme Widgets", links={"website": "https://acme.example.com"})
+        sent: list[dict[str, str]] = []
+
+        async def fake_send(*, to: str, subject: str, body: str, attachments: object = None) -> None:
+            sent.append({"subject": subject, "body": body})
+
+        async def fake_recipient(organization_id: str) -> str:
+            return "billing@example.com"
+
+        monkeypatch.setattr(handlers, "get_notifier", lambda: type("N", (), {"send": fake_send}))
+        monkeypatch.setattr(handlers, "billing_recipient", fake_recipient)
+        await handlers.handle_event(
+            "member.invite_email", {"email": "a@example.com", "invite_token": "t", "org_name": "Org"}
+        )
+        await handlers.handle_event("user.password_reset_link", {"email": "a@example.com", "token": "t"})
+        await handlers.handle_event(
+            "usage.soft_limit_reached",
+            {"organization_id": "o", "metric": "api_calls", "total": 80, "limit": 100},
+        )
+        for paid in (False, True):
+            subject, body = handlers.invoice_message("INV-1", "499.00 PHP", paid=paid)
+            sent.append({"subject": subject, "body": body})
+
+        assert len(sent) == 5
+        for email in sent:
+            assert "Acme Widgets" in email["body"], email
+            assert email["body"].endswith("\n\n— Acme Widgets\nhttps://acme.example.com"), email
+
+    async def test_custom_footer_replaces_the_default(
+        self, monkeypatch: pytest.MonkeyPatch, custom_branding: Callable[..., Path]
+    ) -> None:
+        from synapse_saas.notifications import handlers
+
+        custom_branding(email={"footer": "Acme Widgets Inc. · 1 Example Street\n"})
+        _subject, body = handlers.invoice_message("INV-1", "1.00 PHP", paid=False)
+        assert body.endswith("\n\nAcme Widgets Inc. · 1 Example Street")
+        assert "— " not in body

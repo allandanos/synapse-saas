@@ -509,6 +509,210 @@
         "title": "AuthResponse",
         "type": "object"
       },
+      "BrandColors": {
+        "additionalProperties": false,
+        "description": "Console theme tokens: primary actions, text drawn on them, accent, corner radius.",
+        "properties": {
+          "accent": {
+            "default": "#2563eb",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Accent",
+            "type": "string"
+          },
+          "primary": {
+            "default": "#18181b",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Primary",
+            "type": "string"
+          },
+          "primary_foreground": {
+            "default": "#ffffff",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Primary Foreground",
+            "type": "string"
+          },
+          "radius": {
+            "default": "0.5rem",
+            "pattern": "^\\d+(\\.\\d+)?(px|rem|em)$",
+            "title": "Radius",
+            "type": "string"
+          }
+        },
+        "title": "BrandColors",
+        "type": "object"
+      },
+      "BrandLinks": {
+        "additionalProperties": false,
+        "properties": {
+          "docs": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "pattern": "^https?://[^\\s<>\\\"']+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docs"
+          },
+          "privacy": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "pattern": "^https?://[^\\s<>\\\"']+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy"
+          },
+          "support_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Email"
+          },
+          "terms": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "pattern": "^https?://[^\\s<>\\\"']+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms"
+          },
+          "website": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "pattern": "^https?://[^\\s<>\\\"']+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website"
+          }
+        },
+        "title": "BrandLinks",
+        "type": "object"
+      },
+      "BrandingAssets": {
+        "properties": {
+          "custom_css": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Css"
+          },
+          "favicon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favicon"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "logo_dark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Dark"
+          }
+        },
+        "title": "BrandingAssets",
+        "type": "object"
+      },
+      "BrandingRead": {
+        "properties": {
+          "assets": {
+            "$ref": "#/components/schemas/BrandingAssets"
+          },
+          "colors": {
+            "$ref": "#/components/schemas/BrandColors"
+          },
+          "landing": {
+            "enum": [
+              "page",
+              "redirect"
+            ],
+            "title": "Landing",
+            "type": "string"
+          },
+          "links": {
+            "$ref": "#/components/schemas/BrandLinks"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "powered_by": {
+            "title": "Powered By",
+            "type": "boolean"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          }
+        },
+        "required": [
+          "name",
+          "tagline",
+          "assets",
+          "colors",
+          "links",
+          "landing",
+          "powered_by"
+        ],
+        "title": "BrandingRead",
+        "type": "object"
+      },
       "CancelRequest": {
         "properties": {
           "at_period_end": {
@@ -3091,8 +3295,8 @@
     }
   },
   "info": {
-    "description": "Multi-tenant SaaS framework: tenancy, plans, entitlements, usage, billing.",
-    "title": "Synapse SaaS Framework",
+    "description": "Open-source multi-tenant SaaS framework",
+    "title": "Synapse API",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",
@@ -4849,6 +5053,73 @@
         "summary": "Billing Webhook",
         "tags": [
           "billing"
+        ]
+      }
+    },
+    "/v1/branding": {
+      "get": {
+        "description": "The deployment's presentation branding (name, assets, colours, links).",
+        "operationId": "read_branding_v1_branding_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Branding",
+        "tags": [
+          "branding"
+        ]
+      }
+    },
+    "/v1/branding/assets/{name}": {
+      "get": {
+        "description": "A branding asset named by branding.yaml (logo, logo_dark, favicon, custom_css); 404 otherwise.",
+        "operationId": "read_branding_asset_v1_branding_assets__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {},
+              "image/svg+xml": {},
+              "image/x-icon": {},
+              "text/css": {}
+            },
+            "description": "The asset bytes"
+          },
+          "404": {
+            "description": "Not a served branding asset (RFC 7807 problem)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Branding Asset",
+        "tags": [
+          "branding"
         ]
       }
     },

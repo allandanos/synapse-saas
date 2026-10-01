@@ -18,6 +18,11 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 # repo-root config/plans.yaml is the same file (a test keeps them identical);
 # products point SYNAPSE_PLANS_FILE at their own.
 DEFAULT_PLANS_FILE = Path(str(importlib.resources.files("synapse_saas") / "config" / "plans.yaml"))
+# Same arrangement for the branding kit: packaged default (src/synapse_saas/config/branding/),
+# mirrored at the repo-root config/branding/; deployments set SYNAPSE_BRANDING_FILE.
+DEFAULT_BRANDING_FILE = Path(
+    str(importlib.resources.files("synapse_saas") / "config" / "branding" / "branding.yaml")
+)
 
 
 class Settings(BaseSettings):
@@ -56,6 +61,11 @@ class Settings(BaseSettings):
     # ── Plans / catalog ─────────────────────────────────────────────────────────
     plans_file: str = str(DEFAULT_PLANS_FILE)
     auto_sync_plans: bool = True
+
+    # ── Branding ────────────────────────────────────────────────────────────────
+    # branding.yaml; its logo/favicon/custom.css live in the same directory.
+    # Read once per process — restart the API and worker to apply changes.
+    branding_file: str = str(DEFAULT_BRANDING_FILE)
 
     # ── Identity ────────────────────────────────────────────────────────────────
     identity_provider: str = "local"

@@ -4,6 +4,9 @@ x-api-base: &api-base
   build:
     context: .
     dockerfile: apps/api/Dockerfile
+  # White-label kit (branding.yaml + assets); edit config/branding/ and restart api/worker.
+  volumes:
+    - ./config/branding:/branding:ro
   environment: &api-env
     SYNAPSE_ENV: development
     SYNAPSE_SECRET_KEY: ${SYNAPSE_SECRET_KEY:-dev-only-secret-key-change-me}
@@ -11,6 +14,7 @@ x-api-base: &api-base
     SYNAPSE_WORKER_DATABASE_URL: ${SYNAPSE_WORKER_DATABASE_URL_IN_STACK:-}
     SYNAPSE_TENANT_ISOLATION: ${SYNAPSE_TENANT_ISOLATION:-app}
     SYNAPSE_REDIS_URL: redis://redis:6379/0
+    SYNAPSE_BRANDING_FILE: /branding/branding.yaml
     SYNAPSE_BILLING_PROVIDER: ${SYNAPSE_BILLING_PROVIDER:-manual}
     SYNAPSE_BILLING_CURRENCY: ${SYNAPSE_BILLING_CURRENCY:-PHP}
     SYNAPSE_IDENTITY_PROVIDER: ${SYNAPSE_IDENTITY_PROVIDER:-local}

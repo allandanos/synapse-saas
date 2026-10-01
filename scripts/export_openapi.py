@@ -23,6 +23,11 @@ def render() -> str:
     # The schema is a pure function of the routers; no DB/Redis is touched.
     os.environ.setdefault("SYNAPSE_REDIS_URL", "")
     os.environ.setdefault("SYNAPSE_AUTO_SYNC_PLANS", "false")
+    # info.title/description come from branding: pin the packaged default so a
+    # local .env pointing at another kit can never drift the frozen contract.
+    from synapse_saas.core.config import DEFAULT_BRANDING_FILE
+
+    os.environ["SYNAPSE_BRANDING_FILE"] = str(DEFAULT_BRANDING_FILE)
     from synapse_saas.api.app import create_app
 
     schema = create_app().openapi()

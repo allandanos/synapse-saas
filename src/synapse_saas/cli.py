@@ -1,4 +1,4 @@
-"""synapse-cli: migrate, seed, plans sync, on-demand jobs."""
+"""synapse-cli: migrate, seed, plans sync, branding kit, on-demand jobs."""
 
 from __future__ import annotations
 
@@ -282,6 +282,57 @@ def fga_check(user_id: str, organization_id: str, permission: str) -> None:
     click.echo("allowed" if allowed else "denied")
     if not allowed:
         raise SystemExit(1)
+
+
+@cli.group()
+def branding() -> None:
+    """White-label branding kit: branding.yaml + logo/favicon assets."""
+
+
+@branding.command("init")
+@click.option(
+    "--dir",
+    "directory",
+    default="branding",
+    show_default=True,
+    help="Directory to write the starter kit into",
+)
+@click.option("--force", is_flag=True, help="Overwrite existing files")
+def branding_init(directory: str, force: bool) -> None:
+    """Copy the default branding kit (fully commented branding.yaml + assets) to start from."""
+    from synapse_saas.branding.loader import write_starter_kit
+
+    try:
+        written = write_starter_kit(directory, force=force)
+    except FileExistsError as exc:
+        raise click.ClickException(str(exc)) from exc
+    for path in written:
+        click.echo(f"wrote {path}")
+    click.echo(f"Edit {directory}/branding.yaml, then set SYNAPSE_BRANDING_FILE to its path.")
+
+
+@branding.command("validate")
+@click.option(
+    "--file",
+    "path",
+    default=None,
+    help="branding.yaml to check (default: SYNAPSE_BRANDING_FILE, else the packaged default)",
+)
+def branding_validate(path: str | None) -> None:
+    """Validate a branding.yaml and the assets it references; exit 1 listing every error."""
+    from synapse_saas.branding.loader import load_branding
+    from synapse_saas.core.errors import BrandingInvalidError
+
+    try:
+        brand = load_branding(path)
+    except BrandingInvalidError as exc:
+        click.echo(f"invalid branding: {exc.extras.get('path')}", err=True)
+        for error in exc.extras.get("errors", [exc.message]):
+            click.echo(f"  - {error}", err=True)
+        raise SystemExit(1) from exc
+    assets = ", ".join(f"{name}={brand.asset_digest(name)}" for name in sorted(brand.referenced_assets))
+    click.echo(f"ok: {brand.name!r} ({brand.source})")
+    click.echo(f"assets: {assets or 'none'}")
 
 
 @cli.group()
