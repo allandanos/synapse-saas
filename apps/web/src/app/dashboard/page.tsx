@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { api, type UsageCheck } from "@/lib/api";
+import { api, ApiError, type UsageCheck } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { FeatureGate } from "@/components/feature-gate";
 import { JoinedBanner } from "@/components/joined-banner";
@@ -35,7 +35,10 @@ export default function DashboardPage() {
 
   const data = subscription.data;
   const usageLimits = usage.data;
-  const queryError = subscription.error ?? usage.error;
+  // Plan details need billing:read; a plain member is simply not shown them.
+  const planHidden =
+    subscription.error instanceof ApiError && subscription.error.status === 403;
+  const queryError = usage.error ?? (planHidden ? null : subscription.error);
   const plan = data?.subscription?.plan_snapshot.name ?? "—";
   const status = data?.subscription?.status ?? "none";
 
@@ -45,10 +48,16 @@ export default function DashboardPage() {
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Plan <span className="font-medium text-zinc-900">{plan}</span> ·{" "}
-          <span className={status === "active" ? "text-emerald-600" : "text-amber-600"}>
-            {status}
-          </span>
+          {planHidden ? (
+            <span>Plan details are visible to billing managers</span>
+          ) : (
+            <>
+              Plan <span className="font-medium text-zinc-900">{plan}</span> ·{" "}
+              <span className={status === "active" ? "text-emerald-600" : "text-amber-600"}>
+                {status}
+              </span>
+            </>
+          )}
           {entitlements && (
             <> · {entitlements.features.length} features enabled</>
           )}
