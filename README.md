@@ -64,7 +64,7 @@ docker compose up -d --wait      # console :3000, API :8000
 
 Nothing is built — the clone is only for the kit's three files and `branding/`. See
 [`deploy/compose/README.md`](deploy/compose/README.md), including how to build the images
-locally until `v0.2.0` is published.
+locally from a checkout instead of pulling the published tags.
 
 ## White-label it
 
