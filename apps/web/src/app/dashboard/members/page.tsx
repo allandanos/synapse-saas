@@ -3,14 +3,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Member } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 export default function MembersPage() {
+  const { activeOrgId } = useAuth();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const { data: page } = useQuery({
-    queryKey: ["members"],
+  const { data: page, error: loadError } = useQuery({
+    queryKey: ["members", activeOrgId],
     queryFn: () => api<{ data: Member[]; meta: { total: number } }>("/v1/orgs/current/members"),
   });
 
@@ -78,6 +80,12 @@ export default function MembersPage() {
         </button>
       </form>
 
+      {loadError && (
+        <p role="alert" className="mb-6 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          Could not load members: {loadError.message}
+        </p>
+      )}
+
       {error && (
         <p role="alert" className="mb-6 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
           {error}
@@ -123,7 +131,7 @@ export default function MembersPage() {
                 </td>
               </tr>
             ))}
-            {(page?.data ?? []).length === 0 && (
+            {page && page.data.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-zinc-400">
                   No members yet.

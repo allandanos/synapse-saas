@@ -12,27 +12,31 @@ import {
   type Plan,
   type Subscription,
 } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 export default function BillingPage() {
+  const { activeOrgId } = useAuth();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const { data: plans } = useQuery({
-    queryKey: ["plans"],
+    queryKey: ["plans", activeOrgId],
     queryFn: () => api<Plan[]>("/v1/plans"),
   });
   const { data: subscription } = useQuery({
-    queryKey: ["subscription"],
-    queryFn: () =>
-      api<{ subscription: Subscription | null }>("/v1/subscription").then((r) => r.subscription),
+    queryKey: ["subscription", activeOrgId],
+    // Same key and payload as the dashboard's query: share the cached response
+    // and project it here, so the two pages never cache different shapes.
+    queryFn: () => api<{ subscription: Subscription | null }>("/v1/subscription"),
+    select: (r) => r.subscription,
   });
   const { data: invoices } = useQuery({
-    queryKey: ["invoices"],
+    queryKey: ["invoices", activeOrgId],
     queryFn: () => api<Invoice[]>("/v1/billing/invoices"),
   });
   const { data: org, refetch: refetchOrg } = useQuery({
-    queryKey: ["org"],
+    queryKey: ["org", activeOrgId],
     queryFn: () => api<Org>("/v1/orgs/current"),
   });
 

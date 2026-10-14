@@ -1,40 +1,65 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { me, loading, createOrg } = useAuth();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const hasOrgs = (me?.orgs.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (!loading && !me) router.replace("/login");
+  }, [loading, me, router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await api("/v1/orgs", {
-        method: "POST",
-        body: JSON.stringify({ name, slug: slug || undefined }),
-      });
+      // createOrg reloads the session with the new org active before resolving,
+      // so the dashboard mounts with an org already selected.
+      await createOrg(name, slug || undefined);
       router.push("/dashboard");
-      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create the organization");
-    } finally {
       setBusy(false);
     }
+  }
+
+  if (loading || !me) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-50">
+        <p className="text-sm text-zinc-400">Loading…</p>
+      </main>
+    );
   }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">
       <div className="w-full max-w-md">
-        <h1 className="text-2xl font-semibold tracking-tight">Create your organization</h1>
+        {hasOrgs && (
+          <Link
+            href="/dashboard"
+            className="mb-6 inline-flex items-center gap-1 rounded-md text-sm text-zinc-500 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <span aria-hidden>←</span> Back to dashboard
+          </Link>
+        )}
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {hasOrgs ? "Create another organization" : "Create your organization"}
+        </h1>
         <p className="mt-1 text-sm text-zinc-500">
-          You&apos;ll be the owner. A Free-plan subscription is provisioned automatically.
+          {hasOrgs
+            ? "This will be a second organization you own. "
+            : "You\u2019ll be the owner. "}
+          A Free-plan subscription is provisioned automatically.
         </p>
 
         <form onSubmit={onSubmit} className="mt-8 space-y-4">

@@ -127,6 +127,13 @@ export interface Me {
   orgs: Org[];
 }
 
+/* Public lookup behind an invitation link (GET /v1/auth/invite?token=). */
+export interface InvitePreview {
+  organization: { id: string; slug: string; name: string };
+  invited_email: string;
+  role_keys: string[];
+}
+
 export interface Plan {
   id: string;
   key: string;

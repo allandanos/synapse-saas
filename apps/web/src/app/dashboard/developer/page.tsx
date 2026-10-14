@@ -65,7 +65,7 @@ export default function DeveloperPage() {
   const [probeStatus, setProbeStatus] = useState<number | null>(null);
 
   const { data: keys } = useQuery({
-    queryKey: ["api-keys"],
+    queryKey: ["api-keys", activeOrgId],
     queryFn: () => api<ApiKey[]>("/v1/api-keys"),
   });
 

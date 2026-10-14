@@ -6,13 +6,22 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useRuntimeConfig } from "@/lib/runtime-config";
+import { useInvitePreview } from "@/lib/use-invite-preview";
+import {
+  AcceptFailedAlert,
+  InviteInvalidNotice,
+  errorMessage,
+  joinedHref,
+} from "@/components/invite-notices";
 
 function LoginForm() {
-  const { login } = useAuth();
+  const { login, acceptInvite } = useAuth();
   const { apiUrl } = useRuntimeConfig();
   const router = useRouter();
   const params = useSearchParams();
   const resetDone = params.get("reset") === "done";
+  const inviteToken = params.get("invite") ?? "";
+  const invite = useInvitePreview(inviteToken);
   const [ssoEnabled, setSsoEnabled] = useState(false);
 
   useEffect(() => {
@@ -28,27 +37,61 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A dead invite link still lets the user sign in; it just isn't accepted.
+  const shouldAccept = inviteToken !== "" && invite.status !== "invalid";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setAcceptError(null);
     try {
       await login(email, password);
-      router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
-    } finally {
+      setError(errorMessage(err, "Sign-in failed"));
+      setBusy(false);
+      return;
+    }
+    if (!shouldAccept) {
+      router.push("/dashboard");
+      return;
+    }
+    try {
+      const org = await acceptInvite(inviteToken);
+      router.push(joinedHref(org.id));
+    } catch (err) {
+      setAcceptError(errorMessage(err, "The invitation could not be accepted"));
       setBusy(false);
     }
   }
+
+  const registerHref = inviteToken
+    ? `/register?invite=${encodeURIComponent(inviteToken)}`
+    : "/register";
 
   return (
     <>
       {resetDone && (
         <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           Password updated — sign in with your new password.
+        </p>
+      )}
+      {invite.status === "ready" && (
+        <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          Sign in to accept your invitation to{" "}
+          <span className="font-semibold">{invite.preview.organization.name}</span>
+        </p>
+      )}
+      {invite.status === "invalid" && (
+        <div className="mb-4">
+          <InviteInvalidNotice />
+        </div>
+      )}
+      {invite.status === "error" && (
+        <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          Could not load the invitation: {invite.message}
         </p>
       )}
       <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
@@ -106,6 +149,7 @@ function LoginForm() {
             {error}
           </p>
         )}
+        {acceptError && <AcceptFailedAlert message={acceptError} />}
 
         <button
           type="submit"
@@ -119,7 +163,7 @@ function LoginForm() {
       <div className="mt-6 flex items-center justify-between text-sm">
         <span className="text-zinc-500">
           No account?{" "}
-          <Link href="/register" className="font-medium text-zinc-900 underline">
+          <Link href={registerHref} className="font-medium text-zinc-900 underline">
             Create one
           </Link>
         </span>

@@ -1,5 +1,5 @@
 import { test, expect, emailFor, createStackContext,
-  resetTokenFromEmail,
+  resetTokenFromEmail, usageMeter,
   waitForEmail, API_URL } from "./fixtures";
 
 test.describe("auth journeys", () => {
@@ -18,10 +18,19 @@ test.describe("auth journeys", () => {
     await page.getByLabel(/organization name/i).fill("E2E First Org");
     await page.getByRole("button", { name: /create organization/i }).click();
 
-    await page.waitForURL(/dashboard/);
+    // The new org is selected in-session: the dashboard stays put (no bounce
+    // back to onboarding) and renders the org's own data.
+    await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-    // Free-plan bootstrap visible: usage meters render
-    await expect(page.getByText(/plan/i).first()).toBeVisible();
+    await expect(page.locator("#org-switcher option:checked")).toHaveText("E2E First Org");
+    // Free-plan bootstrap visible: the owner holds one of three seats
+    await expect(usageMeter(page, "users")).toContainText("1 / 3");
+    await expect(page).toHaveURL(/\/dashboard$/);
+
+    await page.getByRole("link", { name: "Members", exact: true }).click();
+    await expect(page).toHaveURL(/\/dashboard\/members$/);
+    await expect(page.getByRole("row").filter({ hasText: email })).toHaveCount(1);
+    await expect(page.getByRole("row")).toHaveCount(2); // header + owner
   });
 
   test("login shows post-reset banner via ?reset=done", async ({ page }) => {

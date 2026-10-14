@@ -2,11 +2,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api, type UsageCheck } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { UsageMeter } from "@/components/usage-meter";
 
 export default function UsagePage() {
+  const { activeOrgId } = useAuth();
   const { data, isLoading } = useQuery({
-    queryKey: ["usage-summary"],
+    queryKey: ["usage-summary", activeOrgId],
     queryFn: () => api<{ period: string; metrics: UsageCheck[] }>("/v1/usage/summary"),
   });
 

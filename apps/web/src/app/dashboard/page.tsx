@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type UsageCheck } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { FeatureGate } from "@/components/feature-gate";
+import { JoinedBanner } from "@/components/joined-banner";
 import { UsageMeter } from "@/components/usage-meter";
 
 interface SubscriptionResponse {
@@ -18,25 +19,29 @@ interface SubscriptionResponse {
 }
 
 export default function DashboardPage() {
-  const { entitlements } = useAuth();
+  const { entitlements, activeOrgId } = useAuth();
 
-  const { data } = useQuery({
-    queryKey: ["subscription"],
+  const subscription = useQuery({
+    queryKey: ["subscription", activeOrgId],
     queryFn: () => api<SubscriptionResponse>("/v1/subscription"),
   });
-  const { data: usageLimits } = useQuery({
-    queryKey: ["usage-limits"],
+  const usage = useQuery({
+    queryKey: ["usage-limits", activeOrgId],
     queryFn: () =>
       api<{ period: string; metrics: UsageCheck[] }>("/v1/usage/summary").then(
         (s) => s.metrics,
       ),
   });
 
+  const data = subscription.data;
+  const usageLimits = usage.data;
+  const queryError = subscription.error ?? usage.error;
   const plan = data?.subscription?.plan_snapshot.name ?? "—";
   const status = data?.subscription?.status ?? "none";
 
   return (
     <div>
+      <JoinedBanner />
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-sm text-zinc-500">
@@ -49,6 +54,12 @@ export default function DashboardPage() {
           )}
         </p>
       </header>
+
+      {queryError && (
+        <p role="alert" className="mb-6 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          Could not load this organization&apos;s data: {queryError.message}
+        </p>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-xl border border-zinc-200 p-6" aria-labelledby="usage-h">

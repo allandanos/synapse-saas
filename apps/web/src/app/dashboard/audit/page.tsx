@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 interface AuditEntry {
   id: string;
@@ -13,10 +14,11 @@ interface AuditEntry {
 }
 
 export default function AuditPage() {
+  const { activeOrgId } = useAuth();
   const [filter, setFilter] = useState("");
 
   const { data } = useQuery({
-    queryKey: ["audit", filter],
+    queryKey: ["audit", activeOrgId, filter],
     queryFn: () =>
       api<{ data: AuditEntry[] }>(
         `/v1/audit?limit=50${filter ? `&event_type=${encodeURIComponent(filter)}` : ""}`,

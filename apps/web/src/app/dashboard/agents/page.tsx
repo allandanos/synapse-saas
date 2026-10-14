@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot } from "lucide-react";
 import Link from "next/link";
 import { ApiError, api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 interface Agent {
   id: string;
@@ -21,6 +22,7 @@ interface Agent {
 const EMPTY_CONFIG = '{\n  "model": "gpt-4o-mini",\n  "tools": []\n}';
 
 export default function AgentsPage() {
+  const { activeOrgId } = useAuth();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
   const [slug, setSlug] = useState("");
@@ -28,7 +30,7 @@ export default function AgentsPage() {
   const [config, setConfig] = useState(EMPTY_CONFIG);
 
   const { data: agents, error, isLoading } = useQuery<Agent[], ApiError>({
-    queryKey: ["agents"],
+    queryKey: ["agents", activeOrgId],
     queryFn: () => api<Agent[]>("/v1/agents"),
     retry: false,
   });

@@ -19,7 +19,7 @@ interface ApiKey {
 }
 
 export default function ApiKeysPage() {
-  const { entitlements } = useAuth();
+  const { activeOrgId, entitlements } = useAuth();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [newKey, setNewKey] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export default function ApiKeysPage() {
   const hasApiAccess = entitlements?.features.includes("api_access") ?? false;
 
   const { data: keys } = useQuery({
-    queryKey: ["api-keys"],
+    queryKey: ["api-keys", activeOrgId],
     queryFn: () => api<ApiKey[]>("/v1/api-keys"),
   });
 

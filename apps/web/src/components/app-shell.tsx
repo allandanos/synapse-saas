@@ -14,6 +14,7 @@ import {
   CreditCard,
   KeyRound,
   Menu,
+  Plus,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -48,6 +49,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Mobile menu is open for the page it was opened on: navigating closes it.
   const [menuPath, setMenuPath] = useState<string | null>(null);
   const menuOpen = menuPath === pathname;
+  const [switchError, setSwitchError] = useState<string | null>(null);
+
+  async function onSwitchOrg(orgId: string) {
+    setSwitchError(null);
+    try {
+      await switchOrg(orgId);
+    } catch (err) {
+      setSwitchError(err instanceof Error ? err.message : "Could not switch organization");
+    }
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-white md:flex-row">
@@ -81,7 +92,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <select
                   id="org-switcher"
                   value={activeOrgId ?? ""}
-                  onChange={(e) => switchOrg(e.target.value)}
+                  onChange={(e) => onSwitchOrg(e.target.value)}
                   className="w-full appearance-none rounded-lg border border-zinc-200 bg-white py-2 pl-8 pr-3 text-sm font-medium text-zinc-900 focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   {me.orgs.map((org) => (
@@ -96,6 +107,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {activeOrg.slug} · {activeOrg.role_keys.join(", ") || "member"}
                 </p>
               )}
+              {switchError && (
+                <p role="alert" className="mt-1.5 px-1 text-xs text-red-600">
+                  {switchError}
+                </p>
+              )}
+              <Link
+                href="/onboarding"
+                className="mt-2 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+                New organization
+              </Link>
             </div>
           )}
 

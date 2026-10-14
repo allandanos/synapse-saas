@@ -1,7 +1,11 @@
 "use client";
 
 /* Auth + org context: access token in memory, silent refresh on mount,
- * active org in a cookie mirrored to X-Org-Id. */
+ * active org in a cookie mirrored to X-Org-Id.
+ *
+ * Every mutation that changes org membership reloads the session and selects
+ * the right org before it resolves. No function here navigates — pages own
+ * navigation, so they can act on the returned Me/Org. */
 
 import {
   createContext,
@@ -13,6 +17,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   api,
   refreshTokens,
@@ -20,6 +25,7 @@ import {
   setOrgId,
   type Entitlements,
   type Me,
+  type Org,
 } from "./api";
 
 interface AuthState {
@@ -27,11 +33,46 @@ interface AuthState {
   entitlements: Entitlements | null;
   activeOrgId: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<Me>;
+  register: (email: string, password: string, displayName: string) => Promise<Me>;
   logout: () => Promise<void>;
   switchOrg: (orgId: string) => Promise<void>;
+  createOrg: (name: string, slug?: string) => Promise<Org>;
+  acceptInvite: (token: string) => Promise<Org>;
   hasFeature: (feature: string) => boolean;
+}
+
+interface TokenResponse {
+  tokens: { access_token: string };
+}
+
+const ORG_COOKIE = "synapse_org";
+const ORG_COOKIE_MAX_AGE = 2_592_000; // 30 days
+
+function readOrgCookie(): string | undefined {
+  return document.cookie
+    .split("; ")
+    .find((c) => c.startsWith(`${ORG_COOKIE}=`))
+    ?.split("=")[1];
+}
+
+function writeOrgCookie(orgId: string | null) {
+  document.cookie = orgId
+    ? `${ORG_COOKIE}=${orgId}; path=/; max-age=${ORG_COOKIE_MAX_AGE}; samesite=lax`
+    : `${ORG_COOKIE}=; path=/; max-age=0`;
+}
+
+/* Org pick order: explicitly preferred → cookie → first membership. */
+function pickOrg(orgs: Org[], preferredOrgId?: string | null): string | null {
+  const byId = (id: string | null | undefined) =>
+    id ? orgs.find((o) => o.id === id)?.id : undefined;
+  return byId(preferredOrgId) ?? byId(readOrgCookie()) ?? orgs[0]?.id ?? null;
+}
+
+function findOrg(profile: Me, orgId: string): Org {
+  const org = profile.orgs.find((o) => o.id === orgId);
+  if (!org) throw new Error("The organization is not in your memberships yet — reload and try again.");
+  return org;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -42,43 +83,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
-  const loadSession = useCallback(async () => {
-    const ok = await refreshTokens();
-    if (!ok) {
-      setMe(null);
-      setEntitlements(null);
-      setActiveOrgId(null);
-      return false;
-    }
-    const profile = await api<Me>("/v1/auth/me");
-    setMe(profile);
-
-    const cookieOrg = document.cookie
-      .split("; ")
-      .find((c) => c.startsWith("synapse_org="))
-      ?.split("=")[1];
-    const org =
-      profile.orgs.find((o) => o.id === cookieOrg)?.id ?? profile.orgs[0]?.id ?? null;
-    setActiveOrgId(org);
-    setOrgId(org);
-    if (org) document.cookie = `synapse_org=${org}; path=/; max-age=2592000; samesite=lax`;
-
-    if (org) {
-      const ent = await api<Entitlements>("/v1/entitlements");
-      setEntitlements(ent);
-    }
-    return true;
+  const clearSession = useCallback(() => {
+    setAccessToken(null);
+    setOrgId(null);
+    setMe(null);
+    setEntitlements(null);
+    setActiveOrgId(null);
   }, []);
+
+  /* A failed entitlements call never signs the user out: FeatureGate simply
+   * reports no features until the next successful load. */
+  const fetchEntitlementsOrNull = useCallback(async (): Promise<Entitlements | null> => {
+    try {
+      return await api<Entitlements>("/v1/entitlements");
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /* Loads /me, selects the org, fetches its entitlements. Returns the profile,
+   * or null when there is no refreshable session. */
+  const loadSession = useCallback(
+    async (preferredOrgId?: string | null): Promise<Me | null> => {
+      const ok = await refreshTokens();
+      if (!ok) {
+        clearSession();
+        return null;
+      }
+      const profile = await api<Me>("/v1/auth/me");
+      const org = pickOrg(profile.orgs, preferredOrgId);
+      setOrgId(org);
+      writeOrgCookie(org);
+      // Set together: the dashboard guard never sees `me` without its org.
+      setMe(profile);
+      setActiveOrgId(org);
+      setEntitlements(org ? await fetchEntitlementsOrNull() : null);
+      return profile;
+    },
+    [clearSession, fetchEntitlementsOrNull],
+  );
+
+  /* Same as loadSession, but a just-authenticated caller must get a profile. */
+  const requireSession = useCallback(
+    async (preferredOrgId?: string | null): Promise<Me> => {
+      const profile = await loadSession(preferredOrgId);
+      if (!profile) throw new Error("Your session could not be established — sign in again.");
+      return profile;
+    },
+    [loadSession],
+  );
 
   useEffect(() => {
     // Session bootstrap is asynchronous (refresh → /me → entitlements); run it
     // as a callback so every setState happens after the effect, never during it.
     let active = true;
     Promise.resolve()
-      .then(loadSession)
-      // A failed /me or entitlements call after a good refresh leaves the
-      // session signed out (me stays null) — not an unhandled rejection.
+      .then(() => loadSession())
+      // A failed /me after a good refresh leaves the session signed out
+      // (me stays null) — not an unhandled rejection. Entitlement failures
+      // are absorbed inside loadSession.
       .catch(() => undefined)
       .finally(() => {
         if (active) setLoading(false);
@@ -90,55 +155,79 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string) => {
-      const res = await api<{ tokens: { access_token: string } }>("/v1/auth/login", {
+      const res = await api<TokenResponse>("/v1/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
       setAccessToken(res.tokens.access_token);
-      await loadSession();
-      router.push("/dashboard");
+      return requireSession();
     },
-    [loadSession, router],
+    [requireSession],
   );
 
   const register = useCallback(
     async (email: string, password: string, displayName: string) => {
-      const res = await api<{ tokens: { access_token: string } }>("/v1/auth/register", {
+      const res = await api<TokenResponse>("/v1/auth/register", {
         method: "POST",
         body: JSON.stringify({ email, password, display_name: displayName }),
       });
       setAccessToken(res.tokens.access_token);
-      await loadSession();
-      router.push("/onboarding");
+      return requireSession();
     },
-    [loadSession, router],
+    [requireSession],
+  );
+
+  const createOrg = useCallback(
+    async (name: string, slug?: string) => {
+      const created = await api<{ id: string }>("/v1/orgs", {
+        method: "POST",
+        body: JSON.stringify({ name, slug: slug || undefined }),
+      });
+      const profile = await requireSession(created.id);
+      return findOrg(profile, created.id);
+    },
+    [requireSession],
+  );
+
+  const acceptInvite = useCallback(
+    async (token: string) => {
+      const res = await api<{ organization_id: string; status: string }>(
+        "/v1/auth/accept-invite",
+        { method: "POST", body: JSON.stringify({ token }) },
+      );
+      const profile = await requireSession(res.organization_id);
+      return findOrg(profile, res.organization_id);
+    },
+    [requireSession],
   );
 
   const logout = useCallback(async () => {
+    // Best effort: the local session is cleared even if the API call fails.
     await api("/v1/auth/logout", { method: "POST" }).catch(() => undefined);
-    setAccessToken(null);
-    setOrgId(null);
-    setMe(null);
-    setEntitlements(null);
-    document.cookie = "synapse_org=; path=/; max-age=0";
+    clearSession();
+    writeOrgCookie(null);
+    queryClient.clear();
     router.push("/login");
-  }, [router]);
+  }, [clearSession, queryClient, router]);
 
-  const switchOrg = useCallback(
-    async (orgId: string) => {
-      await api("/v1/auth/switch-org", {
-        method: "POST",
-        body: JSON.stringify({ organization_id: orgId }),
-      });
-      document.cookie = `synapse_org=${orgId}; path=/; max-age=2592000; samesite=lax`;
-      setActiveOrgId(orgId);
-      setOrgId(orgId);
-      const ent = await api<Entitlements>("/v1/entitlements");
-      setEntitlements(ent);
-      router.refresh();
-    },
-    [router],
-  );
+  const switchOrg = useCallback(async (orgId: string) => {
+    const res = await api<{ access_token: string }>("/v1/auth/switch-org", {
+      method: "POST",
+      body: JSON.stringify({ organization_id: orgId }),
+    });
+    // Adopt the org-scoped token before any org-scoped request goes out, and
+    // move the UI with the header at once: activeOrgId never lags the requests.
+    setAccessToken(res.access_token);
+    setOrgId(orgId);
+    setActiveOrgId(orgId);
+    writeOrgCookie(orgId);
+    try {
+      setEntitlements(await api<Entitlements>("/v1/entitlements"));
+    } catch (err) {
+      setEntitlements(null);
+      throw err; // the switcher surfaces it; the org switch itself stands
+    }
+  }, []);
 
   const hasFeature = useCallback(
     (feature: string) => entitlements?.features.includes(feature) ?? false,
@@ -146,8 +235,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ me, entitlements, activeOrgId, loading, login, register, logout, switchOrg, hasFeature }),
-    [me, entitlements, activeOrgId, loading, login, register, logout, switchOrg, hasFeature],
+    () => ({
+      me,
+      entitlements,
+      activeOrgId,
+      loading,
+      login,
+      register,
+      logout,
+      switchOrg,
+      createOrg,
+      acceptInvite,
+      hasFeature,
+    }),
+    [me, entitlements, activeOrgId, loading, login, register, logout, switchOrg, createOrg, acceptInvite, hasFeature],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

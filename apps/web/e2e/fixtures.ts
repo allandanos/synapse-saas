@@ -177,14 +177,27 @@ export function pdfAttachmentBase64(raw: string): string | null {
   return null;
 }
 
-/** The reset token in a password-reset email (the console's `/reset-password?reset=…` link). */
-export function resetTokenFromEmail(raw: string): string | null {
-  // The body is quoted-printable: soft line breaks (`=\n`) split the long link
-  // and `=` itself is spelled `=3D`. Decode before matching.
-  const decoded = raw
+/** The body is quoted-printable: soft line breaks (`=\n`) split long links
+ * and `=` itself is spelled `=3D`. Decode before matching. */
+function decodeQuotedPrintable(raw: string): string {
+  return raw
     .replace(/=\r?\n/g, "")
     .replace(/=([0-9A-F]{2})/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
-  return decoded.match(/\/reset-password\?reset=([A-Za-z0-9_-]+)/)?.[1] ?? null;
+}
+
+/** The reset token in a password-reset email (the console's `/reset-password?reset=…` link). */
+export function resetTokenFromEmail(raw: string): string | null {
+  return decodeQuotedPrintable(raw).match(/\/reset-password\?reset=([A-Za-z0-9_-]+)/)?.[1] ?? null;
+}
+
+/** The invite token in an invitation email (the console's `/register?invite=…` link). */
+export function inviteTokenFromEmail(raw: string): string | null {
+  return decodeQuotedPrintable(raw).match(/\/register\?invite=([A-Za-z0-9_-]+)/)?.[1] ?? null;
+}
+
+/** The dashboard's usage meter for `metric` (its text reads "<used> / <limit>"). */
+export function usageMeter(page: Page, metric: string) {
+  return page.getByRole("progressbar", { name: metric, exact: true }).locator("..");
 }
 
 /** Poll until a message matching `predicate` lands (worker dispatch is async). */

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 interface Endpoint {
   id: string;
@@ -22,17 +23,18 @@ interface Delivery {
 }
 
 export default function WebhooksPage() {
+  const { activeOrgId } = useAuth();
   const queryClient = useQueryClient();
   const [url, setUrl] = useState("");
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const { data: endpoints } = useQuery({
-    queryKey: ["webhook-endpoints"],
+    queryKey: ["webhook-endpoints", activeOrgId],
     queryFn: () => api<Endpoint[]>("/v1/webhooks/endpoints"),
   });
   const { data: deliveries } = useQuery({
-    queryKey: ["webhook-deliveries"],
+    queryKey: ["webhook-deliveries", activeOrgId],
     queryFn: () => api<Delivery[]>("/v1/webhooks/deliveries"),
   });
 
