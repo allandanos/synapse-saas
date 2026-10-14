@@ -71,6 +71,22 @@ class OrgSummary(BaseModel):
     role_keys: list[str] = []
 
 
+class InviteOrganization(BaseModel):
+    """The organization an invite names: the `OrgSummary` shape without roles."""
+
+    id: uuid.UUID
+    slug: str
+    name: str
+
+
+class InvitePreview(BaseModel):
+    """What a pending invite grants, readable before acceptance (no auth)."""
+
+    organization: InviteOrganization
+    invited_email: str
+    role_keys: list[str]
+
+
 class AuthResponse(BaseModel):
     user: UserRead
     tokens: TokenPair

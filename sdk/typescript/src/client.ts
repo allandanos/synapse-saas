@@ -61,6 +61,9 @@ export class SynapseClient {
       this.call("POST", "/v1/auth/reset-password", { body: { token, password } }),
     acceptInvite: (token: string): Promise<Json> =>
       this.call("POST", "/v1/auth/accept-invite", { body: { token } }),
+    /** `{organization: {id, slug, name}, invited_email, role_keys}`; no auth, token not consumed. */
+    previewInvite: (token: string): Promise<Json> =>
+      this.call("GET", "/v1/auth/invite", { params: { token } }),
   };
 
   /** Framework version, active billing/identity providers, tenant isolation mode. */

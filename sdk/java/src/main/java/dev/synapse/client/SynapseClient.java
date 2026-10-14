@@ -133,6 +133,14 @@ public class SynapseClient {
             return call("POST", "/v1/auth/accept-invite", Map.of("token", token), null);
         }
 
+        /**
+         * The organization a pending invite is for: {@code {organization: {id, slug, name}, invited_email,
+         * role_keys}}. No auth; the token is not consumed.
+         */
+        public Map<String, Object> previewInvite(String token) throws IOException, InterruptedException {
+            return call("GET", "/v1/auth/invite", null, Map.of("token", token));
+        }
+
         /** Pin an org for later requests without {@code X-Org-Id} (the new token carries the claim). */
         public void switchOrg(String organizationId) throws IOException, InterruptedException {
             call("POST", "/v1/auth/switch-org", Map.of("organization_id", organizationId), null);

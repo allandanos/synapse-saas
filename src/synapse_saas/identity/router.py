@@ -8,7 +8,7 @@ import json
 import secrets
 from urllib.parse import quote
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from synapse_saas.core.cache import VersionedCache
@@ -20,6 +20,8 @@ from synapse_saas.identity.schemas import (
     AuthResponse,
     ForgotPasswordRequest,
     InviteAcceptRequest,
+    InviteOrganization,
+    InvitePreview,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
@@ -225,6 +227,22 @@ async def switch_org(
     tokens = await service.issue_tokens(user, organization_id=body.organization_id)
     _set_refresh_cookie(response, tokens.refresh_token)
     return AccessTokenResponse(access_token=tokens.access_token, expires_in=tokens.expires_in)
+
+
+@router.get("/invite", response_model=InvitePreview)
+async def preview_invite(
+    session: SessionDep, token: str = Query(min_length=10, description="The emailed invite token")
+) -> InvitePreview:
+    """Name the organization a pending invite is for, before acceptance. The token
+    is not consumed; an unknown or already-used token is `invite_not_found`."""
+    from synapse_saas.tenancy.service import OrganizationService
+
+    org, membership = await OrganizationService(session).preview_invite(token)
+    return InvitePreview(
+        organization=InviteOrganization(id=org.id, slug=org.slug, name=org.name),
+        invited_email=membership.invited_email or "",  # always set on an invited row
+        role_keys=sorted(r.key for r in membership.roles),
+    )
 
 
 @router.post("/accept-invite", status_code=status.HTTP_200_OK)

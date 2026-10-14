@@ -67,6 +67,17 @@ async def test_accept_invite_with_bogus_token_is_rejected(api: AsyncClient, tena
     assert_problem(res, res.status_code)
 
 
+async def test_invite_preview_with_bogus_token_is_not_found(api: AsyncClient) -> None:
+    # Public lookup: no bearer, no tenant. The real token only travels by email.
+    res = await api.get("/v1/auth/invite", params={"token": "not-a-real-invite-token"})
+    doc = assert_problem(res, 404)
+    assert doc["type"].endswith("/invite_not_found"), doc
+
+
+async def test_invite_preview_without_token_is_422(api: AsyncClient) -> None:
+    assert_problem(await api.get("/v1/auth/invite"), 422)
+
+
 async def test_validation_errors_are_422_problems(api: AsyncClient) -> None:
     res = await api.post("/v1/auth/register", json={"email": "not-an-email", "password": "x"})
     assert_problem(res, 422)

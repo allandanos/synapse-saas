@@ -184,6 +184,29 @@ func TestUploadIsMultipart(t *testing.T) {
 	}
 }
 
+func TestPreviewInviteIsAGetWithTheTokenQuery(t *testing.T) {
+	var method, path, query string
+	var bodyLen int
+	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		method, path, query = r.Method, r.URL.Path, r.URL.RawQuery
+		if r.Body != nil {
+			raw, _ := io.ReadAll(r.Body)
+			bodyLen = len(raw)
+		}
+		return jsonResponse(200, `{"invited_email":"a@b.c","role_keys":["member"]}`), nil
+	})
+	out, err := c.Auth().PreviewInvite(context.Background(), "tok_0123456789")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if method != "GET" || path != "/v1/auth/invite" || query != "token=tok_0123456789" || bodyLen != 0 {
+		t.Errorf("request = %s %s?%s (body %d bytes)", method, path, query, bodyLen)
+	}
+	if out["invited_email"] != "a@b.c" {
+		t.Errorf("out = %+v", out)
+	}
+}
+
 func TestPayloadShapes(t *testing.T) {
 	type call struct{ method, path, query, body string }
 	var calls []call

@@ -71,6 +71,14 @@ func (r *AuthResource) AcceptInvite(ctx context.Context, token string) (jsonMap,
 	return out, firstErr(decode(raw, &out), err)
 }
 
+// PreviewInvite names the organization a pending invite is for:
+// {organization: {id, slug, name}, invited_email, role_keys}. No auth; the token is not consumed.
+func (r *AuthResource) PreviewInvite(ctx context.Context, token string) (jsonMap, error) {
+	var out jsonMap
+	raw, err := r.c.do(ctx, request{method: "GET", path: "/v1/auth/invite", params: map[string]string{"token": token}})
+	return out, firstErr(decode(raw, &out), err)
+}
+
 func (r *AuthResource) SwitchOrg(ctx context.Context, organizationID string) (jsonMap, error) {
 	var out jsonMap
 	raw, err := r.c.do(ctx, request{

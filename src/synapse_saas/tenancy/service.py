@@ -250,10 +250,26 @@ class OrganizationService:
         return await self._accept(membership, user)
 
     async def accept_invite_by_token(self, token: str, user: User) -> Membership:
+        membership = await self._invited_membership_for_token(token)
+        membership.invite_token_hash = None  # single-use
+        return await self._accept(membership, user)
+
+    async def preview_invite(self, token: str) -> tuple[Organization, Membership]:
+        """The org and pending membership an invite token names, without consuming it."""
+        membership = await self._invited_membership_for_token(token)
+        org = await self.orgs.get(membership.organization_id)
+        if org is None or org.deleted_at is not None:
+            raise InviteNotFoundError("Invite not found or already used")
+        return org, membership
+
+    async def _invited_membership_for_token(self, token: str) -> Membership:
+        """Resolve a pending invite by its token and bind its tenant.
+
+        An invited membership has no user_id, and no tenant is bound yet: resolve
+        the org through the SECURITY DEFINER lookup (migration 0013), bind it,
+        then read the row under policy.
+        """
         token_hash = _hash(token)
-        # An invited membership has no user_id, and no tenant is bound yet: resolve
-        # the org through the SECURITY DEFINER lookup (migration 0013), bind it,
-        # then read the row under policy.
         org_id = (
             await self.session.execute(text("SELECT synapse_org_for_invite_token(:h)"), {"h": token_hash})
         ).scalar_one_or_none()
@@ -262,7 +278,9 @@ class OrganizationService:
         await set_rls_tenant(self.session, org_id)
         membership = (
             await self.session.execute(
-                select(Membership).where(
+                select(Membership)
+                .options(selectinload(Membership.roles))
+                .where(
                     Membership.invite_token_hash == token_hash,
                     Membership.status == "invited",
                 )
@@ -270,8 +288,7 @@ class OrganizationService:
         ).scalar_one_or_none()
         if membership is None:
             raise InviteNotFoundError("Invite not found or already used")
-        membership.invite_token_hash = None  # single-use
-        return await self._accept(membership, user)
+        return membership
 
     async def update_membership(
         self,

@@ -196,6 +196,15 @@ class TestFullContract:
         paged_client.usage.record([{"metric": "api_requests", "quantity": 2, "idempotency_key": "k1"}])
         assert paged.requests[-1].url.path == "/v1/usage/events"
 
+    def test_preview_invite_is_a_get_with_the_token_query(
+        self, paged_client: SynapseClient, paged: PagedTransport
+    ) -> None:
+        paged_client.auth.preview_invite("tok_0123456789")
+        request = paged.requests[-1]
+        assert request.method == "GET" and request.url.path == "/v1/auth/invite"
+        assert dict(request.url.params) == {"token": "tok_0123456789"}
+        assert request.content == b""
+
     async def test_async_pages_and_bytes(self) -> None:
         transport = PagedTransport()
 

@@ -212,6 +212,10 @@ class AuthResource(_Resource):
     def accept_invite(self, token: str) -> dict:
         return self._call("POST", "/v1/auth/accept-invite", json={"token": token})
 
+    def preview_invite(self, token: str) -> dict:
+        """`{organization: {id, slug, name}, invited_email, role_keys}`; no auth, token not consumed."""
+        return self._call("GET", "/v1/auth/invite", params={"token": token})
+
     def switch_org(self, organization_id: str) -> dict:
         return self._call("POST", "/v1/auth/switch-org", json={"organization_id": organization_id})
 

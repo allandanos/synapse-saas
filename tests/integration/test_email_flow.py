@@ -89,6 +89,75 @@ class TestInviteEmail:
         assert "invite" in invite["subject"].lower()
 
 
+async def _latest_invite_token(email: str) -> str:
+    """The clear invite token rides only the internal email event."""
+    from sqlalchemy import text
+
+    async with owner_session_factory()() as session:
+        payload = (
+            await session.execute(
+                text(
+                    "SELECT payload FROM outbox_events WHERE event_type = 'member.invite_email' "
+                    "AND payload->>'email' = :email ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"email": email},
+            )
+        ).scalar_one()
+    token: str = payload["invite_token"]
+    return token
+
+
+class TestInvitePreview:
+    async def test_preview_names_the_org_until_the_invite_is_accepted(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        invited = await client.post(
+            "/v1/orgs/current/members/invite",
+            headers=org_headers(org_and_tokens),
+            json={"email": "joiner@example.com", "role_keys": ["member", "developer"]},
+        )
+        assert invited.status_code == 201, invited.text
+        token = await _latest_invite_token("joiner@example.com")
+
+        preview = await client.get("/v1/auth/invite", params={"token": token})
+        assert preview.status_code == 200, preview.text
+        assert preview.json() == {
+            "organization": {"id": org_and_tokens["org_id"], "slug": "test-org", "name": "Test Org"},
+            "invited_email": "joiner@example.com",
+            "role_keys": ["developer", "member"],
+        }
+        # Previewing does not consume the token
+        again = await client.get("/v1/auth/invite", params={"token": token})
+        assert again.status_code == 200, again.text
+
+        registered = await client.post(
+            "/v1/auth/register",
+            json={"email": "joiner@example.com", "password": "password12345", "display_name": "Joiner"},
+        )
+        assert registered.status_code == 201, registered.text
+        bearer = {"Authorization": f"Bearer {registered.json()['tokens']['access_token']}"}
+        accepted = await client.post("/v1/auth/accept-invite", headers=bearer, json={"token": token})
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json() == {"organization_id": org_and_tokens["org_id"], "status": "active"}
+
+        used = await client.get("/v1/auth/invite", params={"token": token})
+        assert used.status_code == 404, used.text
+        assert used.json()["type"].endswith("/invite_not_found")
+
+    async def test_unknown_token_is_invite_not_found(self, client: AsyncClient) -> None:
+        res = await client.get("/v1/auth/invite", params={"token": "x" * 43})
+        assert res.status_code == 404, res.text
+        assert res.json()["status"] == 404
+        assert res.json()["type"].endswith("/invite_not_found")
+
+    async def test_missing_or_short_token_is_a_validation_problem(self, client: AsyncClient) -> None:
+        missing = await client.get("/v1/auth/invite")
+        short = await client.get("/v1/auth/invite", params={"token": "short"})
+        for res in (missing, short):
+            assert res.status_code == 422, res.text
+            assert res.json()["status"] == 422
+
+
 class TestPasswordResetEmail:
     async def test_reset_link_queued_and_emailed(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch

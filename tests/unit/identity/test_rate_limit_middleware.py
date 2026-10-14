@@ -55,6 +55,12 @@ def test_refresh_is_an_auth_route() -> None:
     assert AUTH_ROUTES["/v1/auth/refresh"] is None  # IP bucket only; no identity in the body
 
 
+def test_invite_preview_is_an_ip_only_auth_route() -> None:
+    # Public, token-keyed lookup: guessing is bounded by the IP bucket (query string excluded)
+    assert "/v1/auth/invite" in AUTH_ROUTES
+    assert AUTH_ROUTES["/v1/auth/invite"] is None
+
+
 async def test_infrastructure_failure_fails_open(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rl_module, "get_rate_limiter", _Boom)
     import synapse_saas.identity.rate_limit as mw

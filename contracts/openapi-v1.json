@@ -1189,6 +1189,57 @@
         "title": "InviteAcceptRequest",
         "type": "object"
       },
+      "InviteOrganization": {
+        "description": "The organization an invite names: the `OrgSummary` shape without roles.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name"
+        ],
+        "title": "InviteOrganization",
+        "type": "object"
+      },
+      "InvitePreview": {
+        "description": "What a pending invite grants, readable before acceptance (no auth).",
+        "properties": {
+          "invited_email": {
+            "title": "Invited Email",
+            "type": "string"
+          },
+          "organization": {
+            "$ref": "#/components/schemas/InviteOrganization"
+          },
+          "role_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Role Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "organization",
+          "invited_email",
+          "role_keys"
+        ],
+        "title": "InvitePreview",
+        "type": "object"
+      },
       "InvoiceDetailRead": {
         "properties": {
           "created_at": {
@@ -4113,6 +4164,52 @@
           }
         },
         "summary": "Forgot Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/invite": {
+      "get": {
+        "description": "Name the organization a pending invite is for, before acceptance. The token\nis not consumed; an unknown or already-used token is `invite_not_found`.",
+        "operationId": "preview_invite_v1_auth_invite_get",
+        "parameters": [
+          {
+            "description": "The emailed invite token",
+            "in": "query",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "description": "The emailed invite token",
+              "minLength": 10,
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitePreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Invite",
         "tags": [
           "auth"
         ]

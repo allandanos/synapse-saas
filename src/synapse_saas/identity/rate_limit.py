@@ -34,6 +34,7 @@ AUTH_ROUTES: dict[str, str | None] = {
     "/v1/auth/refresh": None,  # a stolen refresh token replayed at speed; IP limit only
     "/v1/auth/oidc/start": None,  # SSO round-trips; IP limit only
     "/v1/auth/oidc/callback": None,
+    "/v1/auth/invite": None,  # public invite preview; token guessing is IP-limited
 }
 
 

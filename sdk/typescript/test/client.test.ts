@@ -61,6 +61,15 @@ describe("requests", () => {
     expect(requests[0].url).toContain("quantity=2");
   });
 
+  it("previews an invite with a GET and the token in the query", async () => {
+    const { impl, requests } = fakeFetch([{ status: 200, body: { invited_email: "a@b.c" } }]);
+    const c = client(impl);
+    await c.auth.previewInvite("tok_0123456789");
+    expect(requests[0].method).toBe("GET");
+    expect(requests[0].url).toBe("http://test/v1/auth/invite?token=tok_0123456789");
+    expect(requests[0].body).toBeUndefined();
+  });
+
   it("204 returns undefined", async () => {
     const { impl } = fakeFetch([{ status: 204, body: null }]);
     const c = client(impl);

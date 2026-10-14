@@ -83,6 +83,16 @@ class SynapseClientTest {
     }
 
     @Test
+    void previewInviteIsAGetWithTheTokenQuery() throws Exception {
+        respondBody = "{\"invited_email\":\"a@b.c\",\"role_keys\":[\"member\"]}";
+        Map<String, Object> out = client.auth.previewInvite("tok_0123456789");
+        assertEquals("a@b.c", out.get("invited_email"));
+        assertEquals("GET /v1/auth/invite", paths.get(0));
+        assertEquals("token=tok_0123456789", lastQuery);
+        assertEquals("", lastBody);
+    }
+
+    @Test
     void noContentReturnsNull() throws Exception {
         respondStatus = 204;
         assertDoesNotThrow(() -> client.apiKeys.revoke("k1"));

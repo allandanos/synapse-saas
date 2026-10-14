@@ -7,6 +7,28 @@ language ports code against. Every change to it is listed here with intent.
 
 Nothing yet.
 
+## 0.2.1
+
+`info.version` is `0.2.1`. Additive: one new public path; every 0.2.0 client keeps working.
+
+### Invite preview
+
+- **New path** (public, no auth, no tenant): `GET /v1/auth/invite?token=<token>`
+  → `InvitePreview {organization: {id, slug, name}, invited_email, role_keys}`.
+  Intent: the console's join page (`/register?invite=` and `/login?invite=`)
+  names the organization and prefills the invited email before the invitee
+  registers or signs in. The token is not consumed; acceptance stays
+  `POST /v1/auth/accept-invite` (single use).
+- **Problems:** an unknown or already-used token is a 404 `invite_not_found`;
+  a missing or too-short `token` (under 10 characters) is a 422
+  `validation_failed`. The path is IP rate-limited with the other auth routes
+  (429 `rate_limited`).
+- **SDKs:** `preview_invite` (Python), `previewInvite` (TypeScript, Java) and
+  `PreviewInvite` (Go) sit beside each SDK's accept-invite method.
+- **Ports:** the Java and Node ports implement the path in their next milestone;
+  until then they are not conformant on `tests/conformance/test_auth.py`'s
+  invite-preview checks.
+
 ## 0.2.0 (tag pending)
 
 First tagged release; it carries every entry below down to the baseline.

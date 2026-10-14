@@ -27,6 +27,7 @@ body stays a plain JSON array; the total number of rows rides the
 | POST | `/auth/register` | 201 + tokens |
 | POST | `/auth/login` | tokens; refresh also set as httpOnly cookie |
 | POST | `/auth/refresh` | rotation; reuse outside grace revokes the session |
+| GET | `/auth/invite?token=` | public, no tenant: `{organization: {id, slug, name}, invited_email, role_keys}` for a pending invite (token not consumed); unknown or used token → 404 `invite_not_found`; IP rate-limited |
 | POST | `/auth/accept-invite` | `{token}` from the invite email joins the caller's user to the org |
 | GET | `/auth/oidc/start?return_to=` | SSO (Keycloak): 302 to the IdP with PKCE + nonce; state kept server-side 10 min ([identity](identity.md)) |
 | GET | `/auth/oidc/callback?code&state` | SSO return: verifies the id_token, links/creates the user, sets the refresh cookie, 302 to the console's `/auth/callback` |

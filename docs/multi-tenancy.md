@@ -103,9 +103,10 @@ Enforcement is bound to the **connection role**, not to `FORCE`:
   flag disagree: a bypassing role with RLS on would be a false sense of security;
   a subject role with RLS off would see zero rows.
 
-Two lookups legitimately happen before the tenant is known — accepting an invite
-(by token hash; an invited membership has no `user_id`) and applying a billing
-webhook (by provider ids). Each uses a narrow `SECURITY DEFINER` function that
+Two lookups legitimately happen before the tenant is known — resolving an invite
+by token hash, both to preview it (`GET /v1/auth/invite`, which names the org on
+the console's join page) and to accept it (an invited membership has no
+`user_id`), and applying a billing webhook (by provider ids). Each uses a narrow `SECURITY DEFINER` function that
 returns only the organization id, after which the request binds the tenant and
 continues under policy. Two credential tables are deliberately not policed:
 `api_keys` and `refresh_tokens` are looked up by secret hash before any tenant
