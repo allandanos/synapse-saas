@@ -39,6 +39,7 @@ from synapse_saas.core.security import (
     verify_password,
 )
 from synapse_saas.identity.models import PasswordResetToken, RefreshToken, User
+from synapse_saas.identity.preferences import check_stored_preferences
 
 if TYPE_CHECKING:
     from synapse_saas.identity.schemas import TokenPair
@@ -306,6 +307,30 @@ class IdentityService:
         user = await self.get_user(user_id)
         # Membership validated by the router dependency; here we just record it
         return user
+
+    # ── Preferences ─────────────────────────────────────────────────────────────
+
+    async def update_preferences(self, user: User, patch: dict[str, Any]) -> User:
+        """Top-level merge of `patch` into `user.preferences` (a listed key is replaced wholesale).
+
+        The row is locked and re-read first, so two concurrent PATCHes (two
+        tabs) merge one after the other instead of over the same stale snapshot.
+        Assigns a new dict: JSONB change detection misses in-place mutation.
+        User-scoped UI state, so no audit/outbox event; only the keys are logged.
+        """
+        locked = (
+            await self.session.execute(
+                select(User)
+                .where(User.id == user.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
+        merged = {**locked.preferences, **patch}
+        check_stored_preferences(merged)
+        locked.preferences = merged
+        logger.info("user_preferences_updated", user_id=str(locked.id), keys=sorted(patch))
+        return locked
 
     # ── Password reset ──────────────────────────────────────────────────────────
 

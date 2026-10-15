@@ -70,6 +70,16 @@ describe("requests", () => {
     expect(requests[0].body).toBeUndefined();
   });
 
+  it("updates me with a PATCH carrying the preferences patch", async () => {
+    const { impl, requests } = fakeFetch([{ status: 200, body: { preferences: { theme: "light" } } }]);
+    const c = client(impl);
+    const patch = { preferences: { tours: { "console-welcome": { status: "completed", version: 1 } } } };
+    await c.auth.updateMe(patch);
+    expect(requests[0].method).toBe("PATCH");
+    expect(requests[0].url).toBe("http://test/v1/auth/me");
+    expect(JSON.parse(requests[0].body ?? "")).toEqual(patch);
+  });
+
   it("204 returns undefined", async () => {
     const { impl } = fakeFetch([{ status: 204, body: null }]);
     const c = client(impl);

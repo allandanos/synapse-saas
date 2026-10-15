@@ -32,7 +32,7 @@ body stays a plain JSON array; the total number of rows rides the
 | GET | `/auth/oidc/start?return_to=` | SSO (Keycloak): 302 to the IdP with PKCE + nonce; state kept server-side 10 min ([identity](identity.md)) |
 | GET | `/auth/oidc/callback?code&state` | SSO return: verifies the id_token, links/creates the user, sets the refresh cookie, 302 to the console's `/auth/callback` |
 | POST | `/auth/logout` | 204 |
-| GET | `/auth/me` | user + orgs + role keys |
+| GET/PATCH | `/auth/me` | GET: user + orgs + role keys + `preferences`. PATCH `{preferences}` merges top-level keys into the caller's own UI preferences (e.g. `tours`) and returns the GET shape; keys `^[a-z][a-z0-9_-]{0,63}$`, ≤32 keys / 16 KiB per request, ≤64 keys / 32 KiB stored → 422 `validation_failed`; a listed key is replaced wholesale (reset with `{}`); API-key bearers → 403 |
 | POST | `/auth/switch-org` | 200 `{access_token, token_type, expires_in}` scoped to the org (`org` claim resolves the tenant when no header is sent); rotated refresh token in the cookie |
 | POST | `/auth/forgot-password` | 202, opaque response |
 | POST | `/auth/reset-password` | tokens + new password |

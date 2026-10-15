@@ -81,3 +81,53 @@ async def test_invite_preview_without_token_is_422(api: AsyncClient) -> None:
 async def test_validation_errors_are_422_problems(api: AsyncClient) -> None:
     res = await api.post("/v1/auth/register", json={"email": "not-an-email", "password": "x"})
     assert_problem(res, 422)
+
+
+async def test_me_carries_preferences_and_patch_merges_them(api: AsyncClient, tenant: Tenant) -> None:
+    me = await api.get("/v1/auth/me", headers=tenant.bearer)
+    assert me.status_code == 200 and me.json()["preferences"] == {}, me.text
+
+    tours = {"console-welcome": {"status": "completed", "version": 1}}
+    first = await api.patch("/v1/auth/me", headers=tenant.bearer, json={"preferences": {"tours": tours}})
+    assert first.status_code == 200 and first.json()["preferences"] == {"tours": tours}, first.text
+
+    second = await api.patch("/v1/auth/me", headers=tenant.bearer, json={"preferences": {"theme": "light"}})
+    assert second.status_code == 200, second.text
+    body = second.json()
+    assert body["preferences"] == {"tours": tours, "theme": "light"}
+    assert tenant["org_id"] in [org["id"] for org in body["orgs"]]
+
+    # A listed key is replaced wholesale (the merge is top-level only): reset a namespace with {}.
+    third = await api.patch("/v1/auth/me", headers=tenant.bearer, json={"preferences": {"tours": {}}})
+    assert third.status_code == 200, third.text
+    assert third.json()["preferences"] == {"tours": {}, "theme": "light"}
+
+
+async def test_patch_me_without_bearer_is_401_problem(api: AsyncClient) -> None:
+    assert_problem(await api.patch("/v1/auth/me", json={"preferences": {"theme": "light"}}), 401)
+
+
+async def test_patch_me_with_invalid_key_is_422_problem(api: AsyncClient, tenant: Tenant) -> None:
+    res = await api.patch("/v1/auth/me", headers=tenant.bearer, json={"preferences": {"Not A Key": 1}})
+    doc = assert_problem(res, 422)
+    assert doc["type"].endswith("/validation_failed"), doc
+
+
+async def test_patch_me_over_the_patch_byte_cap_is_422_problem(api: AsyncClient, tenant: Tenant) -> None:
+    # 16 KiB per request, counted as compact UTF-8 JSON bytes.
+    big = {"preferences": {"big": "x" * 17 * 1024}}
+    res = await api.patch("/v1/auth/me", headers=tenant.bearer, json=big)
+    doc = assert_problem(res, 422)
+    assert doc["type"].endswith("/validation_failed"), doc
+
+
+async def test_patch_me_with_an_api_key_is_403_problem(api: AsyncClient, tenant: Tenant) -> None:
+    # Preferences are a person's UI state: an organization's `sk_` key cannot write them.
+    created = await api.post("/v1/api-keys", headers=tenant.headers, json={"name": "conf", "scopes": []})
+    assert created.status_code == 201, created.text
+    key = created.json()["key"]
+    res = await api.patch(
+        "/v1/auth/me", headers={"Authorization": f"Bearer {key}"}, json={"preferences": {"theme": "dark"}}
+    )
+    doc = assert_problem(res, 403)
+    assert doc["type"].endswith("/permission_denied"), doc

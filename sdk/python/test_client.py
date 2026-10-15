@@ -205,6 +205,15 @@ class TestFullContract:
         assert dict(request.url.params) == {"token": "tok_0123456789"}
         assert request.content == b""
 
+    def test_update_me_is_a_patch_with_the_preferences_body(
+        self, paged_client: SynapseClient, paged: PagedTransport
+    ) -> None:
+        prefs = {"tours": {"console-welcome": {"status": "completed", "version": 1}}}
+        paged_client.auth.update_me(preferences=prefs)
+        request = paged.requests[-1]
+        assert request.method == "PATCH" and request.url.path == "/v1/auth/me"
+        assert json.loads(request.content) == {"preferences": prefs}
+
     async def test_async_pages_and_bytes(self) -> None:
         transport = PagedTransport()
 

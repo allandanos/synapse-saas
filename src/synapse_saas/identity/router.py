@@ -10,10 +10,13 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from synapse_saas.core.cache import VersionedCache
 from synapse_saas.core.config import get_settings
-from synapse_saas.identity.dependencies import CurrentUser, SessionDep
+from synapse_saas.core.errors import PermissionDeniedError
+from synapse_saas.identity.dependencies import CurrentUser, PrincipalDep, SessionDep
+from synapse_saas.identity.models import User
 from synapse_saas.identity.provider import get_identity_provider
 from synapse_saas.identity.schemas import (
     AccessTokenResponse,
@@ -23,6 +26,8 @@ from synapse_saas.identity.schemas import (
     InviteOrganization,
     InvitePreview,
     LoginRequest,
+    MeUpdate,
+    OrgSummary,
     RefreshRequest,
     RegisterRequest,
     ResetPasswordRequest,
@@ -194,21 +199,35 @@ async def logout(request: Request, response: Response, session: SessionDep) -> N
     _clear_refresh_cookie(response)
 
 
-@router.get("/me", response_model=UserWithOrgs)
-async def me(user: CurrentUser, session: SessionDep) -> UserWithOrgs:
+async def _me_response(user: User, session: AsyncSession) -> UserWithOrgs:
     memberships = await MembershipRepository(session).for_user(user.id)
     orgs = [
-        {
-            "id": m.organization_id,
-            "slug": m.organization.slug,
-            "name": m.organization.name,
-            "role_keys": sorted(r.key for r in m.roles),
-        }
+        OrgSummary(
+            id=m.organization_id,
+            slug=m.organization.slug,
+            name=m.organization.name,
+            role_keys=sorted(r.key for r in m.roles),
+        )
         for m in memberships
     ]
-    read = UserWithOrgs.model_validate(user)
-    read.orgs = orgs  # type: ignore[assignment]
-    return read
+    return UserWithOrgs.model_validate(user).model_copy(update={"orgs": orgs})
+
+
+@router.get("/me", response_model=UserWithOrgs)
+async def me(user: CurrentUser, session: SessionDep) -> UserWithOrgs:
+    return await _me_response(user, session)
+
+
+@router.patch("/me", response_model=UserWithOrgs)
+async def update_me(body: MeUpdate, principal: PrincipalDep, session: SessionDep) -> UserWithOrgs:
+    """Merge `preferences` top-level keys into the caller's own store; returns the GET shape."""
+    # An `sk_` bearer resolves to a synthetic, unpersisted user: nothing to write to.
+    if principal.is_api_key or principal.user is None:
+        raise PermissionDeniedError("API keys cannot change user preferences")
+    user = principal.user
+    if body.preferences is not None:
+        user = await IdentityService(session).update_preferences(user, body.preferences)
+    return await _me_response(user, session)
 
 
 @router.post("/switch-org", response_model=AccessTokenResponse)

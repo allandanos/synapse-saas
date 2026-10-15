@@ -5,7 +5,36 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
-Nothing yet.
+Additive: one new field and one new method on an existing path; every 0.2.1 client keeps working.
+
+### User preferences
+
+- **New field** `preferences` (object, default `{}`) on `UserWithOrgs`
+  (`GET /v1/auth/me`). It is not on `UserRead`, so register, login and
+  reset-password responses are unchanged.
+- **New path method** `PATCH /v1/auth/me` with `MeUpdate {preferences?}`
+  → `UserWithOrgs` (the GET shape). Intent: persist the console's product-tour
+  completion (`{"tours": {"console-welcome": {"status", "version", "at"}}}`)
+  server-side, and give forks a general per-user UI store.
+- **Merge semantics:** the patch's top-level keys are merged into the stored
+  object; a listed key is replaced wholesale (no deep merge, no "null deletes":
+  reset a namespace with `{"tours": {}}`). An empty body or omitted
+  `preferences` is a no-op 200.
+- **Limits:** top-level keys match `^[a-z][a-z0-9_-]{0,63}$`; nested keys are
+  free-form. Per request ≤ 32 keys, ≤ 16 KiB compact UTF-8 JSON, nesting ≤ 8
+  levels; stored ≤ 64 keys and ≤ 32 KiB after the merge. Values JSON or JSONB
+  cannot hold are refused at validation (422), never at the database: NaN and
+  Infinity (Python's parser accepts them), NUL characters in keys or strings,
+  and nesting past the cap however deep. Concurrent PATCHes by one user are
+  serialised on the row, so neither merge overwrites the other.
+- **Problems** (no new types): 401 without a bearer; 403 `permission_denied`
+  for API-key (`sk_`) bearers, which have no user to write to; 422
+  `validation_failed` for a bad key or any limit.
+- **SDKs:** `update_me` (Python), `updateMe` (TypeScript, Java) and `UpdateMe`
+  (Go) sit beside each SDK's `me` method and take a patch object.
+- **Ports:** the Java and Node ports implement it in their next milestone with
+  invite preview; until then they are not conformant on
+  `tests/conformance/test_auth.py`'s preferences checks.
 
 ## 0.2.1
 

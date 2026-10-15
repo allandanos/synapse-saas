@@ -21,6 +21,14 @@ func (r *AuthResource) Me(ctx context.Context) (jsonMap, error) {
 	return out, firstErr(decode(raw, &out), err)
 }
 
+// UpdateMe merges patch["preferences"] top-level keys into the caller's own
+// preferences and returns the Me shape. API-key clients get a 403.
+func (r *AuthResource) UpdateMe(ctx context.Context, patch jsonMap) (jsonMap, error) {
+	var out jsonMap
+	raw, err := r.c.do(ctx, request{method: "PATCH", path: "/v1/auth/me", body: patch})
+	return out, firstErr(decode(raw, &out), err)
+}
+
 func (r *AuthResource) Register(ctx context.Context, email, password, displayName string) (jsonMap, error) {
 	var out jsonMap
 	raw, err := r.c.do(ctx, request{

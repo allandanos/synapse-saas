@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from synapse_saas.identity.preferences import validate_preferences_patch
 
 PASSWORD_MIN_LENGTH = 10
 
@@ -61,7 +64,21 @@ class UserRead(BaseModel):
 
 
 class UserWithOrgs(UserRead):
+    """`GET`/`PATCH /v1/auth/me`. `preferences` is the caller's own UI store (not on `UserRead`)."""
+
     orgs: list[OrgSummary] = []
+    preferences: dict[str, Any] = {}
+
+
+class MeUpdate(BaseModel):
+    """`PATCH /v1/auth/me`: `preferences` keys are merged top-level into the stored object."""
+
+    preferences: dict[str, Any] | None = None
+
+    @field_validator("preferences")
+    @classmethod
+    def _check_preferences(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        return None if value is None else validate_preferences_patch(value)
 
 
 class OrgSummary(BaseModel):

@@ -207,6 +207,31 @@ func TestPreviewInviteIsAGetWithTheTokenQuery(t *testing.T) {
 	}
 }
 
+func TestUpdateMeIsAPatchWithThePreferencesBody(t *testing.T) {
+	var method, path string
+	var body map[string]any
+	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		method, path = r.Method, r.URL.Path
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		return jsonResponse(200, `{"preferences":{"theme":"light"}}`), nil
+	})
+	patch := map[string]any{"preferences": map[string]any{"theme": "light"}}
+	out, err := c.Auth().UpdateMe(context.Background(), patch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if method != "PATCH" || path != "/v1/auth/me" {
+		t.Errorf("request = %s %s", method, path)
+	}
+	if prefs, ok := body["preferences"].(map[string]any); !ok || prefs["theme"] != "light" {
+		t.Errorf("body = %+v", body)
+	}
+	if out["preferences"] == nil {
+		t.Errorf("out = %+v", out)
+	}
+}
+
 func TestPayloadShapes(t *testing.T) {
 	type call struct{ method, path, query, body string }
 	var calls []call

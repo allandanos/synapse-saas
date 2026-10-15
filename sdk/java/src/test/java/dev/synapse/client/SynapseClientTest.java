@@ -93,6 +93,16 @@ class SynapseClientTest {
     }
 
     @Test
+    void updateMeIsAPatchWithThePreferencesBody() throws Exception {
+        respondBody = "{\"preferences\":{\"theme\":\"light\"}}";
+        Map<String, Object> out = client.auth.updateMe(Map.of("preferences", Map.of("theme", "light")));
+        assertEquals("PATCH /v1/auth/me", paths.get(0));
+        assertTrue(lastBody.contains("\"preferences\""));
+        assertTrue(lastBody.contains("\"theme\":\"light\""));
+        assertEquals(Map.of("theme", "light"), out.get("preferences"));
+    }
+
+    @Test
     void noContentReturnsNull() throws Exception {
         respondStatus = 204;
         assertDoesNotThrow(() -> client.apiKeys.revoke("k1"));

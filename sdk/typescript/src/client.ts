@@ -42,6 +42,9 @@ export class SynapseClient {
 
   readonly auth = {
     me: (): Promise<Json> => this.call("GET", "/v1/auth/me"),
+    /** Merge `preferences` top-level keys into the caller's own store; returns the `me()` shape. */
+    updateMe: (patch: { preferences?: Json }): Promise<Json> =>
+      this.call("PATCH", "/v1/auth/me", { body: patch as Json }),
     switchOrg: (organizationId: string): Promise<Json> =>
       this.call("POST", "/v1/auth/switch-org", { body: { organization_id: organizationId } }),
     register: (email: string, password: string, displayName: string): Promise<Json> =>

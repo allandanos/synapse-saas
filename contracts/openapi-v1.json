@@ -1578,6 +1578,25 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MeUpdate": {
+        "description": "`PATCH /v1/auth/me`: `preferences` keys are merged top-level into the stored object.",
+        "properties": {
+          "preferences": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferences"
+          }
+        },
+        "title": "MeUpdate",
+        "type": "object"
+      },
       "MemberInvite": {
         "properties": {
           "email": {
@@ -3000,6 +3019,7 @@
         "type": "object"
       },
       "UserWithOrgs": {
+        "description": "`GET`/`PATCH /v1/auth/me`. `preferences` is the caller's own UI store (not on `UserRead`).",
         "properties": {
           "avatar_url": {
             "anyOf": [
@@ -3053,6 +3073,12 @@
             },
             "title": "Orgs",
             "type": "array"
+          },
+          "preferences": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Preferences",
+            "type": "object"
           }
         },
         "required": [
@@ -4286,6 +4312,46 @@
           }
         },
         "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      },
+      "patch": {
+        "description": "Merge `preferences` top-level keys into the caller's own store; returns the GET shape.",
+        "operationId": "update_me_v1_auth_me_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWithOrgs"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Me",
         "tags": [
           "auth"
         ]

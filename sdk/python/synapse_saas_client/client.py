@@ -188,6 +188,13 @@ class AuthResource(_Resource):
     def me(self) -> dict:
         return self._call("GET", "/v1/auth/me")
 
+    def update_me(self, *, preferences: dict[str, Any] | None = None) -> dict:
+        """Merge `preferences` top-level keys into the caller's own store; returns the `me()` shape."""
+        payload: dict[str, Any] = {}
+        if preferences is not None:
+            payload["preferences"] = preferences
+        return self._call("PATCH", "/v1/auth/me", json=payload)
+
     def register(self, email: str, password: str, display_name: str) -> dict:
         return self._call(
             "POST", "/v1/auth/register", json={"email": email, "password": password, "display_name": display_name}

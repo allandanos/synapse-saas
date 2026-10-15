@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, text
-from sqlalchemy.dialects.postgresql import CITEXT
+from sqlalchemy.dialects.postgresql import CITEXT, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from synapse_saas.core.db import Base, TimestampMixin
@@ -30,6 +30,10 @@ class User(Base, TimestampMixin):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     identity_provider: Mapped[str] = mapped_column(String(32), default="local", nullable=False)
     provider_subject: Mapped[str | None] = mapped_column(String(255))
+    # Caller-owned UI preferences (PATCH /v1/auth/me); always reassign, never mutate in place.
+    preferences: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
+    )
 
     memberships: Mapped[list[Membership]] = relationship(back_populates="user", lazy="selectin")
 

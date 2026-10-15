@@ -149,6 +149,14 @@ public class SynapseClient {
         public Map<String, Object> me() throws IOException, InterruptedException {
             return call("GET", "/v1/auth/me", null, null);
         }
+
+        /**
+         * Merge {@code patch.preferences} top-level keys into the caller's own preferences; returns the
+         * {@link #me()} shape. API-key clients get a 403.
+         */
+        public Map<String, Object> updateMe(Map<String, Object> patch) throws IOException, InterruptedException {
+            return call("PATCH", "/v1/auth/me", patch, null);
+        }
     }
 
     public final class Orgs {
