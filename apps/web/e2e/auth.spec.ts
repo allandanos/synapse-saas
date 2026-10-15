@@ -27,6 +27,12 @@ test.describe("auth journeys", () => {
     await expect(usageMeter(page, "users")).toContainText("1 / 3");
     await expect(page).toHaveURL(/\/dashboard$/);
 
+    // A new owner gets the welcome tour once; its overlay blocks clicks until skipped.
+    const tour = page.getByRole("dialog", { name: /welcome/i });
+    await expect(tour).toBeVisible();
+    await page.getByRole("button", { name: /skip tour/i }).click();
+    await expect(tour).toHaveCount(0);
+
     await page.getByRole("link", { name: "Members", exact: true }).click();
     await expect(page).toHaveURL(/\/dashboard\/members$/);
     await expect(page.getByRole("row").filter({ hasText: email })).toHaveCount(1);

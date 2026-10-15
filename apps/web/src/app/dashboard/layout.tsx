@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { TourAutoStart, TourProvider } from "@/components/tour";
 import { useAuth } from "@/lib/auth-context";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -25,5 +26,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <TourProvider>
+      <TourAutoStart />
+      <AppShell>{children}</AppShell>
+    </TourProvider>
+  );
 }

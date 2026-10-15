@@ -119,12 +119,29 @@ export interface Org {
   settings: Record<string, unknown>;
 }
 
+/* Per-user UI preferences (GET/PATCH /v1/auth/me). The server merges PATCHed
+ * top-level keys only: a writer replaces a whole key, so spread before writing. */
+export type TourStatus = "completed" | "skipped";
+
+export interface TourRecord {
+  status: TourStatus;
+  version: number;
+  at: string;
+}
+
+export interface UserPreferences {
+  tours?: Record<string, TourRecord>;
+  [key: string]: unknown;
+}
+
 export interface Me {
   id: string;
   email: string;
   display_name: string;
   is_platform_admin: boolean;
   orgs: Org[];
+  /** Always present on /v1/auth/me (default `{}`). */
+  preferences: UserPreferences;
 }
 
 /* Public lookup behind an invitation link (GET /v1/auth/invite?token=). */

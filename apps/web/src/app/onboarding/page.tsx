@@ -26,7 +26,8 @@ export default function OnboardingPage() {
       // createOrg reloads the session with the new org active before resolving,
       // so the dashboard mounts with an org already selected.
       await createOrg(name, slug || undefined);
-      router.push("/dashboard");
+      // ?welcome=1 offers the product tour once (components/tour/tour-auto-start.tsx).
+      router.push("/dashboard?welcome=1");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create the organization");
       setBusy(false);

@@ -40,6 +40,8 @@ interface AuthState {
   createOrg: (name: string, slug?: string) => Promise<Org>;
   acceptInvite: (token: string) => Promise<Org>;
   hasFeature: (feature: string) => boolean;
+  /** Merges top-level preference keys (server-side) and adopts the returned profile. */
+  updatePreferences: (patch: Record<string, unknown>) => Promise<Me>;
 }
 
 interface TokenResponse {
@@ -234,6 +236,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [entitlements],
   );
 
+  const updatePreferences = useCallback(async (patch: Record<string, unknown>) => {
+    const profile = await api<Me>("/v1/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ preferences: patch }),
+    });
+    // Functional guard: a late response never resurrects a session after logout().
+    setMe((prev) => (prev && prev.id === profile.id ? profile : prev));
+    return profile;
+  }, []);
+
   const value = useMemo(
     () => ({
       me,
@@ -247,8 +259,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createOrg,
       acceptInvite,
       hasFeature,
+      updatePreferences,
     }),
-    [me, entitlements, activeOrgId, loading, login, register, logout, switchOrg, createOrg, acceptInvite, hasFeature],
+    [
+      me,
+      entitlements,
+      activeOrgId,
+      loading,
+      login,
+      register,
+      logout,
+      switchOrg,
+      createOrg,
+      acceptInvite,
+      hasFeature,
+      updatePreferences,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -22,14 +22,17 @@ export interface StackContext {
   email: string;
 }
 
-/**
- * Register a user and create their org via the API (the flows under test are
- * the console journeys, not signup mechanics — covered separately).
- */
-export async function createStackContext(
+export interface RegisteredUser {
+  accessToken: string;
+  refreshToken: string;
+  email: string;
+}
+
+/** Register a user via the API, without an org (the console sends them to onboarding). */
+export async function registerOnly(
   request: APIRequestContext,
   label: string,
-): Promise<StackContext> {
+): Promise<RegisteredUser> {
   const email = emailFor(label);
   const password = "password12345";
 
@@ -49,8 +52,25 @@ export async function createStackContext(
     `register returned no access token: ${reg.status()}`,
   ).toBeTruthy();
 
+  return {
+    accessToken: regBody.tokens!.access_token,
+    refreshToken: regBody.tokens!.refresh_token,
+    email,
+  };
+}
+
+/**
+ * Register a user and create their org via the API (the flows under test are
+ * the console journeys, not signup mechanics — covered separately).
+ */
+export async function createStackContext(
+  request: APIRequestContext,
+  label: string,
+): Promise<StackContext> {
+  const user = await registerOnly(request, label);
+
   const org = await request.post(`${API_URL}/v1/orgs`, {
-    headers: { Authorization: `Bearer ${regBody.tokens!.access_token}` },
+    headers: { Authorization: `Bearer ${user.accessToken}` },
     data: { name: `E2E ${label} Org` },
   });
   const orgBody = (await org.json().catch(() => ({}))) as {
@@ -64,41 +84,65 @@ export async function createStackContext(
   ).toBeTruthy();
   expect(orgBody.id, "org id").toBeTruthy();
 
-  return {
-    accessToken: regBody.tokens!.access_token,
-    refreshToken: regBody.tokens!.refresh_token,
-    orgId: orgBody.id!,
-    orgSlug: orgBody.slug ?? "",
-    email,
-  };
+  return { ...user, orgId: orgBody.id!, orgSlug: orgBody.slug ?? "" };
 }
 
-/** Log the browser into the console by planting the refresh cookie + reloading.
+/** Plant the console session cookies (refresh token + optional active org) and open `path`.
  *
  * Targets localhost explicitly — e2e runs against the local stack. The API's
  * CORS allows the console origin's credentials, and the auth context's silent
  * refresh turns the cookie into an access token on mount.
  */
-export async function loginConsole(page: Page, ctx: StackContext): Promise<void> {
+export async function plantSession(
+  page: Page,
+  session: { refreshToken: string; orgId?: string },
+  path = "/dashboard",
+): Promise<void> {
   // baseURL is always set by the config; the page may still be about:blank.
   const domain = new URL(
     (page as unknown as { _baseUrl?: string })._baseUrl ??
       process.env.E2E_BASE_URL ??
       "http://localhost:3000",
   ).hostname;
-  await page.context().addCookies([
+  const cookies = [
     {
       name: "synapse_rt",
-      value: ctx.refreshToken,
+      value: session.refreshToken,
       domain,
       path: "/",
       httpOnly: true,
-      sameSite: "Lax",
+      sameSite: "Lax" as const,
     },
-    { name: "synapse_org", value: ctx.orgId, domain, path: "/" },
-  ]);
-  await page.goto("/dashboard");
+    ...(session.orgId ? [{ name: "synapse_org", value: session.orgId, domain, path: "/" }] : []),
+  ];
+  await page.context().addCookies(cookies);
+  await page.goto(path);
+}
+
+/** Log the browser into the console's dashboard and wait for it to settle. */
+export async function loginConsole(page: Page, ctx: StackContext): Promise<void> {
+  await plantSession(page, ctx, "/dashboard");
   await page.waitForLoadState("networkidle");
+}
+
+/** The caller's profile as the console sees it (`GET /v1/auth/me`). */
+export interface MeProfile {
+  id: string;
+  email: string;
+  is_platform_admin: boolean;
+  orgs: { id: string; slug: string; name: string; role_keys: string[] }[];
+  preferences: {
+    tours?: Record<string, { status: string; version: number; at: string }>;
+    [key: string]: unknown;
+  };
+}
+
+export async function me(request: APIRequestContext, accessToken: string): Promise<MeProfile> {
+  const res = await request.get(`${API_URL}/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  expect(res.ok(), `GET /v1/auth/me: ${res.status()}`).toBeTruthy();
+  return (await res.json()) as MeProfile;
 }
 
 /** Seed the session via the console's own login form (exercises the real flow). */

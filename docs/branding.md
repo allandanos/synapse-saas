@@ -245,6 +245,7 @@ published package or image; only `apps/web` becomes yours.
 | `apps/web/src/app/page.tsx` | Landing page / `landing: redirect` |
 | `apps/web/src/app/globals.css` | `:root` token defaults and the `@theme inline` mapping |
 | `apps/web/src/components/app-shell.tsx` | Signed-in chrome: sidebar, top bar, navigation |
+| `apps/web/src/components/tour/` | Product tour (NextStep): steps, card, auto-start; forks add steps or retarget the `data-tour` anchors |
 
 ### Rules that keep a fork rebase-friendly
 

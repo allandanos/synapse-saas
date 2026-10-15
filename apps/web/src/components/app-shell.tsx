@@ -23,23 +23,27 @@ import {
   X,
 } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
+import { TourButton } from "@/components/tour";
 import { useAuth } from "@/lib/auth-context";
 
+/* `tour` names the link's product-tour anchor (`data-tour="nav-<tour>"`, see
+ * components/tour/steps.tsx). NextStep scrolls anchors into view with
+ * scrollIntoView: a fork with a sticky header should add `scroll-mt-*` here. */
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
-  { href: "/dashboard/members", label: "Members", icon: Users },
-  { href: "/dashboard/agents", label: "Agents", icon: Bot },
-  { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
-  { href: "/dashboard/api-keys", label: "API keys", icon: KeyRound },
-  { href: "/dashboard/developer", label: "Developer", icon: Code2 },
-  { href: "/dashboard/usage", label: "Usage", icon: BarChart3 },
-  { href: "/dashboard/audit", label: "Audit log", icon: ScrollText },
-  { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard", label: "Dashboard", icon: BarChart3, tour: "dashboard" },
+  { href: "/dashboard/members", label: "Members", icon: Users, tour: "members" },
+  { href: "/dashboard/agents", label: "Agents", icon: Bot, tour: "agents" },
+  { href: "/dashboard/billing", label: "Billing", icon: CreditCard, tour: "billing" },
+  { href: "/dashboard/api-keys", label: "API keys", icon: KeyRound, tour: "api-keys" },
+  { href: "/dashboard/developer", label: "Developer", icon: Code2, tour: "developer" },
+  { href: "/dashboard/usage", label: "Usage", icon: BarChart3, tour: "usage" },
+  { href: "/dashboard/audit", label: "Audit log", icon: ScrollText, tour: "audit" },
+  { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook, tour: "webhooks" },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings, tour: "settings" },
 ];
 
 // Platform-admin only — appended at render time
-const ADMIN_NAV = { href: "/dashboard/admin", label: "Admin", icon: ShieldCheck };
+const ADMIN_NAV = { href: "/dashboard/admin", label: "Admin", icon: ShieldCheck, tour: "admin" };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { me, activeOrgId, switchOrg, logout } = useAuth();
@@ -87,7 +91,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <label htmlFor="org-switcher" className="sr-only">
                 Active organization
               </label>
-              <div className="relative">
+              {/* Product-tour anchor (components/tour/steps.tsx). */}
+              <div className="relative" data-tour="org-switcher">
                 <Building2 className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-zinc-400" aria-hidden />
                 <select
                   id="org-switcher"
@@ -123,12 +128,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
 
           <nav className="flex-1 space-y-0.5 p-3" aria-label="Main">
-            {nav.map(({ href, label, icon: Icon }) => {
+            {nav.map(({ href, label, icon: Icon, tour }) => {
               const active = pathname === href;
               return (
                 <Link
                   key={href}
                   href={href}
+                  data-tour={`nav-${tour}`}
                   aria-current={active ? "page" : undefined}
                   className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ${
                     active
@@ -150,6 +156,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <p className="truncate text-xs text-zinc-400">{me?.email}</p>
               </div>
             </div>
+            {/* Closes the mobile menu first, so the overlay draws over the page. */}
+            <TourButton onStart={() => setMenuPath(null)} />
             <button
               onClick={() => logout()}
               className="w-full rounded-lg border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 hover:bg-white"
@@ -160,7 +168,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-x-hidden">
+      {/* tabIndex: focus lands here when the tour closes and its opener is gone. */}
+      <main tabIndex={-1} className="min-w-0 flex-1 overflow-x-hidden outline-none">
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-10">{children}</div>
       </main>
     </div>

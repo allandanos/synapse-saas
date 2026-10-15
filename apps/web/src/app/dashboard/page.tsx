@@ -45,7 +45,8 @@ export default function DashboardPage() {
   return (
     <div>
       <JoinedBanner />
-      <header className="mb-8">
+      {/* data-tour: product-tour anchors (components/tour/steps.tsx). */}
+      <header className="mb-8" data-tour="plan">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-sm text-zinc-500">
           {planHidden ? (
@@ -71,7 +72,7 @@ export default function DashboardPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-zinc-200 p-6" aria-labelledby="usage-h">
+        <section className="rounded-xl border border-zinc-200 p-6" aria-labelledby="usage-h" data-tour="usage">
           <h2 id="usage-h" className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-500">
             Usage this period
           </h2>
@@ -89,7 +90,7 @@ export default function DashboardPage() {
         </section>
 
         <section aria-labelledby="entl-h">
-          <div className="rounded-xl border border-zinc-200 p-6">
+          <div className="rounded-xl border border-zinc-200 p-6" data-tour="features">
             <h2 id="entl-h" className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-500">
               Enabled features
             </h2>

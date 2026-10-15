@@ -5,13 +5,15 @@
 
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, X } from "lucide-react";
+import { CheckCircle2, Compass, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { useTourControls } from "@/components/tour";
 
 function JoinedBannerInner() {
   const params = useSearchParams();
   const router = useRouter();
   const { me } = useAuth();
+  const tour = useTourControls();
   const joinedId = params.get("joined");
   const org = joinedId ? me?.orgs.find((o) => o.id === joinedId) : undefined;
   if (!org) return null;
@@ -25,6 +27,18 @@ function JoinedBannerInner() {
       <p className="flex-1 text-sm text-emerald-900">
         You&apos;ve joined <span className="font-semibold">{org.name}</span>
       </p>
+      {/* Invitees are never auto-interrupted; the tour is offered here instead. */}
+      <button
+        type="button"
+        onClick={() => {
+          tour.start();
+          router.replace("/dashboard");
+        }}
+        className="-my-0.5 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100 hover:text-emerald-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+      >
+        <Compass className="h-3.5 w-3.5" aria-hidden />
+        Take the tour
+      </button>
       <button
         type="button"
         onClick={() => router.replace("/dashboard")}
