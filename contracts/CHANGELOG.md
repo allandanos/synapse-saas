@@ -5,7 +5,13 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
-Additive: one new field and one new method on an existing path; every 0.2.1 client keeps working.
+Nothing yet.
+
+## 0.3.0
+
+`info.version` is `0.3.0`. Additive: one new field and one new method on an
+existing path; every 0.2.1 client keeps working. First tags published to Docker
+Hub after 0.2.0 (0.2.1 was tagged but its images were never pushed).
 
 ### User preferences
 
