@@ -5,8 +5,12 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
-Additive: one new field on an existing schema; every 0.3.1 client keeps
-working.
+Nothing yet.
+
+## 0.4.0
+
+`info.version` is `0.4.0`. Additive: one new field on an existing schema;
+every 0.3.1 client keeps working.
 
 ### Deployment tour steps
 

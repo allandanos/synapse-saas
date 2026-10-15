@@ -28,7 +28,7 @@ from synapse_saas.identity.rate_limit import AuthRateLimitMiddleware
 logger = get_logger(__name__)
 
 # The framework release (pyproject `version`); bumped with it, asserted by a unit test.
-FRAMEWORK_VERSION = "0.3.1"
+FRAMEWORK_VERSION = "0.4.0"
 DEFAULT_API_DESCRIPTION = "Multi-tenant SaaS framework: tenancy, plans, entitlements, usage, billing."
 
 
