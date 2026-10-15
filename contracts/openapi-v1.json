@@ -699,6 +699,9 @@
               }
             ],
             "title": "Tagline"
+          },
+          "tour": {
+            "$ref": "#/components/schemas/TourConfig"
           }
         },
         "required": [
@@ -708,7 +711,8 @@
           "colors",
           "links",
           "landing",
-          "powered_by"
+          "powered_by",
+          "tour"
         ],
         "title": "BrandingRead",
         "type": "object"
@@ -2744,6 +2748,262 @@
           "expires_in"
         ],
         "title": "TokenPair",
+        "type": "object"
+      },
+      "TourConfig": {
+        "additionalProperties": false,
+        "description": "The console's product tour: on/off, built-in steps to hide, extra steps.",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "hide": {
+            "items": {
+              "enum": [
+                "welcome",
+                "org-switcher",
+                "plan",
+                "usage",
+                "features",
+                "nav-members",
+                "nav-agents",
+                "nav-api-keys",
+                "nav-developer",
+                "nav-webhooks",
+                "nav-billing",
+                "nav-usage",
+                "nav-admin",
+                "done"
+              ],
+              "type": "string"
+            },
+            "maxItems": 14,
+            "title": "Hide",
+            "type": "array"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/TourStep"
+            },
+            "maxItems": 20,
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "title": "TourConfig",
+        "type": "object"
+      },
+      "TourStep": {
+        "additionalProperties": false,
+        "description": "A deployment-defined step merged into the console's welcome tour.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "enum": [
+                  "welcome",
+                  "org-switcher",
+                  "plan",
+                  "usage",
+                  "features",
+                  "nav-members",
+                  "nav-agents",
+                  "nav-api-keys",
+                  "nav-developer",
+                  "nav-webhooks",
+                  "nav-billing",
+                  "nav-usage",
+                  "nav-admin",
+                  "done"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "enum": [
+                  "org-switcher",
+                  "plan",
+                  "usage",
+                  "features",
+                  "nav-dashboard",
+                  "nav-members",
+                  "nav-agents",
+                  "nav-api-keys",
+                  "nav-developer",
+                  "nav-webhooks",
+                  "nav-billing",
+                  "nav-usage",
+                  "nav-audit",
+                  "nav-settings",
+                  "nav-admin",
+                  "take-the-tour"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor"
+          },
+          "content": {
+            "maxLength": 400,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Content",
+            "type": "string"
+          },
+          "icon": {
+            "default": "sparkles",
+            "enum": [
+              "sparkles",
+              "compass",
+              "building",
+              "receipt",
+              "gauge",
+              "toggle",
+              "users",
+              "bot",
+              "key",
+              "code",
+              "webhook",
+              "credit-card",
+              "chart",
+              "shield",
+              "rocket",
+              "link",
+              "mail",
+              "file",
+              "clipboard",
+              "plug",
+              "book",
+              "lightbulb"
+            ],
+            "title": "Icon",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9-]{0,40}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TourStepLink"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "permissions": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[a-z][a-z_]*:[a-z][a-z_]*$",
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permissions"
+          },
+          "roles": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[a-z0-9_]{2,64}$",
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roles"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "top",
+                  "bottom",
+                  "left",
+                  "right",
+                  "top-left",
+                  "top-right",
+                  "bottom-left",
+                  "bottom-right",
+                  "left-top",
+                  "left-bottom",
+                  "right-top",
+                  "right-bottom"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "title": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "content"
+        ],
+        "title": "TourStep",
+        "type": "object"
+      },
+      "TourStepLink": {
+        "additionalProperties": false,
+        "description": "Call to action under a step's text; opens in a new tab.",
+        "properties": {
+          "href": {
+            "maxLength": 2048,
+            "pattern": "^https?://[^\\s<>\\\"']+$",
+            "title": "Href",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 40,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "href"
+        ],
+        "title": "TourStepLink",
         "type": "object"
       },
       "TrialStartRequest": {
@@ -5229,7 +5489,7 @@
     },
     "/v1/branding": {
       "get": {
-        "description": "The deployment's presentation branding (name, assets, colours, links).",
+        "description": "The deployment's presentation branding (name, assets, colours, links, product tour).",
         "operationId": "read_branding_v1_branding_get",
         "responses": {
           "200": {

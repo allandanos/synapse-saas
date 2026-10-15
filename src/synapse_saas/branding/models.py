@@ -9,9 +9,17 @@ Asset fields hold bare file names resolved against the directory that holds
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, PrivateAttr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 from synapse_saas.core.errors import NotFoundError
 
@@ -81,6 +89,160 @@ class BrandInvoice(_Strict):
         return _check_extension(value, LOGO_EXTENSIONS)
 
 
+# ── Product tour ──────────────────────────────────────────────────────────────
+# Mirrors the built-in step ids of `apps/web/src/components/tour/steps.tsx` and its
+# `data-tour` anchors; the console mirrors these sets in `apps/web/src/lib/tour-config.ts`.
+# Literals are written out (mypy rejects `Literal[*tuple]`); the tuples derive from them.
+
+BuiltinStepId = Literal[
+    "welcome",
+    "org-switcher",
+    "plan",
+    "usage",
+    "features",
+    "nav-members",
+    "nav-agents",
+    "nav-api-keys",
+    "nav-developer",
+    "nav-webhooks",
+    "nav-billing",
+    "nav-usage",
+    "nav-admin",
+    "done",
+]
+TourAnchor = Literal[
+    "org-switcher",
+    "plan",
+    "usage",
+    "features",
+    "nav-dashboard",
+    "nav-members",
+    "nav-agents",
+    "nav-api-keys",
+    "nav-developer",
+    "nav-webhooks",
+    "nav-billing",
+    "nav-usage",
+    "nav-audit",
+    "nav-settings",
+    "nav-admin",
+    "take-the-tour",
+]
+# = nextstepjs `Step["side"]`
+TourSide = Literal[
+    "top",
+    "bottom",
+    "left",
+    "right",
+    "top-left",
+    "top-right",
+    "bottom-left",
+    "bottom-right",
+    "left-top",
+    "left-bottom",
+    "right-top",
+    "right-bottom",
+]
+TourIcon = Literal[
+    "sparkles",
+    "compass",
+    "building",
+    "receipt",
+    "gauge",
+    "toggle",
+    "users",
+    "bot",
+    "key",
+    "code",
+    "webhook",
+    "credit-card",
+    "chart",
+    "shield",
+    "rocket",
+    "link",
+    "mail",
+    "file",
+    "clipboard",
+    "plug",
+    "book",
+    "lightbulb",
+]
+
+BUILTIN_STEP_IDS: tuple[str, ...] = get_args(BuiltinStepId)
+TOUR_ANCHORS: tuple[str, ...] = get_args(TourAnchor)
+TOUR_SIDES: tuple[str, ...] = get_args(TourSide)
+TOUR_ICONS: tuple[str, ...] = get_args(TourIcon)
+MAX_TOUR_STEPS = 20
+
+StepId = Annotated[str, Field(pattern=r"^[a-z][a-z0-9-]{0,40}$")]
+# Same shape as a role key (`authorization/schemas.py` RoleCreate.key): custom roles allowed.
+RoleKey = Annotated[str, Field(pattern=r"^[a-z0-9_]{2,64}$")]
+# Pattern only: keys outside this build's catalog are a `branding validate` warning (forks extend it).
+PermissionKey = Annotated[str, Field(pattern=r"^[a-z][a-z_]*:[a-z][a-z_]*$")]
+
+
+def _first_duplicate(values: list[str]) -> str | None:
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            return value
+        seen.add(value)
+    return None
+
+
+class TourStepLink(_Strict):
+    """Call to action under a step's text; opens in a new tab."""
+
+    label: str = Field(min_length=1, max_length=40, pattern=SINGLE_LINE)
+    href: WebUrl
+
+
+class TourStep(_Strict):
+    """A deployment-defined step merged into the console's welcome tour."""
+
+    id: StepId
+    title: str = Field(min_length=1, max_length=80, pattern=SINGLE_LINE)
+    content: str = Field(min_length=1, max_length=400, pattern=SINGLE_LINE)
+    anchor: TourAnchor | None = None
+    side: TourSide | None = None
+    after: BuiltinStepId | None = None
+    roles: list[RoleKey] | None = Field(None, min_length=1, max_length=10)
+    permissions: list[PermissionKey] | None = Field(None, min_length=1, max_length=10)
+    icon: TourIcon = "sparkles"
+    link: TourStepLink | None = None
+
+    @field_validator("id")
+    @classmethod
+    def _not_builtin(cls, value: str) -> str:
+        if value in BUILTIN_STEP_IDS:
+            raise ValueError(f"{value!r} is a built-in step id")
+        return value
+
+
+class TourConfig(_Strict):
+    """The console's product tour: on/off, built-in steps to hide, extra steps."""
+
+    enabled: bool = True
+    hide: list[BuiltinStepId] = Field(default_factory=list, max_length=len(BUILTIN_STEP_IDS))
+    steps: list[TourStep] = Field(default_factory=list, max_length=MAX_TOUR_STEPS)
+
+    @field_validator("hide", "steps", mode="before")
+    @classmethod
+    def _bare_key(cls, value: Any) -> Any:
+        """A bare `hide:` / `steps:` (items commented out) parses as null: treat it as `[]`."""
+        return [] if value is None else value
+
+    @model_validator(mode="after")
+    def _unique(self) -> TourConfig:
+        duplicate_step = _first_duplicate([step.id for step in self.steps])
+        if duplicate_step is not None:
+            raise ValueError(f"duplicate step id {duplicate_step!r}")
+        duplicate_hide = _first_duplicate(list(self.hide))
+        if duplicate_hide is not None:
+            raise ValueError(f"duplicate hide entry {duplicate_hide!r}")
+        return self
+
+
 class Branding(_Strict):
     version: Literal[1]
     name: str = Field(min_length=1, max_length=60, pattern=SINGLE_LINE)
@@ -95,13 +257,14 @@ class Branding(_Strict):
     invoice: BrandInvoice = BrandInvoice()
     landing: Literal["page", "redirect"] = "page"
     powered_by: bool = True
+    tour: TourConfig = TourConfig()
 
     # Set by the loader: the branding.yaml path (assets resolve next to it) and
     # sha256[:8] per referenced asset (the `?v=` cache-buster).
     _source: Path | None = PrivateAttr(default=None)
     _digests: dict[str, str] = PrivateAttr(default_factory=dict)
 
-    @field_validator("colors", "links", "email", "invoice", mode="before")
+    @field_validator("colors", "links", "email", "invoice", "tour", mode="before")
     @classmethod
     def _empty_section(cls, value: Any) -> Any:
         """A section whose keys are all commented out parses as null: treat it as `{}`."""

@@ -59,6 +59,38 @@ class TestBrandingJson:
         body = res.json()
         assert body["assets"] == {"logo": None, "logo_dark": None, "favicon": None, "custom_css": None}
 
+    async def test_default_tour_is_enabled_and_empty(self) -> None:
+        [res] = await _get("/v1/branding")
+        assert res.json()["tour"] == {"enabled": True, "hide": [], "steps": []}
+
+    async def test_tour_round_trips(self, custom_branding: Callable[..., Path]) -> None:
+        custom_branding(
+            tour={
+                "hide": ["nav-agents"],
+                "steps": [
+                    {
+                        "id": "eis-api-key",
+                        "title": "Create your org API key",
+                        "content": "Create it here, then enroll it.",
+                        "anchor": "nav-api-keys",
+                        "after": "nav-api-keys",
+                        "icon": "key",
+                        "link": {"label": "Enroll it", "href": "http://localhost:3100/accreditation"},
+                    }
+                ],
+            }
+        )
+        [res] = await _get("/v1/branding")
+        assert res.status_code == 200, res.text
+        assert res.headers["cache-control"] == "public, max-age=60"
+        tour = res.json()["tour"]
+        assert tour["enabled"] is True
+        assert tour["hide"] == ["nav-agents"]
+        [step] = tour["steps"]
+        assert step["link"] == {"label": "Enroll it", "href": "http://localhost:3100/accreditation"}
+        assert step["anchor"] == "nav-api-keys" and step["icon"] == "key"
+        assert step["roles"] is None and step["permissions"] is None and step["side"] is None
+
 
 class TestBrandingAssets:
     async def test_png_and_css_media_types(self, custom_branding: Callable[..., Path]) -> None:

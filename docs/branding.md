@@ -19,7 +19,7 @@ Two tiers:
 
 | Surface | Branded by the kit | Stays as is |
 |---|---|---|
-| Console | name, logo, favicon, page titles (`%s · <name>`), primary colour + its foreground, accent token, corner radius, footer links, landing page or straight-to-login, "Powered by Synapse" on/off, an extra stylesheet | layout, copy of the product screens, neutral and status colours (zinc / emerald / amber / red) |
+| Console | name, logo, favicon, page titles (`%s · <name>`), primary colour + its foreground, accent token, corner radius, footer links, landing page or straight-to-login, "Powered by Synapse" on/off, an extra stylesheet, product-tour steps (add, hide, disable) | layout, copy of the product screens, neutral and status colours (zinc / emerald / amber / red) |
 | Emails (plain text) | sender display name, product name in subjects and bodies, footer | sender **address** (`SYNAPSE_SMTP_FROM`) |
 | Invoice PDF | logo or wordmark, legal name, address lines, tax ID, page footer | layout; the framework footer line is gone |
 | API | OpenAPI `info.title` (`"<name> API"`) and description (tagline), `GET /v1/meta.product` | `/v1/meta.framework` = `synapse-saas` |
@@ -98,6 +98,7 @@ PDF cells); "multi-line" text allows newlines and tabs but not NUL.
 | `invoice.logo` | asset name | `logo` | asset name rules; `.svg` or `.png`; never served over HTTP |
 | `landing` | `page` \| `redirect` | `page` | — |
 | `powered_by` | boolean | `true` | — |
+| `tour` | object | enabled, nothing added | see [Product tour](#product-tour) |
 
 **Asset name rules:** a bare file name in the same directory as
 `branding.yaml` — letters, digits, `.`, `_`, `-`, up to 64 characters, no
@@ -165,6 +166,101 @@ override.
   of the landing and auth pages. `false` hides it. The footer also lists
   whichever of `links.website`, `docs`, `terms`, `privacy` and
   `support_email` are set.
+
+## Product tour
+
+The console's welcome tour ("Take the tour" in the sidebar footer, started
+once after a user creates an organization) is configurable per deployment:
+add your own onboarding steps, hide built-in ones, or switch it off. Requires
+images **≥ 0.4.0**.
+
+```yaml
+tour:                            # optional section; every key optional
+  enabled: true                  # false: no "Take the tour", no banner action, no welcome auto-start
+  hide: [nav-agents]             # built-in step ids to drop
+  steps:                         # up to 20, in this order
+    - id: acme-api-key
+      title: Create your org API key
+      content: Acme issues invoices with one scoped key. Create it here, then enroll it in Acme.
+      anchor: nav-api-keys       # omit for a centred card
+      after: nav-api-keys        # default: just before the closing step
+      roles: [owner, admin]      # any-of
+      permissions: [apikey:manage]   # all-of
+      icon: key
+      link:
+        label: Enroll it in Acme
+        href: https://acme.example.com/accreditation
+```
+
+| Field | Type | Default | Validation |
+|---|---|---|---|
+| `tour.enabled` | boolean | `true` | — |
+| `tour.hide` | list of built-in step ids | `[]` | ≤ 14, no duplicates, each a built-in step id |
+| `tour.steps` | list of steps | `[]` | ≤ 20, ids unique |
+| `steps[].id` | string | — (**required**) | `^[a-z][a-z0-9-]{0,40}$`; not a built-in step id |
+| `steps[].title` | string | — (**required**) | 1–80 chars, single line |
+| `steps[].content` | string | — (**required**) | 1–400 chars, single line, plain text (no markup) |
+| `steps[].anchor` | anchor | none (centred card) | one of the anchors below |
+| `steps[].side` | side | depends on the anchor | one of the sides below |
+| `steps[].after` | built-in step id | none (just before `done`) | a built-in step id |
+| `steps[].roles` | list of role keys | none (every role) | 1–10, each `^[a-z0-9_]{2,64}$`; custom roles allowed |
+| `steps[].permissions` | list of permission keys | none | 1–10, each `resource:action` (`^[a-z][a-z_]*:[a-z][a-z_]*$`) |
+| `steps[].icon` | icon | `sparkles` | one of the icons below |
+| `steps[].link.label` | string | — (required with `link`) | 1–40 chars, single line |
+| `steps[].link.href` | URL | — (required with `link`) | `http://` or `https://`, as `links.*` |
+
+| Set | Values |
+|---|---|
+| Built-in step ids (`hide`, `after`) | `welcome`, `org-switcher`, `plan`, `usage`, `features`, `nav-members`, `nav-agents`, `nav-api-keys`, `nav-developer`, `nav-webhooks`, `nav-billing`, `nav-usage`, `nav-admin`, `done` |
+| Anchors | `org-switcher`, `plan`, `usage`, `features`, `nav-dashboard`, `nav-members`, `nav-agents`, `nav-api-keys`, `nav-developer`, `nav-webhooks`, `nav-billing`, `nav-usage`, `nav-audit`, `nav-settings`, `nav-admin`, `take-the-tour` |
+| Sides | `top`, `bottom`, `left`, `right`, `top-left`, `top-right`, `bottom-left`, `bottom-right`, `left-top`, `left-bottom`, `right-top`, `right-bottom` |
+| Icons | `sparkles`, `compass`, `building`, `receipt`, `gauge`, `toggle`, `users`, `bot`, `key`, `code`, `webhook`, `credit-card`, `chart`, `shield`, `rocket`, `link`, `mail`, `file`, `clipboard`, `plug`, `book`, `lightbulb` |
+
+A `tour:` section whose keys are all commented out is the defaults, and a
+bare `hide:`/`steps:` key is an empty list.
+
+**Anchors carry their own gates.** A step is shown only to users who can see
+the element it points at; the console derives this from the same rules as
+the navigation, so you never repeat them:
+
+- `nav-*` anchors need the page's permission (`nav-members` `member:read`,
+  `nav-agents` `agents:read`, `nav-billing` `billing:read`, `nav-api-keys` and
+  `nav-developer` `apikey:manage`, `nav-audit` `audit:read`, `nav-webhooks`
+  `webhook:manage`; `nav-dashboard`, `nav-usage`, `nav-settings` none).
+  `nav-admin` is for platform admins only.
+- Every anchor except `plan`, `usage` and `features` lives in the sidebar. On
+  phones (where the sidebar is collapsed) such a step is shown as a centred
+  card instead of being dropped; the anchor's gates still apply.
+- Default `side`: `plan` `bottom-left`; `usage`, `features` `bottom`;
+  `take-the-tour` `right-bottom`; every other anchor `right`.
+
+**Visibility** of a custom step = its anchor's gates AND every `permissions`
+entry AND (no `roles`, or any of them matches). `validate` warns (it does not
+fail) on a permission key this build's catalog does not know, since forks
+extend the catalog.
+
+**Placement.** Custom steps are inserted into the full built-in list in
+declared order (after their `after` step, else just before `done`; steps
+sharing an `after` keep their order), then `hide` is applied, then each
+viewer's filters run. So hiding a built-in step never invalidates a kit, and
+relative order survives role filtering. With `enabled: false`, or for a
+viewer whose merged tour has no steps, the tour is unavailable: no "Take the
+tour" button, no banner action, and the welcome auto-start does nothing.
+
+**Links** open in a new tab and must be `http(s)`; in-console links are not
+supported.
+
+**Content is public.** `/v1/branding` is unauthenticated, so titles, text and
+links are readable by anyone who can reach the API — like `name`. Keep
+secrets and internal URLs out of them.
+
+**Upgrade the images first.** API, worker and migrate images older than 0.4.0
+reject the `tour` key at startup (`extra="forbid"`): pull and restart on 0.4.0
+before adding the section.
+
+**No re-offer on change.** The tour starts automatically once per user; users
+who already finished or dismissed it are not offered it again when you change
+the steps (they can replay it from "Take the tour").
 
 ## How it flows
 
@@ -245,7 +341,7 @@ published package or image; only `apps/web` becomes yours.
 | `apps/web/src/app/page.tsx` | Landing page / `landing: redirect` |
 | `apps/web/src/app/globals.css` | `:root` token defaults and the `@theme inline` mapping |
 | `apps/web/src/components/app-shell.tsx` | Signed-in chrome: sidebar, top bar, navigation |
-| `apps/web/src/components/tour/` | Product tour (NextStep): steps, card, auto-start; forks add steps or retarget the `data-tour` anchors |
+| `apps/web/src/components/tour/` | Product tour (NextStep): steps, card, auto-start. Config first: extra steps, hidden steps and on/off belong in `branding.yaml` `tour:` ([Product tour](#product-tour)); fork only for new `data-tour` anchors or per-page tours |
 
 ### Rules that keep a fork rebase-friendly
 
@@ -286,7 +382,8 @@ resolved tenant) without touching any consumer.
 ## Known limitations
 
 - **Restart to apply.** API and worker read the kit once per process;
-  consoles follow within 60 s of the API restart (per console replica).
+  consoles follow within 60 s of the API restart (per console replica). This
+  includes `tour:` changes.
 - **Name beside the logo.** The console prints the product name next to the
   logo in the header and on auth pages. A wordmark logo (the name drawn in
   the image) therefore shows the name twice; use a square mark as `logo`, or

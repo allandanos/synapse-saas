@@ -80,6 +80,10 @@ To check a kit before restarting:
 docker compose run --rm migrate "synapse-cli branding validate"
 ```
 
+- To add your own onboarding steps to the console's product tour (or hide
+  built-in ones), fill in the kit's `tour:` section — images ≥ 0.4.0 only:
+  [Product tour](../../docs/branding.md#product-tour).
+
 Field reference, asset formats, colour tokens, `custom.css`, the landing and
 "Powered by" switches, and the fork guide for deeper changes:
 [`docs/branding.md`](../../docs/branding.md).

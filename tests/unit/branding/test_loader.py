@@ -55,6 +55,19 @@ class TestLoad:
         assert excinfo.value.title == "branding_invalid"
         assert "not found" in excinfo.value.message
 
+    def test_tour_with_every_child_commented_out_is_the_default(self, tmp_path: Path) -> None:
+        from synapse_saas.branding.models import TourConfig
+
+        yaml_text = "version: 1\nname: Acme\ntour:\n  # enabled: false\n  # hide: [nav-agents]\n"
+        assert load_branding(_kit(tmp_path, yaml_text)).tour == TourConfig()
+
+    def test_tour_with_bare_hide_and_steps_keys_is_the_default(self, tmp_path: Path) -> None:
+        """Re-commenting the example items leaves `hide:` / `steps:` bare (null): an empty list."""
+        from synapse_saas.branding.models import TourConfig
+
+        yaml_text = "version: 1\nname: Acme\ntour:\n  enabled: true\n  hide:\n  steps:\n"
+        assert load_branding(_kit(tmp_path, yaml_text)).tour == TourConfig()
+
     def test_bad_yaml(self, tmp_path: Path) -> None:
         with pytest.raises(BrandingInvalidError, match="not valid YAML"):
             load_branding(_kit(tmp_path, "version: 1\nname: [unclosed\n"))
@@ -215,6 +228,12 @@ class TestPackagedKit:
             "the scaffold's branding.yaml.tmpl drifted from config/branding/branding.yaml"
         )
 
+    def test_packaged_kit_tour_is_default(self) -> None:
+        """The starter kit documents the tour but ships it switched on with nothing added."""
+        from synapse_saas.branding.models import TourConfig
+
+        assert load_branding(REPO_KIT / "branding.yaml").tour == TourConfig()
+
     def test_default_settings_point_at_the_packaged_kit(self) -> None:
         from synapse_saas.core.config import DEFAULT_BRANDING_FILE
 
@@ -224,9 +243,27 @@ class TestPackagedKit:
 
     def test_every_field_is_documented_in_the_starter_kit(self) -> None:
         """branding init hands this file to implementors: every schema key appears in it."""
-        from synapse_saas.branding.models import BrandColors, BrandEmail, Branding, BrandInvoice, BrandLinks
+        from synapse_saas.branding.models import (
+            BrandColors,
+            BrandEmail,
+            Branding,
+            BrandInvoice,
+            BrandLinks,
+            TourConfig,
+            TourStep,
+            TourStepLink,
+        )
 
         text = (REPO_KIT / "branding.yaml").read_text()
-        for model in (Branding, BrandColors, BrandLinks, BrandEmail, BrandInvoice):
+        for model in (
+            Branding,
+            BrandColors,
+            BrandLinks,
+            BrandEmail,
+            BrandInvoice,
+            TourConfig,
+            TourStep,
+            TourStepLink,
+        ):
             for field in model.model_fields:
                 assert f"{field}:" in text, f"{model.__name__}.{field} is undocumented in branding.yaml"

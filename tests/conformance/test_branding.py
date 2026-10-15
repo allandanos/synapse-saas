@@ -17,7 +17,9 @@ async def test_branding_document(api: AsyncClient) -> None:
     assert res.status_code == 200, res.text
     assert "max-age=60" in res.headers["cache-control"]
     body = res.json()
-    assert set(body) == {"name", "tagline", "assets", "colors", "links", "landing", "powered_by"}, body
+    assert set(body) == {"name", "tagline", "assets", "colors", "links", "landing", "powered_by", "tour"}, (
+        body
+    )
     assert isinstance(body["name"], str) and body["name"]
     assert set(body["assets"]) == {"logo", "logo_dark", "favicon", "custom_css"}
     for url in body["assets"].values():
@@ -27,6 +29,10 @@ async def test_branding_document(api: AsyncClient) -> None:
     assert all(HEX.match(body["colors"][key]) for key in ("primary", "primary_foreground", "accent"))
     assert body["landing"] in {"page", "redirect"}
     assert isinstance(body["powered_by"], bool)
+    # deployment tour config (0.4.0): always present, whatever the kit says
+    assert {"enabled", "hide", "steps"} <= set(body["tour"]), body["tour"]
+    assert isinstance(body["tour"]["enabled"], bool)
+    assert isinstance(body["tour"]["hide"], list) and isinstance(body["tour"]["steps"], list)
 
 
 async def test_svg_logo_is_served_sandboxed(api: AsyncClient) -> None:

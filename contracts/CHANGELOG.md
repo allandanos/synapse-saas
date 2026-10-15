@@ -5,7 +5,30 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
-Nothing yet.
+Additive: one new field on an existing schema; every 0.3.1 client keeps
+working.
+
+### Deployment tour steps
+
+- **New field** `tour` (object, always present) on `BrandingRead`
+  (`GET /v1/branding`): `TourConfig {enabled: boolean, hide: BuiltinStepId[],
+  steps: TourStep[]}`; `TourStep {id, title, content, anchor, side, after,
+  roles, permissions, icon, link}` with `link: TourStepLink {label, href} |
+  null` and unset optionals as `null`. The id, anchor, side and icon sets are
+  `enum`s in the schema; meaning and rules in
+  [`docs/branding.md#product-tour`](../docs/branding.md#product-tour). The
+  default (no `tour:` in `branding.yaml`) is
+  `{"enabled": true, "hide": [], "steps": []}`. Intent: implementing apps
+  that run the published images unmodified add their own onboarding steps to
+  the console's welcome tour, hide built-in ones, or switch it off, from the
+  branding kit instead of a fork.
+- **Rollout:** API, worker and migrate images older than this release reject
+  the `tour` key in `branding.yaml` at startup (`extra="forbid"`): upgrade the
+  images first, then add the section.
+- **SDKs:** none (the branding routes are exempt from SDK coverage).
+- **Ports:** the Java and Node ports add the field returning the static
+  default in M9; until then they fail
+  `tests/conformance/test_branding.py::test_branding_document`.
 
 ## 0.3.1
 

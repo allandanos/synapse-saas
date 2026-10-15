@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 import click
 from alembic.config import Config
+
+if TYPE_CHECKING:
+    from synapse_saas.branding.models import TourConfig
 
 
 @click.group()
@@ -333,6 +337,21 @@ def branding_validate(path: str | None) -> None:
     assets = ", ".join(f"{name}={brand.asset_digest(name)}" for name in sorted(brand.referenced_assets))
     click.echo(f"ok: {brand.name!r} ({brand.source})")
     click.echo(f"assets: {assets or 'none'}")
+    _echo_tour_summary(brand.tour)
+
+
+def _echo_tour_summary(tour: TourConfig) -> None:
+    """One summary line, then a warning per permission key this build does not know (exit code unchanged)."""
+    from synapse_saas.authorization.permissions import PERMISSION_KEYS
+
+    state = "enabled" if tour.enabled else "disabled"
+    click.echo(f"tour: {state}, {len(tour.steps)} custom step(s), {len(tour.hide)} hidden")
+    for step in tour.steps:
+        for key in step.permissions or []:
+            if key not in PERMISSION_KEYS:
+                click.echo(
+                    f"warning: tour step {step.id!r} permission {key!r} is not in this build's catalog"
+                )
 
 
 @cli.group()

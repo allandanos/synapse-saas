@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from synapse_saas.branding.loader import MEDIA_TYPES, asset_media_type, get_branding
-from synapse_saas.branding.models import BrandColors, BrandLinks
+from synapse_saas.branding.models import BrandColors, BrandLinks, TourConfig
 from synapse_saas.core.errors import NotFoundError
 
 router = APIRouter(prefix="/branding", tags=["branding"])
@@ -41,11 +41,12 @@ class BrandingRead(BaseModel):
     links: BrandLinks
     landing: Literal["page", "redirect"]
     powered_by: bool
+    tour: TourConfig
 
 
 @router.get("", response_model=BrandingRead)
 async def read_branding(response: Response) -> BrandingRead:
-    """The deployment's presentation branding (name, assets, colours, links)."""
+    """The deployment's presentation branding (name, assets, colours, links, product tour)."""
     brand = get_branding()
     response.headers["Cache-Control"] = f"public, max-age={BRANDING_MAX_AGE}"
     return BrandingRead(
@@ -58,6 +59,7 @@ async def read_branding(response: Response) -> BrandingRead:
         links=brand.links,
         landing=brand.landing,
         powered_by=brand.powered_by,
+        tour=brand.tour,
     )
 
 

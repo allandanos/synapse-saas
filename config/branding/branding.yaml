@@ -98,3 +98,53 @@ landing: page
 
 # Show "Powered by Synapse" in the console footer: true or false.
 powered_by: true
+
+# The console's product tour ("Take the tour", started once after an
+# organization is created). Requires images >= 0.4.0: older API, worker and
+# migrate images reject this key, so upgrade them before adding it. Every key
+# is optional. Text is plain, single-line and PUBLIC (served unauthenticated
+# on /v1/branding, like `name`). Changes reach consoles within a minute of an
+# API restart; users who already finished the tour are not offered it again.
+tour:
+  # false: no "Take the tour" button, no banner action, no automatic start.
+  enabled: true
+  # Built-in steps to drop: welcome, org-switcher, plan, usage, features,
+  # nav-members, nav-agents, nav-api-keys, nav-developer, nav-webhooks,
+  # nav-billing, nav-usage, nav-admin, done.
+  # hide: [nav-agents]
+  # Extra steps, up to 20, inserted in this order.
+  # steps:
+  #   # Unique; a lowercase letter, then up to 40 of a-z, 0-9 and "-";
+  #   # not a built-in step id.
+  #   - id: acme-api-key
+  #     # 1–80 characters.
+  #     title: Create your org API key
+  #     # 1–400 characters.
+  #     content: Acme needs one scoped key. Create it here, then enroll it in Acme.
+  #     # Console element to spotlight; omit for a centred card. One of:
+  #     # org-switcher, plan, usage, features, nav-dashboard, nav-members,
+  #     # nav-agents, nav-api-keys, nav-developer, nav-webhooks, nav-billing,
+  #     # nav-usage, nav-audit, nav-settings, nav-admin, take-the-tour.
+  #     # A step is only shown to users who can see its anchor; on phones a
+  #     # sidebar anchor becomes a centred card.
+  #     anchor: nav-api-keys
+  #     # Card placement: top, bottom, left, right, top-left, top-right,
+  #     # bottom-left, bottom-right, left-top, left-bottom, right-top,
+  #     # right-bottom. Default: depends on the anchor.
+  #     side: right
+  #     # Built-in step id this step follows. Default: just before `done`.
+  #     after: nav-api-keys
+  #     # Show only to members holding any of these roles (custom roles allowed).
+  #     roles: [owner, admin]
+  #     # Show only to members holding all of these permissions.
+  #     permissions: [apikey:manage]
+  #     # sparkles (default), compass, building, receipt, gauge, toggle, users,
+  #     # bot, key, code, webhook, credit-card, chart, shield, rocket, link,
+  #     # mail, file, clipboard, plug, book, lightbulb.
+  #     icon: key
+  #     # Call to action under the text, opened in a new tab.
+  #     link:
+  #       # 1–40 characters.
+  #       label: Enroll it in Acme
+  #       # http:// or https:// only.
+  #       href: https://acme.example.com/accreditation
