@@ -146,6 +146,7 @@ public class SynapseClient {
             call("POST", "/v1/auth/switch-org", Map.of("organization_id", organizationId), null);
         }
 
+        /** The caller, their orgs (each with {@code role_keys} and {@code orgs[].permission_keys}) and {@code preferences}. */
         public Map<String, Object> me() throws IOException, InterruptedException {
             return call("GET", "/v1/auth/me", null, null);
         }

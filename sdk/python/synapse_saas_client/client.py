@@ -186,6 +186,7 @@ class _Resource:
 
 class AuthResource(_Resource):
     def me(self) -> dict:
+        """The caller, their orgs (each with `role_keys` and `orgs[].permission_keys`) and `preferences`."""
         return self._call("GET", "/v1/auth/me")
 
     def update_me(self, *, preferences: dict[str, Any] | None = None) -> dict:

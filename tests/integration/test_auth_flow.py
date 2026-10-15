@@ -7,7 +7,15 @@ import asyncio
 import pytest
 from httpx import AsyncClient, Response
 
+from tests.integration.test_api_keys import _add_member
+
 pytestmark = pytest.mark.pg
+
+
+async def _me(client: AsyncClient, tokens: dict[str, str]) -> dict:
+    res = await client.get("/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"})
+    assert res.status_code == 200, res.text
+    return res.json()
 
 
 class TestRegistration:
@@ -142,6 +150,20 @@ class TestMe:
         assert len(body["orgs"]) == 1
         assert body["orgs"][0]["slug"] == "test-org"
         assert "owner" in body["orgs"][0]["role_keys"]
+
+    async def test_me_carries_permission_keys_per_org(self, client: AsyncClient, org_and_tokens) -> None:
+        """Owner and member each see their own effective RBAC set, sorted."""
+        member = await _add_member(client, org_and_tokens, "reader@auth.example", "member")
+
+        owner_org = (await _me(client, org_and_tokens))["orgs"][0]
+        owner_keys = owner_org["permission_keys"]
+        assert owner_keys == sorted(owner_keys)
+        assert {"org:read", "member:read", "billing:read", "org:delete"} <= set(owner_keys)
+        assert "entitlement:manage" not in owner_keys
+
+        member_org = (await _me(client, member))["orgs"][0]
+        assert member_org["role_keys"] == ["member"]
+        assert member_org["permission_keys"] == ["member:read", "org:read", "project:read"]
 
     async def test_me_requires_auth(self, client: AsyncClient) -> None:
         res = await client.get("/v1/auth/me")

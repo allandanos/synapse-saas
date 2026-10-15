@@ -79,7 +79,7 @@ _DEVELOPER = {
     "apikey:manage",
     "agents:read",
 }
-_MEMBER = {"org:read", "project:read"}
+_MEMBER = {"org:read", "member:read", "project:read"}
 
 SYSTEM_ROLES: dict[str, dict[str, object]] = {
     SYSTEM_ROLE_OWNER: {

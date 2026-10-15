@@ -1,4 +1,4 @@
--- contracts/schema-v1.sql — the schema at migration head (0018), generated with
+-- contracts/schema-v1.sql — the schema at migration head (0019), generated with
 -- pg_dump --schema-only from a migrated scratch database. Ports start from this
 -- file (Flyway V1__baseline.sql / raw 001_baseline.sql) and mirror later
 -- Alembic migrations as SQL (ADR 0012). Regenerate after every migration; see

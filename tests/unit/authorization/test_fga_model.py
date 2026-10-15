@@ -59,6 +59,7 @@ class TestModelMirrorsCatalog:
             assert f"define {relation_for(perm.key)}: [user]" in dsl
         assert "define can_org_delete: [user] or owner\n" in dsl
         assert "define can_billing_read: [user] or owner or admin or billing\n" in dsl
+        assert "define can_member_read: [user] or owner or admin or developer or member\n" in dsl
         assert "define viewer: [user] or editor or can_project_read from org" in dsl
 
     def test_model_is_json_serialisable(self) -> None:

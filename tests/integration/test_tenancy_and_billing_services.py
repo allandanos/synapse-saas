@@ -6,6 +6,7 @@ import pytest
 from httpx import AsyncClient
 
 from tests.integration.conftest import grant_as_platform
+from tests.integration.test_api_keys import _add_member
 
 pytestmark = pytest.mark.pg
 
@@ -80,6 +81,21 @@ class TestMembershipManagement:
         assert len(members) >= 1  # the owner
         owner = members[0]
         assert "owner" in owner["role_keys"]
+
+    async def test_member_reads_the_member_list_but_cannot_change_the_plan(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        """The system `member` role carries member:read (migration 0019), nothing billing."""
+        member = await _add_member(client, org_and_tokens, "plain@example.com", "member")
+        headers = org_headers(member)
+
+        listed = await client.get("/v1/orgs/current/members", headers=headers)
+        assert listed.status_code == 200, listed.text
+        assert len(listed.json()["data"]) == 2
+
+        change = await client.post("/v1/subscription/change", headers=headers, json={"plan_key": "starter"})
+        assert change.status_code == 403
+        assert change.json()["type"].endswith("/permission_denied")
 
     async def test_update_membership_roles(self, client: AsyncClient, org_and_tokens) -> None:
         headers = org_headers(org_and_tokens)

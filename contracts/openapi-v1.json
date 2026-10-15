@@ -1780,6 +1780,14 @@
             "title": "Name",
             "type": "string"
           },
+          "permission_keys": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Permission Keys",
+            "type": "array"
+          },
           "role_keys": {
             "default": [],
             "items": {

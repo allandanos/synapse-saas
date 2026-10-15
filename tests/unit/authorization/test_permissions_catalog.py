@@ -39,6 +39,11 @@ class TestCatalog:
         member = set(SYSTEM_ROLES["member"]["permissions"])  # type: ignore[arg-type]
         assert member < set(SYSTEM_ROLES["developer"]["permissions"])  # type: ignore[arg-type]
 
+    def test_member_reads_org_members_and_projects(self) -> None:
+        member = set(SYSTEM_ROLES["member"]["permissions"])  # type: ignore[arg-type]
+        assert member == {"org:read", "member:read", "project:read"}
+        assert "billing:read" not in member
+
     def test_every_role_permission_exists(self) -> None:
         for role in SYSTEM_ROLES.values():
             unknown = set(role["permissions"]) - PERMISSION_KEYS  # type: ignore[arg-type]

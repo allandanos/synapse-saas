@@ -41,6 +41,7 @@ export class SynapseClient {
   private readonly fetchImpl: typeof fetch;
 
   readonly auth = {
+    /** The caller, their orgs (each with `role_keys` and `orgs[].permission_keys`) and `preferences`. */
     me: (): Promise<Json> => this.call("GET", "/v1/auth/me"),
     /** Merge `preferences` top-level keys into the caller's own store; returns the `me()` shape. */
     updateMe: (patch: { preferences?: Json }): Promise<Json> =>

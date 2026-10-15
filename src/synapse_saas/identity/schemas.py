@@ -86,6 +86,10 @@ class OrgSummary(BaseModel):
     slug: str
     name: str
     role_keys: list[str] = []
+    permission_keys: list[str] = []
+    """The caller's effective RBAC set in this org, sorted: `memberships.permission_keys`,
+    exactly what `require_permission` enforces. Platform admins pass every check
+    regardless of this set; clients OR in `is_platform_admin` themselves."""
 
 
 class InviteOrganization(BaseModel):

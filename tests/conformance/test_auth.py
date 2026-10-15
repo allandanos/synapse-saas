@@ -103,6 +103,17 @@ async def test_me_carries_preferences_and_patch_merges_them(api: AsyncClient, te
     assert third.json()["preferences"] == {"tours": {}, "theme": "light"}
 
 
+async def test_me_orgs_carry_the_callers_permission_keys(api: AsyncClient, tenant: Tenant) -> None:
+    """Each org on /me carries the caller's effective RBAC set — what the console gates on."""
+    me = await api.get("/v1/auth/me", headers=tenant.bearer)
+    assert me.status_code == 200, me.text
+    org = next(o for o in me.json()["orgs"] if o["id"] == tenant["org_id"])
+    keys = org["permission_keys"]
+    assert keys == sorted(keys)
+    assert {"org:read", "member:read", "billing:read"} <= set(keys)
+    assert "entitlement:manage" not in keys  # operator-only, no tenant role holds it
+
+
 async def test_patch_me_without_bearer_is_401_problem(api: AsyncClient) -> None:
     assert_problem(await api.patch("/v1/auth/me", json={"preferences": {"theme": "light"}}), 401)
 

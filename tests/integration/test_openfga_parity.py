@@ -63,7 +63,7 @@ class TestModelParity:
         org, user, project = f"organization:{uuid4()}", f"user:{uuid4()}", f"project:{uuid4()}"
         await store.write(
             writes=[
-                Tuple(user, "member", org),  # member: project:read only
+                Tuple(user, "member", org),  # member: org:read, member:read, project:read
                 Tuple(user, "can_audit_read", org),  # a custom role's direct grant
                 Tuple(org, "org", project),
             ]

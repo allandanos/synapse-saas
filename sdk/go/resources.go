@@ -15,6 +15,7 @@ type jsonMap = map[string]any
 
 type AuthResource struct{ c *Client }
 
+// Me returns the caller, their orgs (each with role_keys and orgs[].permission_keys) and preferences.
 func (r *AuthResource) Me(ctx context.Context) (jsonMap, error) {
 	var out jsonMap
 	raw, err := r.c.do(ctx, request{method: "GET", path: "/v1/auth/me"})

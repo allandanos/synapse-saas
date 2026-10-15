@@ -5,7 +5,36 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
-Nothing yet.
+`info.version` is `0.3.1` (set by the release commit). Additive: one new field
+on an existing schema plus a change to a system role's permissions; every 0.3.0
+client keeps working.
+
+### Permission-aware console navigation
+
+- **New field** `permission_keys` (array of string, default `[]`) on
+  `OrgSummary` (`GET`/`PATCH /v1/auth/me`, `orgs[]`). It is the caller's
+  effective RBAC set in that org, sorted: the denormalised
+  `memberships.permission_keys` that `require_permission` enforces, custom
+  roles included. Platform admins pass every check regardless; the field
+  carries their real membership set (nothing synthetic), so clients OR in
+  `is_platform_admin`. Intent: the console hides nav items and gates pages
+  and controls on it instead of rendering 403s.
+- **Role change:** the system `member` role gains `member:read` (now
+  `org:read`, `member:read`, `project:read`), so a plain member can read the
+  member list. `GET /v1/roles` shares that gate, so members can also read the
+  role catalog. Migration `0019_member_read` grants it and recomputes the
+  stored set of every membership holding the system `member` role (a member
+  who also holds a custom role keeps the union); the downgrade revokes and
+  recomputes. No new operations or problem types.
+- **OpenFGA:** the generated model's `can_member_read` gains `or member`. A
+  running store keeps its old model id: operators on
+  `SYNAPSE_AUTHZ_BACKEND=openfga` run `synapse-cli authz fga write-model`,
+  point `SYNAPSE_OPENFGA_MODEL_ID` at the new id and restart.
+- **SDKs:** no method changes; each `me` method's doc names
+  `orgs[].permission_keys` (the response is untyped in all four).
+- **Ports:** the Java and Node ports add the field, the role change and a
+  mirror of migration 0019 in M9; until then they fail
+  `tests/conformance/test_auth.py`'s permission-keys check.
 
 ## 0.3.0
 

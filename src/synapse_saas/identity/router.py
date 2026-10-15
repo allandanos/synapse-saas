@@ -207,6 +207,7 @@ async def _me_response(user: User, session: AsyncSession) -> UserWithOrgs:
             slug=m.organization.slug,
             name=m.organization.name,
             role_keys=sorted(r.key for r in m.roles),
+            permission_keys=sorted(m.permission_keys),
         )
         for m in memberships
     ]

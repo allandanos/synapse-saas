@@ -17,10 +17,22 @@ is RBAC or OpenFGA depending on the backend. `UserContext.permission_keys`
 
 - 21 permissions (`org:read` … `agents:manage`); `entitlement:manage` is an
   operator permission no tenant role carries (ADR 0008)
-- System roles: owner, admin, billing, developer, member — seeded, immutable
+- System roles: owner, admin, billing, developer, member — seeded, immutable.
+  `member` is the least-privileged: `org:read`, `member:read`, `project:read`
+  (`member:read` since 0.3.1 — it also gates `GET /v1/roles`, so members can
+  read the role catalog). Migration `0019_member_read` grants it to the system
+  role and recomputes every existing `member` holder's stored set, because the
+  seed is append-only and never recomputes memberships
 - Custom roles: `POST /v1/roles` with any permission subset; members hold any
   mix. `memberships.permission_keys` is the denormalized union, recomputed on
   every role change and cached 30 s (`perm` cache, invalidated after commit)
+- `GET /v1/auth/me` returns that set per org as `orgs[].permission_keys`
+  (sorted). The console hides nav items and gates pages on it; platform admins
+  pass every check regardless, so clients OR in `is_platform_admin`
+- OpenFGA operators: the model is generated from the catalog, so a catalog
+  change (such as `member:read` on `member`) needs
+  `synapse-cli authz fga write-model`, `SYNAPSE_OPENFGA_MODEL_ID` pointed at the
+  new id, and a restart
 
 ## OpenFGA (ADR 0009)
 
