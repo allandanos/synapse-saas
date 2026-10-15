@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useBranding } from "@/lib/runtime-config";
 import { buildTour } from "./steps";
 import { TourCard } from "./tour-card";
-import { useIsDesktop, useTourPreference } from "./use-tour";
+import { TourAvailabilityContext, useIsDesktop, useTourPreference } from "./use-tour";
 
 // Expo-out: the card settles into place instead of NextStep's overshooting default.
 const CARD_TRANSITION: Transition = { ease: [0.16, 1, 0.3, 1], duration: 0.45 };
@@ -24,7 +24,7 @@ const ARROW_STYLE = { color: "white" } as const; // matches the card's bg-white
 function TourHost({ children }: { children: ReactNode }) {
   const { me, activeOrgId } = useAuth();
   const { isNextStepVisible } = useNextStep();
-  const brandName = useBranding().name;
+  const { name: brandName, tour } = useBranding();
   const isDesktop = useIsDesktop();
   const reduceMotion = useReducedMotion();
   const { persist } = useTourPreference();
@@ -40,9 +40,11 @@ function TourHost({ children }: { children: ReactNode }) {
   );
   const isPlatformAdmin = me?.is_platform_admin ?? false;
   const tours = useMemo(
-    () => [buildTour({ roleKeys, permissions, isPlatformAdmin, isDesktop, brandName })],
-    [roleKeys, permissions, isPlatformAdmin, isDesktop, brandName],
+    () => [buildTour({ roleKeys, permissions, isPlatformAdmin, isDesktop, brandName, tour })],
+    [roleKeys, permissions, isPlatformAdmin, isDesktop, brandName, tour],
   );
+  // Disabled by the deployment, or nothing left for this viewer: offer no tour at all.
+  const available = tour.enabled && tours[0].steps.length > 0;
 
   // Freeze the step list while the tour is open: a rebuild (viewport crossing
   // `md`, role change) could leave NextStep's step index past the new end.
@@ -63,7 +65,7 @@ function TourHost({ children }: { children: ReactNode }) {
       shadowOpacity={SHADOW_OPACITY}
       disableConsoleLogs
     >
-      {children}
+      <TourAvailabilityContext.Provider value={available}>{children}</TourAvailabilityContext.Provider>
     </NextStep>
   );
 }

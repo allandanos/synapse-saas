@@ -68,6 +68,9 @@ jobs:
       E2E_BASE_URL: http://localhost:3000
       E2E_API_URL: http://localhost:8000
       MAILHOG_API_URL: http://localhost:8025
+      # Fixture kit = default kit + developer-only tour steps (tour-config.spec.ts).
+      # Relative to the repo root, where the API and the worker are started.
+      SYNAPSE_BRANDING_FILE: apps/web/e2e/branding-kit/branding.yaml
 
     steps:
       - uses: actions/checkout@v4

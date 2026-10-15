@@ -28,17 +28,19 @@ function JoinedBannerInner() {
         You&apos;ve joined <span className="font-semibold">{org.name}</span>
       </p>
       {/* Invitees are never auto-interrupted; the tour is offered here instead. */}
-      <button
-        type="button"
-        onClick={() => {
-          tour.start();
-          router.replace("/dashboard");
-        }}
-        className="-my-0.5 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100 hover:text-emerald-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-      >
-        <Compass className="h-3.5 w-3.5" aria-hidden />
-        Take the tour
-      </button>
+      {tour.available && (
+        <button
+          type="button"
+          onClick={() => {
+            tour.start();
+            router.replace("/dashboard");
+          }}
+          className="-my-0.5 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100 hover:text-emerald-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+        >
+          <Compass className="h-3.5 w-3.5" aria-hidden />
+          Take the tour
+        </button>
+      )}
       <button
         type="button"
         onClick={() => router.replace("/dashboard")}

@@ -15,7 +15,7 @@ import { useTourControls } from "./use-tour";
 const TOUR_HOME = "/dashboard";
 
 export function TourButton({ onStart }: { onStart?: () => void }) {
-  const { start } = useTourControls();
+  const { start, available } = useTourControls();
   const pathname = usePathname();
   const router = useRouter();
   const pendingStart = useRef(false);
@@ -26,6 +26,8 @@ export function TourButton({ onStart }: { onStart?: () => void }) {
     // Next frame: the dashboard's anchors are laid out before the first spotlight.
     requestAnimationFrame(start);
   }, [pathname, start]);
+
+  if (!available) return null;
 
   function onClick() {
     onStart?.();

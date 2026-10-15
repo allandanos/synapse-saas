@@ -16,6 +16,8 @@ import {
   me,
   plantSession,
   registerOnly,
+  tourDialog,
+  walkTour,
 } from "./fixtures";
 
 const TOUR = "console-welcome";
@@ -41,22 +43,6 @@ async function expectTourStatus(
   const record = (await me(request, accessToken)).preferences.tours?.[TOUR];
   expect(record?.version).toBe(1);
   expect(Number.isNaN(Date.parse(record?.at ?? ""))).toBe(false);
-}
-
-function tourDialog(page: Page) {
-  return page.getByRole("dialog");
-}
-
-/** Titles of every step, walking the tour with Next until Done. */
-async function walkTour(page: Page, total: number): Promise<string[]> {
-  const dialog = tourDialog(page);
-  const titles: string[] = [];
-  for (let i = 1; i <= total; i += 1) {
-    await expect(dialog).toContainText(`Step ${i} of ${total}`);
-    titles.push((await dialog.getByRole("heading", { level: 2 }).textContent()) ?? "");
-    await dialog.getByRole("button", { name: i === total ? "Done" : "Next" }).click();
-  }
-  return titles;
 }
 
 test.describe("product tour", () => {

@@ -2,7 +2,7 @@
 
 /* Tour state: the viewer's persisted record, start/close controls, viewport. */
 
-import { useCallback, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNextStep } from "nextstepjs";
 import type { TourRecord, TourStatus } from "@/lib/api";
@@ -38,16 +38,27 @@ export function useTourPreference(): TourPreference {
   return { record, seen: record?.version === TOUR_VERSION, persist };
 }
 
+/**
+ * False when the deployment disabled the tour (`tour.enabled: false`) or the
+ * viewer's merged tour has no steps. Provided by TourProvider.
+ */
+export const TourAvailabilityContext = createContext(true);
+
 export interface TourControls {
+  /** No-op while the tour is unavailable. */
   start: () => void;
   close: () => void;
   isOpen: boolean;
+  available: boolean;
 }
 
 export function useTourControls(): TourControls {
   const { startNextStep, closeNextStep, isNextStepVisible } = useNextStep();
-  const start = useCallback(() => startNextStep(TOUR_NAME), [startNextStep]);
-  return { start, close: closeNextStep, isOpen: isNextStepVisible };
+  const available = useContext(TourAvailabilityContext);
+  const start = useCallback(() => {
+    if (available) startNextStep(TOUR_NAME);
+  }, [available, startNextStep]);
+  return { start, close: closeNextStep, isOpen: isNextStepVisible, available };
 }
 
 const DESKTOP_QUERY = "(min-width: 768px)"; // Tailwind `md`, where #app-menu is always shown

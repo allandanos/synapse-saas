@@ -4,6 +4,8 @@
  * reads it from context (runtime-config.tsx). Asset URLs are origin-relative
  * on purpose — prefix them with the PUBLIC API URL via `assetUrl()`. */
 
+import { DEFAULT_TOUR, parseTour, type TourConfig } from "./tour-config";
+
 export interface BrandAssets {
   logo: string | null;
   logo_dark: string | null;
@@ -34,6 +36,8 @@ export interface Branding {
   links: BrandLinks;
   landing: "page" | "redirect";
   powered_by: boolean;
+  /** Deployment tour steps; the default when the API predates `tour`. */
+  tour: TourConfig;
 }
 
 /**
@@ -53,6 +57,7 @@ export const DEFAULT_BRANDING: Branding = {
   links: { website: null, docs: null, terms: null, privacy: null, support_email: null },
   landing: "page",
   powered_by: false,
+  tour: DEFAULT_TOUR,
 };
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -129,6 +134,7 @@ export function parseBranding(raw: unknown): Branding {
     ),
     landing: raw.landing === "redirect" ? "redirect" : "page",
     powered_by: raw.powered_by !== false,
+    tour: parseTour(raw.tour),
   };
 }
 

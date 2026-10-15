@@ -306,6 +306,34 @@ export async function waitForEmail(
   }
 }
 
+// ── Product tour ────────────────────────────────────────────────────────────
+
+/** The tour card (NextStep renders one labelled modal dialog per step). */
+export function tourDialog(page: Page) {
+  return page.getByRole("dialog");
+}
+
+/**
+ * Titles of every step, walking the tour with Next until Done. `onStep` runs
+ * on each step before advancing (assert on the card there).
+ */
+export async function walkTour(
+  page: Page,
+  total: number,
+  onStep?: (title: string, dialog: ReturnType<typeof tourDialog>) => Promise<void>,
+): Promise<string[]> {
+  const dialog = tourDialog(page);
+  const titles: string[] = [];
+  for (let i = 1; i <= total; i += 1) {
+    await expect(dialog).toContainText(`Step ${i} of ${total}`);
+    const title = (await dialog.getByRole("heading", { level: 2 }).textContent()) ?? "";
+    titles.push(title);
+    if (onStep) await onStep(title, dialog);
+    await dialog.getByRole("button", { name: i === total ? "Done" : "Next" }).click();
+  }
+  return titles;
+}
+
 // Re-export so journeys import one module.
 export { base as test, expect };
 

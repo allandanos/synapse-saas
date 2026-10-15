@@ -188,6 +188,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Unit tests (Vitest)
+        run: pnpm test
+
       # No API in this job: the build must never need one (runtime config).
       - name: Build
         run: pnpm build

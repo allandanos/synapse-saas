@@ -72,7 +72,8 @@ function Progress({ current, total }: { current: number; total: number }) {
   );
 }
 
-function DocsLink({ href }: { href: string }) {
+/** An external link inside the card (new tab): the docs on the last step, a deployment step's call to action. */
+export function StepLink({ href, label }: { href: string; label: string }) {
   return (
     <a
       href={href}
@@ -80,7 +81,7 @@ function DocsLink({ href }: { href: string }) {
       rel="noopener noreferrer"
       className={`mt-3 inline-flex items-center gap-1 rounded-md text-sm font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-900 ${FOCUS_RING}`}
     >
-      Read the docs
+      {label}
       <ExternalLink className="h-3.5 w-3.5" aria-hidden />
     </a>
   );
@@ -135,7 +136,7 @@ export function TourCard({
       <div id={bodyId} className="mt-3 text-sm leading-relaxed text-zinc-600">
         {step.content}
       </div>
-      {isLast && docs && <DocsLink href={docs} />}
+      {isLast && docs && <StepLink href={docs} label="Read the docs" />}
 
       <Progress current={currentStep} total={totalSteps} />
 
