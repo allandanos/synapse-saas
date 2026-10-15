@@ -5,7 +5,11 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
-`info.version` is `0.3.1` (set by the release commit). Additive: one new field
+Nothing yet.
+
+## 0.3.1
+
+`info.version` is `0.3.1`. Additive: one new field
 on an existing schema plus a change to a system role's permissions; every 0.3.0
 client keeps working.
 
