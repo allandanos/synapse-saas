@@ -55,12 +55,20 @@ export default function WebhooksPage() {
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/v1/webhooks/endpoints/${id}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["webhook-endpoints"] }),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["webhook-endpoints"] });
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Failed to delete endpoint"),
   });
 
   const retry = useMutation({
     mutationFn: (id: string) => api(`/v1/webhooks/deliveries/${id}/retry`, { method: "POST" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["webhook-deliveries"] }),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["webhook-deliveries"] });
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Retry failed"),
   });
 
   return (

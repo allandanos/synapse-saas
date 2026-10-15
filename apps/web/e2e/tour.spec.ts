@@ -10,16 +10,12 @@ import type { APIRequestContext, Page } from "@playwright/test";
 import {
   test,
   expect,
-  API_URL,
-  api,
   createStackContext,
-  inviteTokenFromEmail,
+  joinOrg,
   loginConsole,
   me,
   plantSession,
   registerOnly,
-  waitForEmail,
-  type RegisteredUser,
 } from "./fixtures";
 
 const TOUR = "console-welcome";
@@ -45,33 +41,6 @@ async function expectTourStatus(
   const record = (await me(request, accessToken)).preferences.tours?.[TOUR];
   expect(record?.version).toBe(1);
   expect(Number.isNaN(Date.parse(record?.at ?? ""))).toBe(false);
-}
-
-/** Invite a fresh user as `member` into `owner`'s org and accept via the API. */
-async function joinAsMember(
-  request: APIRequestContext,
-  label: string,
-): Promise<{ joiner: RegisteredUser; orgId: string }> {
-  const owner = await createStackContext(request, `${label}-owner`);
-  const joiner = await registerOnly(request, label);
-  const sent = await api(request, owner).post("/v1/orgs/current/members/invite", {
-    email: joiner.email,
-  });
-  expect(sent.ok(), `invite: ${sent.status()}`).toBeTruthy();
-
-  const mail = await waitForEmail(
-    request,
-    (m) => m.to.split(",").includes(joiner.email) && /invited/i.test(m.subject),
-  );
-  const token = inviteTokenFromEmail(mail.raw);
-  expect(token, `invite token in the email to ${joiner.email}`).toBeTruthy();
-
-  const accepted = await request.post(`${API_URL}/v1/auth/accept-invite`, {
-    headers: { Authorization: `Bearer ${joiner.accessToken}` },
-    data: { token },
-  });
-  expect(accepted.ok(), `accept-invite: ${accepted.status()}`).toBeTruthy();
-  return { joiner, orgId: owner.orgId };
 }
 
 function tourDialog(page: Page) {
@@ -159,7 +128,7 @@ test.describe("product tour", () => {
   });
 
   test("the joined banner offers the tour to invitees", async ({ page, request }) => {
-    const { joiner, orgId } = await joinAsMember(request, "tour-invitee");
+    const { joiner, orgId } = await joinOrg(request, "tour-invitee");
     await plantSession(page, { refreshToken: joiner.refreshToken, orgId }, `/dashboard?joined=${orgId}`);
 
     const banner = page.getByRole("status");
@@ -172,7 +141,7 @@ test.describe("product tour", () => {
   });
 
   test("a member sees the short tour", async ({ page, request }) => {
-    const { joiner, orgId } = await joinAsMember(request, "tour-member");
+    const { joiner, orgId } = await joinOrg(request, "tour-member");
     await plantSession(page, { refreshToken: joiner.refreshToken, orgId }, "/dashboard");
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 

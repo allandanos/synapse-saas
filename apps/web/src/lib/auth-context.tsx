@@ -27,6 +27,7 @@ import {
   type Me,
   type Org,
 } from "./api";
+import { hasPermission } from "./permissions";
 
 interface AuthState {
   me: Me | null;
@@ -40,6 +41,10 @@ interface AuthState {
   createOrg: (name: string, slug?: string) => Promise<Org>;
   acceptInvite: (token: string) => Promise<Org>;
   hasFeature: (feature: string) => boolean;
+  /** The active org's permission keys; empty without an org. */
+  permissions: ReadonlySet<string>;
+  /** True when the viewer may use `permission` in the active org (undefined = ungated). */
+  can: (permission?: string) => boolean;
   /** Merges top-level preference keys (server-side) and adopts the returned profile. */
   updatePreferences: (patch: Record<string, unknown>) => Promise<Me>;
 }
@@ -236,6 +241,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [entitlements],
   );
 
+  // Memo on the joined keys, not the array: `me` is replaced on every preferences save.
+  const permissionKey =
+    me?.orgs.find((o) => o.id === activeOrgId)?.permission_keys?.join(",") ?? "";
+  const permissions = useMemo<ReadonlySet<string>>(
+    () => new Set(permissionKey ? permissionKey.split(",") : []),
+    [permissionKey],
+  );
+  const isPlatformAdmin = me?.is_platform_admin ?? false;
+  const can = useCallback(
+    (permission?: string) => hasPermission(permissions, isPlatformAdmin, permission),
+    [permissions, isPlatformAdmin],
+  );
+
   const updatePreferences = useCallback(async (patch: Record<string, unknown>) => {
     const profile = await api<Me>("/v1/auth/me", {
       method: "PATCH",
@@ -259,6 +277,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createOrg,
       acceptInvite,
       hasFeature,
+      permissions,
+      can,
       updatePreferences,
     }),
     [
@@ -273,6 +293,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createOrg,
       acceptInvite,
       hasFeature,
+      permissions,
+      can,
       updatePreferences,
     ],
   );

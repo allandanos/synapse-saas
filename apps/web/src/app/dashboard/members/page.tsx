@@ -6,7 +6,9 @@ import { api, ApiError, type Member } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
 export default function MembersPage() {
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, can } = useAuth();
+  const canInvite = can("member:invite");
+  const canRemove = can("member:remove");
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +40,11 @@ export default function MembersPage() {
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/v1/memberships/${id}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["members"] }),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["members"] });
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Remove failed"),
   });
 
   return (
@@ -52,33 +58,35 @@ export default function MembersPage() {
         </div>
       </header>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (email.trim()) invite.mutate(email.trim());
-        }}
-        className="mb-6 flex gap-3"
-      >
-        <label htmlFor="invite-email" className="sr-only">
-          Email to invite
-        </label>
-        <input
-          id="invite-email"
-          type="email"
-          required
-          placeholder="teammate@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-        />
-        <button
-          type="submit"
-          disabled={invite.isPending}
-          className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+      {canInvite && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (email.trim()) invite.mutate(email.trim());
+          }}
+          className="mb-6 flex gap-3"
         >
-          {invite.isPending ? "Inviting…" : "Invite"}
-        </button>
-      </form>
+          <label htmlFor="invite-email" className="sr-only">
+            Email to invite
+          </label>
+          <input
+            id="invite-email"
+            type="email"
+            required
+            placeholder="teammate@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          <button
+            type="submit"
+            disabled={invite.isPending}
+            className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {invite.isPending ? "Inviting…" : "Invite"}
+          </button>
+        </form>
+      )}
 
       {loadError && (
         <p role="alert" className="mb-6 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -122,12 +130,15 @@ export default function MembersPage() {
                 </td>
                 <td className="px-4 py-3 text-zinc-600">{m.role_keys.join(", ") || "—"}</td>
                 <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={() => remove.mutate(m.id)}
-                    className="text-xs text-zinc-400 underline hover:text-red-600"
-                  >
-                    Remove
-                  </button>
+                  {canRemove && (
+                    <button
+                      onClick={() => remove.mutate(m.id)}
+                      disabled={remove.isPending}
+                      className="text-xs text-zinc-400 underline hover:text-red-600 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

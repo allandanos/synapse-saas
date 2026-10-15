@@ -36,6 +36,16 @@ export class ApiError extends Error {
   }
 }
 
+/** A 403 from `require_permission` (RFC 7807 body carries `permission`). */
+export function isPermissionDenied(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.status === 403 && typeof err.body.permission === "string";
+}
+
+/** A 403 from a plan-feature gate (RFC 7807 body carries `feature`). */
+export function isFeatureNotEntitled(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.status === 403 && "feature" in err.body;
+}
+
 async function rawRequest(path: string, init: RequestInit): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
@@ -116,6 +126,9 @@ export interface Org {
   slug: string;
   name: string;
   role_keys: string[];
+  /** The caller's effective RBAC set in this org (sorted) — what the API enforces.
+   * Platform admins pass every check regardless (see lib/permissions.ts). */
+  permission_keys: string[];
   settings: Record<string, unknown>;
 }
 

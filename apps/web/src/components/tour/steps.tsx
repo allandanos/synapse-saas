@@ -25,6 +25,7 @@ import {
   Users,
   Webhook,
 } from "lucide-react";
+import { hasPermission, ROUTE_PERMISSIONS } from "@/lib/permissions";
 
 export const TOUR_NAME = "console-welcome";
 /** Bump to re-offer the tour after a redesign (auto-start compares versions). */
@@ -47,10 +48,14 @@ interface StepDef {
   /** Target lives inside #app-menu, which is hidden below `md`. */
   desktopOnly?: boolean;
   platformAdminOnly?: boolean;
+  /** AND-guard on top of `roles`: never anchor to a nav link the shell hides. */
+  permission?: string;
 }
 
 export interface BuildTourInput {
   roleKeys: readonly string[];
+  /** The active org's permission keys (`orgs[].permission_keys`). */
+  permissions: ReadonlySet<string>;
   isPlatformAdmin: boolean;
   isDesktop: boolean;
   brandName: string;
@@ -167,6 +172,8 @@ function navStep(
     side: "right",
     icon: icon(Icon),
     roles,
+    // Nav ids equal the route segments; the shell hides links by the same map.
+    permission: ROUTE_PERMISSIONS[`/dashboard/${id}`],
     desktopOnly: true,
   };
 }
@@ -174,10 +181,11 @@ function navStep(
 function isVisible(def: StepDef, input: BuildTourInput, roles: ReadonlySet<string>): boolean {
   if (def.desktopOnly && !input.isDesktop) return false;
   if (def.platformAdminOnly) return input.isPlatformAdmin;
+  if (!hasPermission(input.permissions, input.isPlatformAdmin, def.permission)) return false;
   return def.roles === undefined || def.roles.some((role) => roles.has(role));
 }
 
-/** Pure: the tour for one viewer (role keys of the active org, viewport, brand). */
+/** Pure: the tour for one viewer (role and permission keys of the active org, viewport, brand). */
 export function buildTour(input: BuildTourInput): Tour {
   // An empty role list is displayed as "member" by the shell; treat it the same.
   const roles = new Set(input.roleKeys.length > 0 ? input.roleKeys : ["member"]);

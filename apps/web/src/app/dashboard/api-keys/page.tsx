@@ -49,7 +49,11 @@ export default function ApiKeysPage() {
 
   const revoke = useMutation({
     mutationFn: (id: string) => api(`/v1/api-keys/${id}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["api-keys"] }),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Failed to revoke key"),
   });
 
   return (

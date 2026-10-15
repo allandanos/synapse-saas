@@ -32,10 +32,16 @@ function TourHost({ children }: { children: ReactNode }) {
   // Memo on the joined keys, not the array: `me` is replaced on every preferences save.
   const roleKey = me?.orgs.find((org) => org.id === activeOrgId)?.role_keys.join(",") ?? "";
   const roleKeys = useMemo(() => (roleKey ? roleKey.split(",") : []), [roleKey]);
+  const permissionKey =
+    me?.orgs.find((org) => org.id === activeOrgId)?.permission_keys?.join(",") ?? "";
+  const permissions = useMemo<ReadonlySet<string>>(
+    () => new Set(permissionKey ? permissionKey.split(",") : []),
+    [permissionKey],
+  );
   const isPlatformAdmin = me?.is_platform_admin ?? false;
   const tours = useMemo(
-    () => [buildTour({ roleKeys, isPlatformAdmin, isDesktop, brandName })],
-    [roleKeys, isPlatformAdmin, isDesktop, brandName],
+    () => [buildTour({ roleKeys, permissions, isPlatformAdmin, isDesktop, brandName })],
+    [roleKeys, permissions, isPlatformAdmin, isDesktop, brandName],
   );
 
   // Freeze the step list while the tour is open: a rebuild (viewport crossing

@@ -25,6 +25,7 @@ import {
 import { BrandMark } from "@/components/brand-mark";
 import { TourButton } from "@/components/tour";
 import { useAuth } from "@/lib/auth-context";
+import { ROUTE_PERMISSIONS } from "@/lib/permissions";
 
 /* `tour` names the link's product-tour anchor (`data-tour="nav-<tour>"`, see
  * components/tour/steps.tsx). NextStep scrolls anchors into view with
@@ -46,10 +47,14 @@ const NAV = [
 const ADMIN_NAV = { href: "/dashboard/admin", label: "Admin", icon: ShieldCheck, tour: "admin" };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { me, activeOrgId, switchOrg, logout } = useAuth();
+  const { me, activeOrgId, switchOrg, logout, can } = useAuth();
   const pathname = usePathname();
   const activeOrg = me?.orgs.find((o) => o.id === activeOrgId);
-  const nav = me?.is_platform_admin ? [...NAV, ADMIN_NAV] : NAV;
+  // Links the viewer cannot open are hidden (deep links land on PermissionGate).
+  const nav = [
+    ...NAV.filter(({ href }) => can(ROUTE_PERMISSIONS[href])),
+    ...(me?.is_platform_admin ? [ADMIN_NAV] : []),
+  ];
   // Mobile menu is open for the page it was opened on: navigating closes it.
   const [menuPath, setMenuPath] = useState<string | null>(null);
   const menuOpen = menuPath === pathname;

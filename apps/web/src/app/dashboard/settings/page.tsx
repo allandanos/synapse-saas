@@ -14,7 +14,8 @@ interface OrgRead {
 }
 
 export default function SettingsPage() {
-  const { activeOrgId, entitlements } = useAuth();
+  const { activeOrgId, entitlements, can } = useAuth();
+  const canUpdate = can("org:update");
   const queryClient = useQueryClient();
   // Unsaved edit, scoped to the org it was typed for: switching orgs discards
   // it, so Save can never PATCH one org with another org's name.
@@ -38,6 +39,8 @@ export default function SettingsPage() {
       setDraft(null);
     },
   });
+  // Surfaced like the Billing page's messages (a status line, not an alert).
+  const saveError = save.error ? save.error.message || "Save failed" : null;
 
   if (!activeOrgId) return null;
 
@@ -50,6 +53,12 @@ export default function SettingsPage() {
 
       {org && (
         <dl className="mb-8 grid max-w-md grid-cols-[8rem_1fr] gap-y-2 text-sm">
+          {!canUpdate && (
+            <>
+              <dt className="text-zinc-400">Name</dt>
+              <dd className="font-medium text-zinc-900">{org.name}</dd>
+            </>
+          )}
           <dt className="text-zinc-400">Slug</dt>
           <dd className="font-mono">{org.slug}</dd>
           <dt className="text-zinc-400">Status</dt>
@@ -61,35 +70,43 @@ export default function SettingsPage() {
         </dl>
       )}
 
-      <form
-        key={activeOrgId}
-        onSubmit={(e) => {
-          e.preventDefault();
-          save.mutate();
-        }}
-        className="max-w-md"
-      >
-        <label htmlFor="org-name" className="mb-1.5 block text-sm font-medium text-zinc-700">
-          Organization name
-        </label>
-        <div className="flex gap-3">
-          <input
-            id="org-name"
-            required
-            minLength={2}
-            value={name}
-            onChange={(e) => setDraft({ orgId: activeOrgId, value: e.target.value })}
-            className="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-          <button
-            type="submit"
-            disabled={save.isPending || name === org?.name}
-            className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {save.isPending ? "Saving…" : save.isSuccess ? "Saved" : "Save"}
-          </button>
-        </div>
-      </form>
+      {saveError && (
+        <p role="status" className="mb-6 max-w-md rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-800">
+          {saveError}
+        </p>
+      )}
+
+      {canUpdate && (
+        <form
+          key={activeOrgId}
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+          className="max-w-md"
+        >
+          <label htmlFor="org-name" className="mb-1.5 block text-sm font-medium text-zinc-700">
+            Organization name
+          </label>
+          <div className="flex gap-3">
+            <input
+              id="org-name"
+              required
+              minLength={2}
+              value={name}
+              onChange={(e) => setDraft({ orgId: activeOrgId, value: e.target.value })}
+              className="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <button
+              type="submit"
+              disabled={save.isPending || name === org?.name}
+              className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {save.isPending ? "Saving…" : save.isSuccess ? "Saved" : "Save"}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

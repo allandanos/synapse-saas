@@ -15,7 +15,9 @@ import {
 import { useAuth } from "@/lib/auth-context";
 
 export default function BillingPage() {
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, can } = useAuth();
+  const canManageBilling = can("billing:manage");
+  const canUpdateOrg = can("org:update");
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -99,6 +101,7 @@ export default function BillingPage() {
       setMessage("Subscription will cancel at period end.");
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
     },
+    onError: (err) => setMessage(err instanceof Error ? err.message : "Cancel failed"),
   });
 
   const downloadPdf = async (invoiceId: string) => {
@@ -170,23 +173,29 @@ export default function BillingPage() {
                   </li>
                 ))}
               </ul>
-              <button
-                onClick={() => changePlan.mutate(plan.key)}
-                disabled={isCurrent || changePlan.isPending}
-                className={`mt-6 rounded-lg py-2 text-sm font-medium ${
-                  isCurrent
-                    ? "cursor-default bg-zinc-100 text-zinc-400"
-                    : "bg-primary text-primary-foreground hover:bg-primary/90"
-                }`}
-              >
-                {isCurrent ? "Active" : changePlan.isPending ? "Working…" : "Switch plan"}
-              </button>
+              {canManageBilling && (
+                <button
+                  onClick={() => changePlan.mutate(plan.key)}
+                  disabled={isCurrent || changePlan.isPending}
+                  className={`mt-6 rounded-lg py-2 text-sm font-medium ${
+                    isCurrent
+                      ? "cursor-default bg-zinc-100 text-zinc-400"
+                      : "bg-primary text-primary-foreground hover:bg-primary/90"
+                  }`}
+                >
+                  {isCurrent ? "Active" : changePlan.isPending ? "Working…" : "Switch plan"}
+                </button>
+              )}
             </div>
           );
         })}
       </section>
 
-      {subscription && (
+      {!canManageBilling && (
+        <p className="mt-6 text-sm text-zinc-400">Plan changes are made by billing managers.</p>
+      )}
+
+      {canManageBilling && subscription && (
         <div className="mt-6">
           <button
             onClick={() => cancel.mutate()}
@@ -211,36 +220,43 @@ export default function BillingPage() {
         <p className="mt-1 text-sm text-zinc-500">
           Invoice emails (with PDF attached) are delivered here on finalize and payment.
         </p>
-        <form
-          className="mt-4 flex flex-col gap-2 sm:flex-row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            saveBillingEmail.mutate(emailValue);
-          }}
-        >
-          <label htmlFor="billing-email" className="sr-only">
-            Billing contact email
-          </label>
-          <input
-            id="billing-email"
-            type="email"
-            value={emailValue}
-            onChange={(e) => setBillingEmail(e.target.value)}
-            placeholder="accounts@yourcompany.com"
-            className="flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          />
-          <button
-            type="submit"
-            disabled={
-              saveBillingEmail.isPending ||
-              emailValue === savedBillingEmail ||
-              (emailValue === "" && savedBillingEmail === "")
-            }
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:bg-zinc-100 disabled:text-zinc-400"
+        {!canUpdateOrg && (
+          <p className="mt-4 text-sm text-zinc-900">
+            {savedBillingEmail || <span className="text-zinc-400">No billing contact set.</span>}
+          </p>
+        )}
+        {canUpdateOrg && (
+          <form
+            className="mt-4 flex flex-col gap-2 sm:flex-row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveBillingEmail.mutate(emailValue);
+            }}
           >
-            {saveBillingEmail.isPending ? "Saving…" : "Save"}
-          </button>
-        </form>
+            <label htmlFor="billing-email" className="sr-only">
+              Billing contact email
+            </label>
+            <input
+              id="billing-email"
+              type="email"
+              value={emailValue}
+              onChange={(e) => setBillingEmail(e.target.value)}
+              placeholder="accounts@yourcompany.com"
+              className="flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            />
+            <button
+              type="submit"
+              disabled={
+                saveBillingEmail.isPending ||
+                emailValue === savedBillingEmail ||
+                (emailValue === "" && savedBillingEmail === "")
+              }
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:bg-zinc-100 disabled:text-zinc-400"
+            >
+              {saveBillingEmail.isPending ? "Saving…" : "Save"}
+            </button>
+          </form>
+        )}
       </section>
 
       <section aria-labelledby="invoices-h" className="mt-10">

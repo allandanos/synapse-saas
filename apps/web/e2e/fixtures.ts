@@ -130,7 +130,14 @@ export interface MeProfile {
   id: string;
   email: string;
   is_platform_admin: boolean;
-  orgs: { id: string; slug: string; name: string; role_keys: string[] }[];
+  orgs: {
+    id: string;
+    slug: string;
+    name: string;
+    role_keys: string[];
+    /** The caller's effective RBAC set in that org, sorted. */
+    permission_keys: string[];
+  }[];
   preferences: {
     tours?: Record<string, { status: string; version: number; at: string }>;
     [key: string]: unknown;
@@ -143,6 +150,39 @@ export async function me(request: APIRequestContext, accessToken: string): Promi
   });
   expect(res.ok(), `GET /v1/auth/me: ${res.status()}`).toBeTruthy();
   return (await res.json()) as MeProfile;
+}
+
+/**
+ * Invite a fresh user into a fresh owner's org and accept via the API
+ * (invite → MailHog token → accept). `roleKeys` defaults to the API's
+ * default, `member`. The owner's org is named `E2E <label>-owner Org`.
+ */
+export async function joinOrg(
+  request: APIRequestContext,
+  label: string,
+  roleKeys?: string[],
+): Promise<{ owner: StackContext; joiner: RegisteredUser; orgId: string }> {
+  const owner = await createStackContext(request, `${label}-owner`);
+  const joiner = await registerOnly(request, label);
+  const sent = await api(request, owner).post("/v1/orgs/current/members/invite", {
+    email: joiner.email,
+    ...(roleKeys ? { role_keys: roleKeys } : {}),
+  });
+  expect(sent.ok(), `invite: ${sent.status()}`).toBeTruthy();
+
+  const mail = await waitForEmail(
+    request,
+    (m) => m.to.split(",").includes(joiner.email) && /invited/i.test(m.subject),
+  );
+  const token = inviteTokenFromEmail(mail.raw);
+  expect(token, `invite token in the email to ${joiner.email}`).toBeTruthy();
+
+  const accepted = await request.post(`${API_URL}/v1/auth/accept-invite`, {
+    headers: { Authorization: `Bearer ${joiner.accessToken}` },
+    data: { token },
+  });
+  expect(accepted.ok(), `accept-invite: ${accepted.status()}`).toBeTruthy();
+  return { owner, joiner, orgId: owner.orgId };
 }
 
 /** Seed the session via the console's own login form (exercises the real flow). */

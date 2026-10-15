@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { PermissionGate } from "@/components/permission-gate";
 import { TourAutoStart, TourProvider } from "@/components/tour";
 import { useAuth } from "@/lib/auth-context";
+import { requiredPermission } from "@/lib/permissions";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { me, activeOrgId, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!loading && !me) router.replace("/login");
@@ -29,7 +32,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <TourProvider>
       <TourAutoStart />
-      <AppShell>{children}</AppShell>
+      <AppShell>
+        {/* One guard for every route: a gated page's queries never mount for a
+         * viewer who lacks the permission. */}
+        <PermissionGate permission={requiredPermission(pathname)}>{children}</PermissionGate>
+      </AppShell>
     </TourProvider>
   );
 }

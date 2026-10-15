@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError, type UsageCheck } from "@/lib/api";
+import { api, type UsageCheck } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { FeatureGate } from "@/components/feature-gate";
 import { JoinedBanner } from "@/components/joined-banner";
@@ -19,11 +19,15 @@ interface SubscriptionResponse {
 }
 
 export default function DashboardPage() {
-  const { entitlements, activeOrgId } = useAuth();
+  const { entitlements, activeOrgId, can } = useAuth();
+  // Plan details need billing:read; a plain member is simply not shown them
+  // (and the query never runs, so there is no 403 round-trip).
+  const planHidden = !can("billing:read");
 
   const subscription = useQuery({
     queryKey: ["subscription", activeOrgId],
     queryFn: () => api<SubscriptionResponse>("/v1/subscription"),
+    enabled: !planHidden,
   });
   const usage = useQuery({
     queryKey: ["usage-limits", activeOrgId],
@@ -35,9 +39,6 @@ export default function DashboardPage() {
 
   const data = subscription.data;
   const usageLimits = usage.data;
-  // Plan details need billing:read; a plain member is simply not shown them.
-  const planHidden =
-    subscription.error instanceof ApiError && subscription.error.status === 403;
   const queryError = usage.error ?? (planHidden ? null : subscription.error);
   const plan = data?.subscription?.plan_snapshot.name ?? "—";
   const status = data?.subscription?.status ?? "none";
@@ -124,13 +125,16 @@ export default function DashboardPage() {
         </section>
       </div>
 
-      <p className="mt-8 text-sm text-zinc-400">
-        Manage the subscription in{" "}
-        <Link href="/dashboard/billing" className="underline">
-          Billing
-        </Link>
-        .
-      </p>
+      {/* Billing is hidden from viewers without billing:read; so is the pointer to it. */}
+      {!planHidden && (
+        <p className="mt-8 text-sm text-zinc-400">
+          Manage the subscription in{" "}
+          <Link href="/dashboard/billing" className="underline">
+            Billing
+          </Link>
+          .
+        </p>
+      )}
     </div>
   );
 }
