@@ -297,3 +297,56 @@ class TestAcceptInviteEndpoint:
             json={"token": "n" * 40},
         )
         assert res.status_code == 404
+
+
+class TestInviteAcceptance:
+    """`POST /v1/auth/accept-invite` joins only the person the invite was sent to."""
+
+    async def _register_and_login(self, client: AsyncClient, email: str) -> dict[str, str]:
+        registered = await client.post(
+            "/v1/auth/register",
+            json={"email": email, "password": "password12345", "display_name": email.split("@", 1)[0]},
+        )
+        assert registered.status_code == 201, registered.text
+        login = await client.post("/v1/auth/login", json={"email": email, "password": "password12345"})
+        assert login.status_code == 200, login.text
+        return {"Authorization": f"Bearer {login.json()['tokens']['access_token']}"}
+
+    async def test_another_user_cannot_accept_with_the_token(
+        self, client: AsyncClient, org_and_tokens
+    ) -> None:
+        invited = await client.post(
+            "/v1/orgs/current/members/invite",
+            headers=org_headers(org_and_tokens),
+            json={"email": "intended@example.com", "role_keys": ["member"]},
+        )
+        assert invited.status_code == 201, invited.text
+        token = await _latest_invite_token("intended@example.com")
+        stranger = await self._register_and_login(client, "stranger@example.com")
+
+        denied = await client.post("/v1/auth/accept-invite", headers=stranger, json={"token": token})
+        assert denied.status_code == 403, denied.text
+        assert denied.json()["type"].endswith("/permission_denied"), denied.text
+        assert "email" in denied.json()["detail"].lower()
+
+        # The token is not consumed by a refused attempt: the invitee can still use it.
+        preview = await client.get("/v1/auth/invite", params={"token": token})
+        assert preview.status_code == 200, preview.text
+        invitee = await self._register_and_login(client, "intended@example.com")
+        accepted = await client.post("/v1/auth/accept-invite", headers=invitee, json={"token": token})
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["organization_id"] == org_and_tokens["org_id"]
+
+    async def test_email_match_ignores_case_and_whitespace(self, client: AsyncClient, org_and_tokens) -> None:
+        # Invites are stored lower-cased; the signed-in address may still differ in case.
+        invited = await client.post(
+            "/v1/orgs/current/members/invite",
+            headers=org_headers(org_and_tokens),
+            json={"email": "case.probe@example.com", "role_keys": ["member"]},
+        )
+        assert invited.status_code == 201, invited.text
+        token = await _latest_invite_token("case.probe@example.com")
+        joiner = await self._register_and_login(client, " Case.Probe@Example.com ")
+
+        accepted = await client.post("/v1/auth/accept-invite", headers=joiner, json={"token": token})
+        assert accepted.status_code == 200, accepted.text

@@ -215,8 +215,13 @@ async def _me_response(user: User, session: AsyncSession) -> UserWithOrgs:
 
 
 @router.get("/me", response_model=UserWithOrgs)
-async def me(user: CurrentUser, session: SessionDep) -> UserWithOrgs:
-    return await _me_response(user, session)
+async def me(principal: PrincipalDep, session: SessionDep) -> UserWithOrgs:
+    """The caller's profile and orgs. An `sk_` bearer resolves to a synthetic,
+    unpersisted user with no profile to read: 403, like PATCH (keys use the
+    organization-scoped routes)."""
+    if principal.is_api_key or principal.user is None:
+        raise PermissionDeniedError("API keys have no user profile")
+    return await _me_response(principal.user, session)
 
 
 @router.patch("/me", response_model=UserWithOrgs)

@@ -142,3 +142,13 @@ async def test_patch_me_with_an_api_key_is_403_problem(api: AsyncClient, tenant:
     )
     doc = assert_problem(res, 403)
     assert doc["type"].endswith("/permission_denied"), doc
+
+
+async def test_get_me_with_an_api_key_is_403_problem(api: AsyncClient, tenant: Tenant) -> None:
+    # An `sk_` key is an organization's credential, not a person: there is no profile to read.
+    created = await api.post("/v1/api-keys", headers=tenant.headers, json={"name": "conf-me", "scopes": []})
+    assert created.status_code == 201, created.text
+    key = created.json()["key"]
+    res = await api.get("/v1/auth/me", headers={"Authorization": f"Bearer {key}"})
+    doc = assert_problem(res, 403)
+    assert doc["type"].endswith("/permission_denied"), doc

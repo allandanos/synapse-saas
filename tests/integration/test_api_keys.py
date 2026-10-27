@@ -320,3 +320,11 @@ class TestKeysAreBoundedByCreator:
         )
         assert res.status_code == 403
         assert res.json()["permission"] == "apikey:manage"
+
+
+async def test_get_me_with_an_api_key_is_a_403_problem(client: AsyncClient, org_and_tokens) -> None:
+    """An `sk_` bearer is an organization's credential, not a person: no profile to read."""
+    _, plaintext = await create_key(client, org_and_tokens, name="me-probe")
+    res = await client.get("/v1/auth/me", headers={"Authorization": f"Bearer {plaintext}"})
+    assert res.status_code == 403, res.text
+    assert res.json()["type"].endswith("/permission_denied"), res.text

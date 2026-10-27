@@ -5,7 +5,34 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
-Nothing yet.
+`info.version` is `0.4.1`. No schema change; two behaviour changes on
+existing operations, both tightening, plus a console dependency patch.
+
+### Invite acceptance is bound to the invited address
+
+- `POST /v1/auth/accept-invite` now answers 403 `permission_denied` when the
+  signed-in caller's email is not the invite's `invited_email` (compared
+  case-insensitively, whitespace-trimmed). Before, any signed-in user holding
+  the emailed token could join. The console's `/register?invite=` and
+  `/login?invite=` pages already render the problem's `detail`. **Ports:**
+  mirror the check; covered by
+  `tests/integration/test_email_flow.py::TestInviteAcceptance` here and by
+  `tests/conformance/test_tenancy.py` once a port exposes invite tokens.
+
+### `GET /v1/auth/me` with an API key is 403
+
+- An `sk_` bearer resolved to a synthetic, unpersisted user and the response
+  failed to serialise (500). It is now 403 `permission_denied`, matching
+  PATCH; keys use the organization-scoped routes. **Ports:** conformance
+  `tests/conformance/test_auth.py::test_get_me_with_an_api_key_is_403_problem`.
+
+### Console image
+
+- Next.js 16.3.3 → 16.4.3 and React 19.2.8 → 19.3.1: closes the advisories
+  reported by `pnpm audit --prod` for the published `synapse-saas-web` image
+  (two critical remote-code-execution issues in image handling, SSRF in the
+  image optimizer, a server-actions denial of service, cache poisoning).
+  Not a contract change; listed because the image is part of the release.
 
 ## 0.4.0
 

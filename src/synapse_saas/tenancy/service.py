@@ -28,6 +28,7 @@ from synapse_saas.core.errors import (
     MembershipLimitReachedError,
     NotAMemberError,
     OrganizationNotFoundError,
+    PermissionDeniedError,
     SlugUnavailableError,
 )
 from synapse_saas.core.ids import is_valid_slug, slugify, unique_slug
@@ -250,7 +251,15 @@ class OrganizationService:
         return await self._accept(membership, user)
 
     async def accept_invite_by_token(self, token: str, user: User) -> Membership:
+        """Join the signed-in user to the org an invite token names.
+
+        Only the invited address may accept: the token travels by email, but a
+        link can be forwarded, and the inviter chose a person, not a bearer. A
+        refused attempt leaves the token usable for the invitee.
+        """
         membership = await self._invited_membership_for_token(token)
+        if not _same_mailbox(membership.invited_email, user.email):
+            raise PermissionDeniedError("This invitation was sent to a different email address")
         membership.invite_token_hash = None  # single-use
         return await self._accept(membership, user)
 
@@ -501,6 +510,11 @@ class OrganizationService:
             target_id=target_id,
             diff=diff,
         )
+
+
+def _same_mailbox(invited: str | None, actual: str | None) -> bool:
+    """Case-insensitive, whitespace-trimmed address equality (CITEXT semantics)."""
+    return (invited or "").strip().lower() == (actual or "").strip().lower()
 
 
 def _hash(token: str) -> str:

@@ -4566,6 +4566,7 @@
     },
     "/v1/auth/me": {
       "get": {
+        "description": "The caller's profile and orgs. An `sk_` bearer resolves to a synthetic,\nunpersisted user with no profile to read: 403, like PATCH (keys use the\norganization-scoped routes).",
         "operationId": "me_v1_auth_me_get",
         "responses": {
           "200": {
