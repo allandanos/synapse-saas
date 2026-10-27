@@ -10,7 +10,7 @@
 name: synapse
 
 x-backend: &backend
-  image: ${SYNAPSE_IMAGE_PREFIX:-allandanos}/synapse-saas-api:${SYNAPSE_VERSION:-0.4.0}
+  image: ${SYNAPSE_IMAGE_PREFIX:-allandanos}/synapse-saas-api:${SYNAPSE_VERSION:-0.4.1}
   # Create it first: cp .env.example .env (Compose stops with a clear error otherwise).
   env_file: .env
   environment: &backend-env
@@ -95,7 +95,7 @@ services:
         condition: service_completed_successfully
 
   web:
-    image: ${SYNAPSE_IMAGE_PREFIX:-allandanos}/synapse-saas-web:${SYNAPSE_VERSION:-0.4.0}
+    image: ${SYNAPSE_IMAGE_PREFIX:-allandanos}/synapse-saas-web:${SYNAPSE_VERSION:-0.4.1}
     environment:
       # Runtime config — one image serves every deployment.
       # Browsers call SYNAPSE_API_URL (API calls, SSO, logo, favicon); the

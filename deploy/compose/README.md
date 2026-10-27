@@ -30,11 +30,12 @@ Register a user, create an organization, and the freemium loop (plans,
 limits, upgrade, usage) works with the **manual** billing provider — no
 payment accounts needed. Postgres and Redis are not published on host ports.
 
-> **Image availability.** The kit defaults to `SYNAPSE_VERSION=0.4.0`
+> **Image availability.** The kit defaults to `SYNAPSE_VERSION=0.4.1`
 > (0.2.0 was the first release with runtime branding and a runtime API URL;
 > 0.3.x added the console product tour, per-user preferences and
 > permission-aware navigation; 0.4.0 lets the branding kit add, hide or
-> disable tour steps). To run an unpublished build, build the images locally from
+> disable tour steps; 0.4.1 patches the console's Next.js advisories and
+> binds invite acceptance to the invited address). To run an unpublished build, build the images locally from
 > a checkout of the framework and point the kit at them:
 >
 > ```bash
@@ -99,7 +100,7 @@ only overrides the stack wiring: database URL, Redis URL and
 | Variable | Default | Purpose |
 |---|---|---|
 | `SYNAPSE_IMAGE_PREFIX` | `allandanos` | Registry namespace of the three images |
-| `SYNAPSE_VERSION` | `0.4.0` | Image tag (all three move together) |
+| `SYNAPSE_VERSION` | `0.4.1` | Image tag (all three move together) |
 | `SYNAPSE_API_PORT` / `SYNAPSE_WEB_PORT` | `8000` / `3000` | Host ports |
 | `SYNAPSE_SECRET_KEY` | *(blank — required)* | JWT signing + webhook-secret encryption |
 | `POSTGRES_PASSWORD` | `synapse` | Bundled Postgres password (set before the first `up`; URL-safe characters only) |
@@ -133,7 +134,7 @@ Mirror or rebuild the three images under one namespace and set
 ```bash
 # mirror without pulling layers through your machine (multi-arch preserved)
 for x in api worker web; do
-  docker buildx imagetools create -t ghcr.io/acme/synapse-saas-$x:0.4.0 allandanos/synapse-saas-$x:0.4.0
+  docker buildx imagetools create -t ghcr.io/acme/synapse-saas-$x:0.4.1 allandanos/synapse-saas-$x:0.4.1
 done
 ```
 

@@ -5,6 +5,10 @@ language ports code against. Every change to it is listed here with intent.
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.4.1
+
 `info.version` is `0.4.1`. No schema change; two behaviour changes on
 existing operations, both tightening, plus a console dependency patch.
 
