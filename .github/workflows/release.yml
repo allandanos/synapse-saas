@@ -2,7 +2,10 @@ name: Release
 
 # Tag `vX.Y.Z` ⇒ publish the framework + clients (ADR 0011).
 #   PyPI: trusted publishing (configure the `synapse-saas` and
-#         `synapse-saas-client` projects to trust this repo/workflow).
+#         `synapse-saas-client` projects on pypi.org to trust this repo +
+#         workflow, environment blank), then set the repository variable
+#         PYPI_TRUSTED_PUBLISHING=true. Until then the job only builds and
+#         smoke-installs — publishing without a publisher fails the run.
 #   npm:  NPM_TOKEN secret (or provenance via `npm publish --provenance`).
 #   Maven Central: MAVEN_CENTRAL_USERNAME/PASSWORD + GPG_PRIVATE_KEY/GPG_PASSPHRASE
 #         secrets and a verified `dev.synapse` namespace on central.sonatype.com.
@@ -48,13 +51,13 @@ jobs:
           python -m venv /tmp/smoke && /tmp/smoke/bin/pip install -q dist/*.whl
           cd /tmp && /tmp/smoke/bin/synapse-cli new smoke-app --list-templates
       - name: Publish framework to PyPI
-        if: github.event_name == 'push' || inputs.dry_run == false
+        if: (github.event_name == 'push' || inputs.dry_run == false) && vars.PYPI_TRUSTED_PUBLISHING == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
           skip-existing: true
       - name: Publish client to PyPI
-        if: github.event_name == 'push' || inputs.dry_run == false
+        if: (github.event_name == 'push' || inputs.dry_run == false) && vars.PYPI_TRUSTED_PUBLISHING == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist-client
